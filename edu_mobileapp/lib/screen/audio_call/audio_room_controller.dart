@@ -166,6 +166,7 @@ class AudioRoomController extends BaseController {
     _listenGifts();
     _listenComments();
     if (isHost) _startRoomHistory();
+    fetchDiamondBalanceIfNeeded(force: true);
   }
 
   void _listenComments() {

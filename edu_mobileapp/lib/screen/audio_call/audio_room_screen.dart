@@ -17,6 +17,8 @@ import 'package:geoedu/screen/audio_call/audio_room_controller.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/entry_effects_widget.dart'
     show GiftEffectWidget;
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_stream_like_button.dart';
+import 'package:geoedu/screen/diamond_purchase/diamond_purchase_screen.dart';
+import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/audio_theme_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/utilities/firebase_const.dart';
@@ -156,33 +158,36 @@ class AudioRoomScreen extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        _headerPill(children: [
-                          const Text('🎁', style: TextStyle(fontSize: 11)),
-                          Obx(() => Text(' ${controller.hostGiftCount.value}',
-                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600))),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _headerPill(children: [
+                            const Text('🎁', style: TextStyle(fontSize: 11)),
+                            Obx(() => Text(' ${controller.hostGiftCount.value}',
+                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600))),
+                            const SizedBox(width: 6),
+                            const Text('⭐', style: TextStyle(fontSize: 11)),
+                            Obx(() => Text(' ${controller.hostStarTotal.value}',
+                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600))),
+                          ]),
                           const SizedBox(width: 6),
-                          const Text('⭐', style: TextStyle(fontSize: 11)),
-                          Obx(() => Text(' ${controller.hostStarTotal.value}',
-                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600))),
-                        ]),
-                        const SizedBox(width: 6),
-                        if (isHost)
-                          GestureDetector(
-                            onTap: () => _showSetTargetDialog(controller),
-                            child: Obx(() => _headerPill(children: [
-                                  const Text('💎', style: TextStyle(fontSize: 11)),
-                                  Text(
-                                      controller.targetDiamonds.value > 0
-                                          ? ' ${controller.hostStarTotal.value}/${controller.targetDiamonds.value}'
-                                          : ' Target',
-                                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
-                                  const SizedBox(width: 3),
-                                  const Icon(Icons.edit, color: Colors.white70, size: 11),
-                                ])),
-                          ),
-                      ],
+                          if (isHost)
+                            GestureDetector(
+                              onTap: () => _showSetTargetDialog(controller),
+                              child: Obx(() => _headerPill(children: [
+                                    const Text('💎', style: TextStyle(fontSize: 11)),
+                                    Text(
+                                        controller.targetDiamonds.value > 0
+                                            ? ' ${controller.hostStarTotal.value}/${controller.targetDiamonds.value}'
+                                            : ' Target',
+                                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                                    const SizedBox(width: 3),
+                                    const Icon(Icons.edit, color: Colors.white70, size: 11),
+                                  ])),
+                            ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -193,6 +198,34 @@ class AudioRoomScreen extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      GestureDetector(
+                        onTap: () => Get.to(() => const DiamondPurchaseScreen())
+                            ?.then((_) => controller.fetchDiamondBalanceIfNeeded(force: true)),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.45),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white24, width: 0.8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Image.asset(AssetRes.editDiamond, height: 12, width: 12),
+                              const SizedBox(width: 4),
+                              Obx(() => Text(
+                                    '${controller.diamondBalance.value}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  )),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(color: ColorRes.liveRed, borderRadius: BorderRadius.circular(6)),
