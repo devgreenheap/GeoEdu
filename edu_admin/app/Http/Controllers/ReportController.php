@@ -512,7 +512,7 @@ class ReportController extends Controller
     {
         [$startDate, $endDate] = $this->resolveDateRange($request);
 
-        $sub = DB::table('notification_users as n')
+        $items = DB::table('notification_users as n')
             ->join('tbl_gifts as g', 'g.id', '=', 'n.data_id')
             ->leftJoin('tbl_gift_categories as gc', 'gc.id', '=', 'g.gift_category_id')
             ->where('n.type', Constants::notify_gift_user)
@@ -520,21 +520,12 @@ class ReportController extends Controller
             ->select(
                 DB::raw("COALESCE(NULLIF(TRIM(gc.name), ''), 'Uncategorized') as category_name"),
                 DB::raw("COALESCE(NULLIF(TRIM(n.source), ''), 'unknown') as source_name"),
-                DB::raw('COALESCE(NULLIF(g.diamond_price, 0), g.coin_price, 0) as gift_diamonds'),
-                'n.from_user_id',
-                'n.to_user_id'
-            );
-
-        $items = DB::query()->fromSub($sub, 't')
-            ->select(
-                'category_name',
-                'source_name',
                 DB::raw('COUNT(*) as gifts_count'),
-                DB::raw('SUM(gift_diamonds) as total_diamonds'),
-                DB::raw('COUNT(DISTINCT from_user_id) as unique_senders'),
-                DB::raw('COUNT(DISTINCT to_user_id) as unique_receivers')
+                DB::raw('SUM(COALESCE(NULLIF(g.diamond_price, 0), g.coin_price, 0)) as total_diamonds'),
+                DB::raw('COUNT(DISTINCT n.from_user_id) as unique_senders'),
+                DB::raw('COUNT(DISTINCT n.to_user_id) as unique_receivers')
             )
-            ->groupBy('category_name', 'source_name')
+            ->groupBy('gc.name', 'n.source')
             ->orderByDesc('total_diamonds')
             ->get();
 
