@@ -97,25 +97,29 @@ class UserController extends Controller
     private function sendOtpSms(string $countryCode, string $mobile, string $otp): array
     {
         $senderId = trim((string) (
-            env('SMS_SENDER_ID')
+            config('services.sms.sender_id')
+            ?: env('SMS_SENDER_ID')
             ?: env('OTP_SMS_SENDER')
             ?: 'GREJEW'
         ));
         $apiKey = trim((string) (
-            env('SMS_API_KEY')
+            config('services.sms.api_key')
+            ?: env('SMS_API_KEY')
             ?: env('PAY4SMS_API_KEY')
             ?: env('OTP_SMS_API_KEY')
-            ?: ''
+            ?: '8f554a8eb2d62b196ac2b1e1a722c8da'
         ));
         $credit = intval(
-            env('SMS_CREDIT')
+            config('services.sms.credit')
+            ?: env('SMS_CREDIT')
             ?: env('OTP_SMS_CREDIT')
             ?: 2
         );
         $templateId = trim((string) (
-            env('SMS_TEMPLATE_ID')
+            config('services.sms.template_id')
+            ?: env('SMS_TEMPLATE_ID')
             ?: env('OTP_SMS_TEMPLATE_ID')
-            ?: ''
+            ?: '1707176154926121089'
         ));
         $message = "Your verification code for Greenheap Gold is: {$otp} This code is valid for 10 minutes. Never share it with anyone, Greenheap Gold and Silver.";
         $encodedMessage = rawurlencode($message);
