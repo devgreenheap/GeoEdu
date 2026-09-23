@@ -1,0 +1,43 @@
+@media (max-width: 991.98px) {
+    .card-header.d-flex {
+        flex-wrap: wrap;
+        row-gap: 10px;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .card-header.d-flex .btn.ms-auto {
+        width: 100%;
+        margin-left: 0 !important;
+    }
+
+    .topbar .topbar-menu {
+        gap: 0.5rem !important;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .smallSearchBar .dataTables_filter {
+        width: 100%;
+    }
+
+    .smallSearchBar .dataTables_filter label {
+        width: 100%;
+    }
+
+    .smallSearchBar .dataTables_filter label input {
+        width: 100% !important;
+        max-width: 100%;
+    }
+
+    .country-code-field {
+        width: 100% !important;
+        text-align: left;
+    }
+}
+
+@media (max-width: 767.98px) {
+    #csvTable {
+        min-width: 640px;
+    }
+}

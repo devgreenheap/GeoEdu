@@ -1,0 +1,29 @@
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:geoedu/model/livestream/livestream_user_state.dart';
+import 'package:geoedu/screen/live_stream/live_stream_end_screen/widget/livestream_summary.dart';
+
+class LiveStreamEndScreen extends StatelessWidget {
+  final LivestreamUserState? userState;
+  final bool isHost;
+  final int viewers;
+
+  const LiveStreamEndScreen(
+      {super.key,
+      required this.userState,
+      required this.isHost,
+      required this.viewers});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+        body: LiveStreamSummary(
+      userState: userState,
+      isHost: isHost,
+      viewers: viewers,
+      onGoHomeTap: () async {
+        Get.back();
+      },
+    ));
+  }
+}
