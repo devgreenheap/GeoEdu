@@ -3452,6 +3452,7 @@ class WalletController extends Controller
         $stateAgentWalletAfter = null;
         $gifterReturnCategoryWalletStars = null;
         $notificationData = null;
+        $languageId = ($request->filled('language_id') && intval($request->language_id) > 0) ? intval($request->language_id) : null;
 
         DB::transaction(function () use (
             &$user,
@@ -3474,7 +3475,9 @@ class WalletController extends Controller
             $stateAgentId,
             $gifterReturnStars,
             $giftCategoryId,
-            $gifterReturnPercent
+            $gifterReturnPercent,
+            $languageId,
+            $request
         ) {
             $user = Users::where('id', $user->id)->lockForUpdate()->first();
             $dataUser = Users::where('id', $dataUser->id)->lockForUpdate()->first();
@@ -3598,8 +3601,8 @@ class WalletController extends Controller
 
             // Powers the leaderboard's language filter — the room's language,
             // which no other column on this row captures.
-            if ($notificationData && $request->filled('language_id') && Schema::hasColumn('notification_users', 'language_id')) {
-                $notificationData->language_id = intval($request->language_id);
+            if ($notificationData && $languageId && Schema::hasColumn('notification_users', 'language_id')) {
+                $notificationData->language_id = $languageId;
                 $notificationData->save();
             }
         });
