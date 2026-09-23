@@ -2006,6 +2006,7 @@ class WalletController extends Controller
             'id' => 'required|exists:tbl_gifts,id',
             'title' => 'nullable|string|max:100',
             'coin_price' => 'required|integer|min:1',
+            'diamond_price' => 'nullable|integer|min:1',
             'gift_category_id' => 'required|exists:tbl_gift_categories,id',
             'animation' => 'nullable|file|max:20480',
             'sound' => 'nullable|file|max:20480',
@@ -2028,8 +2029,8 @@ class WalletController extends Controller
 
         $item = Gifts::find($request->id);
         $item->title = $request->filled('title') ? $request->title : $item->title;
-        $item->coin_price = $request->coin_price;
-        $item->diamond_price = $request->coin_price;
+        $item->coin_price = intval($request->coin_price);
+        $item->diamond_price = $request->filled('diamond_price') ? intval($request->diamond_price) : intval($request->coin_price);
         $item->gift_category_id = intval($request->gift_category_id);
         if ($request->hasFile('image')) {
             GlobalFunction::deleteFile($item->image);
@@ -2060,6 +2061,7 @@ class WalletController extends Controller
         $validator = Validator::make($request->all(), [
             'title' => 'nullable|string|max:100',
             'coin_price' => 'required|integer|min:1',
+            'diamond_price' => 'nullable|integer|min:1',
             'gift_category_id' => 'required|exists:tbl_gift_categories,id',
             'animation' => 'nullable|file|max:20480',
             'sound' => 'nullable|file|max:20480',
@@ -2082,8 +2084,8 @@ class WalletController extends Controller
 
         $item = new Gifts();
         $item->title = $request->title;
-        $item->coin_price = $request->coin_price;
-        $item->diamond_price = $request->coin_price;
+        $item->coin_price = intval($request->coin_price);
+        $item->diamond_price = $request->filled('diamond_price') ? intval($request->diamond_price) : intval($request->coin_price);
         $item->gift_category_id = intval($request->gift_category_id);
         $item->image = GlobalFunction::saveFileAndGivePath($request->image);
         if ($request->hasFile('animation')) {
