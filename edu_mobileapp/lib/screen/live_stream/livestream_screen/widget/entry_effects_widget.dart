@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svga/flutter_svga.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
+import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
+import 'package:webview_flutter_plus/webview_flutter_plus.dart';
 import 'package:geoedu/common/extensions/string_extension.dart';
 import 'package:geoedu/common/widget/custom_image.dart';
 import '../../../../model/livestream/entry_effects_model.dart';
@@ -303,8 +305,10 @@ class _GiftEffectWidgetState extends State<GiftEffectWidget>
       final videoItem = isNetwork
           ? await SVGAParser.shared.decodeFromURL(gift.assetUrl)
           : await SVGAParser.shared.decodeFromAssets(gift.assetUrl);
+      videoItem.audios.clear();
       controller.videoItem = videoItem;
-      controller.forward();
+      controller.reset();
+      controller.repeat();
     } catch (_) {
       // A broken/unsupported SVGA source shouldn't crash the gift
       // animation layer — just skip showing this one.
@@ -337,23 +341,14 @@ class _GiftEffectWidgetState extends State<GiftEffectWidget>
     final isNetwork = gift.assetUrl.startsWith('http://') || gift.assetUrl.startsWith('https://');
 
     if (isSvg) {
-      final svgWidget = isNetwork
-          ? SvgPicture.network(
-              gift.assetUrl,
-              fit: BoxFit.contain,
-              placeholderBuilder: (_) => const SizedBox.shrink(),
-              errorBuilder: (_, __, ___) => Image.asset('assets/images/gifts.png', width: widget.width, height: widget.height),
-            )
-          : SvgPicture.asset(
-              gift.assetUrl,
-              fit: BoxFit.contain,
-              placeholderBuilder: (_) => const SizedBox.shrink(),
-              errorBuilder: (_, __, ___) => Image.asset('assets/images/gifts.png', width: widget.width, height: widget.height),
-            );
       return SizedBox(
         width: widget.width * 1.5,
         height: widget.height * 1.5,
-        child: _GiftVisualWithMotion(child: svgWidget),
+        child: AnimatedSvgPlayer(
+          url: gift.assetUrl,
+          width: widget.width * 1.5,
+          height: widget.height * 1.5,
+        ),
       );
     }
 
@@ -552,6 +547,162 @@ class _GiftVisualWithMotionState extends State<_GiftVisualWithMotion>
         );
       },
       child: widget.child,
+    );
+  }
+}
+
+class AnimatedSvgPlayer extends StatefulWidget {
+  final String url;
+  final double width;
+  final double height;
+
+  const AnimatedSvgPlayer({
+    super.key,
+    required this.url,
+    required this.width,
+    required this.height,
+  });
+
+  @override
+  State<AnimatedSvgPlayer> createState() => _AnimatedSvgPlayerState();
+}
+
+class _AnimatedSvgPlayerState extends State<AnimatedSvgPlayer> {
+  WebViewControllerPlus? _controller;
+  bool _isReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initPlayer();
+  }
+
+  Future<void> _initPlayer() async {
+    final controller = WebViewControllerPlus();
+    try {
+      controller.setBackgroundColor(Colors.transparent);
+    } catch (_) {}
+    controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+
+    String html;
+    try {
+      if (widget.url.startsWith('http://') || widget.url.startsWith('https://')) {
+        final response =
+            await http.get(Uri.parse(widget.url)).timeout(const Duration(seconds: 4));
+        if (response.statusCode == 200 && response.body.contains('<svg')) {
+          html = '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      background: transparent !important;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    svg {
+      width: 100%;
+      height: 100%;
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+  </style>
+</head>
+<body style="background:transparent;">
+  \${response.body}
+</body>
+</html>''';
+        } else {
+          html = _buildImgHtml(widget.url);
+        }
+      } else {
+        html = _buildImgHtml(widget.url);
+      }
+    } catch (_) {
+      html = _buildImgHtml(widget.url);
+    }
+
+    await controller.loadHtmlString(html);
+    if (!mounted) return;
+    setState(() {
+      _controller = controller;
+      _isReady = true;
+    });
+  }
+
+  String _buildImgHtml(String url) {
+    return '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      background: transparent !important;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+  </style>
+</head>
+<body style="background:transparent;">
+  <img src="\$url" />
+</body>
+</html>''';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isReady || _controller == null) {
+      return SizedBox(
+        width: widget.width,
+        height: widget.height,
+        child: widget.url.startsWith('http')
+            ? SvgPicture.network(
+                widget.url,
+                fit: BoxFit.contain,
+                placeholderBuilder: (_) => const SizedBox.shrink(),
+                errorBuilder: (_, __, ___) => Image.asset(
+                  'assets/images/gifts.png',
+                  width: widget.width,
+                  height: widget.height,
+                ),
+              )
+            : SvgPicture.asset(
+                widget.url,
+                fit: BoxFit.contain,
+                placeholderBuilder: (_) => const SizedBox.shrink(),
+                errorBuilder: (_, __, ___) => Image.asset(
+                  'assets/images/gifts.png',
+                  width: widget.width,
+                  height: widget.height,
+                ),
+              ),
+      );
+    }
+
+    return SizedBox(
+      width: widget.width,
+      height: widget.height,
+      child: IgnorePointer(
+        child: WebViewWidget(controller: _controller!),
+      ),
     );
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -497,9 +499,8 @@ class AuthScreenController extends BaseController {
 
     showLoader();
     String? deviceToken = await FirebaseNotificationManager.instance.getNotificationToken();
-    if (deviceToken == null || deviceToken.isEmpty) {
-      stopLoader();
-      return showSnackBar('Unable to get device token. Please check notification permissions and try again.');
+    if (deviceToken == null || deviceToken.trim().isEmpty) {
+      deviceToken = 'dev_${Platform.operatingSystem}_${DateTime.now().millisecondsSinceEpoch}';
     }
     final user.User? data = await UserService.instance.logInWithVerifiedOtp(
       mobile: byEmail ? null : mobile,
@@ -617,7 +618,9 @@ class AuthScreenController extends BaseController {
       String? country,
       String? zipcode}) async {
     String? deviceToken = await FirebaseNotificationManager.instance.getNotificationToken();
-    if (deviceToken == null) return null;
+    if (deviceToken == null || deviceToken.trim().isEmpty) {
+      deviceToken = 'dev_${Platform.operatingSystem}_${DateTime.now().millisecondsSinceEpoch}';
+    }
 
     user.User? userData;
     switch (loginVia) {

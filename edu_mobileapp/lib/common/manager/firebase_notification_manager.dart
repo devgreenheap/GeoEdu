@@ -256,13 +256,41 @@ class FirebaseNotificationManager {
 
   Future<String?> getNotificationToken() async {
     try {
-      String? token = await FirebaseMessaging.instance.getToken();
-      Loggers.info('DeviceToken $token');
-      return token;
+      await FirebaseMessaging.instance.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+    } catch (e) {
+      Loggers.error('FirebaseMessaging requestPermission error: $e');
+    }
+
+    try {
+      String? token = await FirebaseMessaging.instance.getToken().timeout(
+        const Duration(seconds: 4),
+        onTimeout: () => null,
+      );
+      if (token != null && token.trim().isNotEmpty) {
+        Loggers.info('DeviceToken $token');
+        SessionManager.instance.storage.write('cached_device_token', token.trim());
+        return token.trim();
+      }
     } catch (e) {
       Loggers.error('DeviceToken Exception $e');
-      return null;
     }
+
+    // Try cached token from previous run
+    final String? cached = SessionManager.instance.storage.read<String>('cached_device_token');
+    if (cached != null && cached.trim().isNotEmpty) {
+      Loggers.info('Using cached DeviceToken $cached');
+      return cached.trim();
+    }
+
+    // Fallback: Generate a persistent pseudo-token so login/registration NEVER gets blocked
+    final fallbackToken = 'dev_${Platform.operatingSystem}_${DateTime.now().millisecondsSinceEpoch}';
+    SessionManager.instance.storage.write('cached_device_token', fallbackToken);
+    Loggers.info('Using fallback DeviceToken $fallbackToken');
+    return fallbackToken;
   }
 
   Future<void> sendLocalisationNotification(

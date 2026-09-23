@@ -274,31 +274,51 @@ class AudioRoomController extends BaseController {
     GiftEffect gift = giftQueue.removeAt(0);
     activeGifts.add(gift);
 
+    _playGiftAudioAsync(gift.audio);
+
+    // Guaranteed auto-dismiss after 4.5 seconds regardless of network or audio status
     try {
-      String audio = (gift.audio != null && gift.audio!.trim().isNotEmpty)
-          ? gift.audio!.trim()
-          : 'assets/images/fairy-sparkle.mp3';
+      await Future.delayed(const Duration(milliseconds: 4500));
+    } finally {
+      activeGifts.remove(gift);
+      isGiftAnimating = false;
+      if (giftQueue.isNotEmpty) {
+        _processGiftQueue();
+      }
+    }
+  }
+
+  void _playGiftAudioAsync(String? sound) {
+    String audio = (sound != null && sound.trim().isNotEmpty)
+        ? sound.trim()
+        : 'assets/images/fairy-sparkle.mp3';
+    Future.microtask(() async {
       try {
         final player = AudioPlayer();
         if (audio.startsWith('http://') || audio.startsWith('https://')) {
-          await player.setUrl(audio);
+          await player.setUrl(audio).timeout(const Duration(seconds: 3));
         } else {
           await player.setAsset(audio);
         }
         await player.play();
+        player.playerStateStream.listen((state) {
+          if (state.processingState == ProcessingState.completed) {
+            player.dispose();
+          }
+        });
       } catch (e) {
         try {
-          final fallbackPlayer = AudioPlayer();
-          await fallbackPlayer.setAsset('assets/images/fairy-sparkle.mp3');
-          await fallbackPlayer.play();
+          final fallback = AudioPlayer();
+          await fallback.setAsset('assets/images/fairy-sparkle.mp3');
+          await fallback.play();
+          fallback.playerStateStream.listen((state) {
+            if (state.processingState == ProcessingState.completed) {
+              fallback.dispose();
+            }
+          });
         } catch (_) {}
       }
-      await Future.delayed(const Duration(seconds: 4));
-    } finally {
-      activeGifts.remove(gift);
-      isGiftAnimating = false;
-      _processGiftQueue();
-    }
+    });
   }
 
   @override
