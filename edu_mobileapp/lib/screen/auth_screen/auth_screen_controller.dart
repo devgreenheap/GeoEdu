@@ -499,9 +499,6 @@ class AuthScreenController extends BaseController {
 
     showLoader();
     String? deviceToken = await FirebaseNotificationManager.instance.getNotificationToken();
-    if (deviceToken == null || deviceToken.trim().isEmpty) {
-      deviceToken = 'dev_${Platform.operatingSystem}_${DateTime.now().millisecondsSinceEpoch}';
-    }
     final user.User? data = await UserService.instance.logInWithVerifiedOtp(
       mobile: byEmail ? null : mobile,
       email: byEmail ? email : null,
@@ -618,9 +615,6 @@ class AuthScreenController extends BaseController {
       String? country,
       String? zipcode}) async {
     String? deviceToken = await FirebaseNotificationManager.instance.getNotificationToken();
-    if (deviceToken == null || deviceToken.trim().isEmpty) {
-      deviceToken = 'dev_${Platform.operatingSystem}_${DateTime.now().millisecondsSinceEpoch}';
-    }
 
     user.User? userData;
     switch (loginVia) {

@@ -351,6 +351,15 @@ class GlobalFunction extends Model
     public static function sendPushNotification($payload)
     {
         try {
+            $targetToken = $payload['message']['token'] ?? null;
+            if (!empty($targetToken)) {
+                $targetToken = trim((string) $targetToken);
+                if (str_starts_with($targetToken, 'dev_') || str_starts_with($targetToken, 'dummy') || $targetToken === 'no_token') {
+                    Log::info('Push notification skipped: placeholder token', ['token' => $targetToken]);
+                    return false;
+                }
+            }
+
             $googleCredentialsPath = base_path('googleCredentials.json');
             if (!File::exists($googleCredentialsPath)) {
                 Log::warning('Push notification skipped: googleCredentials.json missing', [
@@ -398,18 +407,35 @@ class GlobalFunction extends Model
                         return true;
                     }
 
-                    Log::warning('Push notification retry failed', [
-                        'response' => $retryBody,
-                    ]);
-                    return false;
+                    $responseBody = $retryBody;
                 }
             }
 
             if (isset($responseBody['error']['code'])) {
-                Log::warning('Push notification failed', [
-                    'error_code' => $responseBody['error']['code'],
-                    'response' => $responseBody,
-                ]);
+                $errorCode = intval($responseBody['error']['code']);
+                $errorMsg = (string) ($responseBody['error']['message'] ?? '');
+                $errorDetails = json_encode($responseBody['error']['details'] ?? []);
+
+                // Detect unregistered / stale / expired FCM token
+                $isUnregistered = ($errorCode === 404)
+                    || (stripos($errorMsg, 'NotRegistered') !== false)
+                    || (stripos($errorDetails, 'UNREGISTERED') !== false);
+
+                if ($isUnregistered && !empty($targetToken)) {
+                    Log::warning('FCM token is unregistered/stale; dropping expired token from database', [
+                        'token' => substr($targetToken, 0, 25) . '...',
+                    ]);
+                    try {
+                        Users::where('device_token', $targetToken)->update(['device_token' => null]);
+                    } catch (\Throwable $dbEx) {
+                        Log::error('Failed to clear unregistered FCM token from database', ['error' => $dbEx->getMessage()]);
+                    }
+                } else {
+                    Log::warning('Push notification failed', [
+                        'error_code' => $errorCode,
+                        'response' => $responseBody,
+                    ]);
+                }
                 return false;
             }
 

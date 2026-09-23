@@ -63,14 +63,34 @@ class FirebaseNotificationManager {
 
   void init() async {
     if (Platform.isAndroid) {
-      await flutterLocalNotificationsPlugin
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-          ?.requestNotificationsPermission();
+      try {
+        await flutterLocalNotificationsPlugin
+            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+            ?.requestNotificationsPermission();
+      } catch (e) {
+        Loggers.error('Android requestNotificationsPermission error: $e');
+      }
+      try {
+        await firebaseMessaging.requestPermission(alert: true, badge: false, sound: true);
+      } catch (e) {
+        Loggers.error('Android firebaseMessaging.requestPermission error: $e');
+      }
     } else {
       await flutterLocalNotificationsPlugin
           .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, sound: true);
       await firebaseMessaging.requestPermission(alert: true, badge: false, sound: true);
+    }
+
+    try {
+      FirebaseMessaging.instance.onTokenRefresh.listen((fcmToken) {
+        if (fcmToken.trim().isNotEmpty) {
+          Loggers.info('FCM Token Refreshed: $fcmToken');
+          SessionManager.instance.storage.write('cached_device_token', fcmToken.trim());
+        }
+      });
+    } catch (e) {
+      Loggers.error('FirebaseMessaging onTokenRefresh listen error: $e');
     }
 
     subscribeToTopic();
@@ -279,18 +299,15 @@ class FirebaseNotificationManager {
       Loggers.error('DeviceToken Exception $e');
     }
 
-    // Try cached token from previous run
+    // Try cached real token from previous run
     final String? cached = SessionManager.instance.storage.read<String>('cached_device_token');
-    if (cached != null && cached.trim().isNotEmpty) {
+    if (cached != null && cached.trim().isNotEmpty && !cached.startsWith('dev_')) {
       Loggers.info('Using cached DeviceToken $cached');
       return cached.trim();
     }
 
-    // Fallback: Generate a persistent pseudo-token so login/registration NEVER gets blocked
-    final fallbackToken = 'dev_${Platform.operatingSystem}_${DateTime.now().millisecondsSinceEpoch}';
-    SessionManager.instance.storage.write('cached_device_token', fallbackToken);
-    Loggers.info('Using fallback DeviceToken $fallbackToken');
-    return fallbackToken;
+    // Do NOT generate fake dev_ tokens; return null so backend stores null and avoids FCM 404 UNREGISTERED errors
+    return null;
   }
 
   Future<void> sendLocalisationNotification(

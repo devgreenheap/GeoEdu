@@ -408,6 +408,18 @@ class UserController extends Controller
         ]);
     }
 
+    private function sanitizeDeviceToken($token): ?string
+    {
+        if (empty($token)) {
+            return null;
+        }
+        $token = trim((string) $token);
+        if ($token === '' || str_starts_with($token, 'dev_') || str_starts_with($token, 'dummy') || $token === 'no_token') {
+            return null;
+        }
+        return $token;
+    }
+
     public function logInWithVerifiedOtp(Request $request)
     {
         if ($request->has('email') && trim((string) $request->email) !== '') {
@@ -421,7 +433,7 @@ class UserController extends Controller
         $validator = Validator::make($request->all(), [
             'mobile' => 'required_without:user_mobile_no|string|max:20',
             'user_mobile_no' => 'required_without:mobile|string|max:20',
-            'device_token' => 'required|string',
+            'device_token' => 'nullable|string',
             'device' => 'required',
             'login_method' => 'required|string|max:50',
         ]);
@@ -479,7 +491,10 @@ class UserController extends Controller
             return ['status' => false, 'message' => 'this user is freezed!'];
         }
 
-        $user->device_token = $request->device_token;
+        $cleanToken = $this->sanitizeDeviceToken($request->device_token);
+        if ($cleanToken !== null) {
+            $user->device_token = $cleanToken;
+        }
         $user->device = $request->device;
         $user->login_method = $request->login_method;
         $user->save();
@@ -497,7 +512,7 @@ class UserController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'email' => 'required|email|max:255',
-            'device_token' => 'required|string',
+            'device_token' => 'nullable|string',
             'device' => 'required',
             'login_method' => 'required|string|max:50',
         ]);
@@ -527,7 +542,10 @@ class UserController extends Controller
             return ['status' => false, 'message' => 'this user is freezed!'];
         }
 
-        $user->device_token = $request->device_token;
+        $cleanToken = $this->sanitizeDeviceToken($request->device_token);
+        if ($cleanToken !== null) {
+            $user->device_token = $cleanToken;
+        }
         $user->device = $request->device;
         $user->login_method = $request->login_method;
         $user->save();
@@ -2622,7 +2640,7 @@ class UserController extends Controller
         $validator = Validator::make($request->all(), [
             'fullname' => 'nullable|string|max:255',
             'identity' => 'required',
-            'device_token' => 'required',
+            'device_token' => 'nullable|string',
             'device' => 'required',
             'login_method' => 'required',
             'address1' => 'nullable|string|max:255',
@@ -2711,7 +2729,7 @@ class UserController extends Controller
             $user = new Users;
             $user->fullname = GlobalFunction::cleanString($fullName);
             $user->identity = $request->identity;
-            $user->device_token = $request->device_token;
+            $user->device_token = $this->sanitizeDeviceToken($request->device_token);
             $user->device = $request->device;
             $user->login_method = $request->login_method;
             $user->username = GlobalFunction::generateUsername($user->fullname);
@@ -2779,7 +2797,10 @@ class UserController extends Controller
                 }
             }
 
-            $user->device_token = $request->device_token;
+            $cleanToken = $this->sanitizeDeviceToken($request->device_token);
+            if ($cleanToken !== null) {
+                $user->device_token = $cleanToken;
+            }
             $user->device = $request->device;
             $user->login_method = $request->login_method;
             if ($request->has('sub_category_id')) {
@@ -2922,7 +2943,7 @@ class UserController extends Controller
         $validator = Validator::make($request->all(), [
             'identity' => 'required',
             'password' => 'required',
-            'device_token' => 'required',
+            'device_token' => 'nullable|string',
             'device' => 'required',
             'login_method' => 'required',
         ]);
@@ -2937,7 +2958,10 @@ class UserController extends Controller
         ->first();
 
         if ($user != null) {
-            $user->device_token = $request->device_token;
+            $cleanToken = $this->sanitizeDeviceToken($request->device_token);
+            if ($cleanToken !== null) {
+                $user->device_token = $cleanToken;
+            }
             $user->device = $request->device;
             $user->login_method = $request->login_method;
             $user->save();
