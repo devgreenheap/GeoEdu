@@ -315,28 +315,37 @@ class Setting {
             : List<dynamic>.from(deepARFilters!.map((x) => x.toJson())),
       };
 
-  /// Returns all gifts with the Pen gift guaranteed to be included (using local assets)
+  /// Returns all available gifts from server settings, falling back to local Pen gift if empty
   List<Gift> get availableGifts {
     final list = List<Gift>.from(gifts ?? []);
+    if (list.isEmpty) {
+      return [Gift.penGift];
+    }
+    // If a server gift is genuinely a 'pen' and missing local assets, supplement them:
     final penIdx = list.indexWhere((g) =>
-        g.id == 18 ||
-        (g.title != null && g.title!.toLowerCase().contains('pen')) ||
+        (g.title != null && g.title!.toLowerCase().trim() == 'pen') ||
         (g.image != null && g.image!.toLowerCase().contains('pen')));
     if (penIdx >= 0) {
       final existing = list[penIdx];
       list[penIdx] = Gift(
-        id: existing.id ?? 18,
-        title: 'Pen',
-        giftCategoryId: existing.giftCategoryId ?? 2,
+        id: existing.id,
+        title: existing.title ?? 'Pen',
+        giftCategoryId: existing.giftCategoryId,
         coinPrice: existing.coinPrice ?? 10,
-        image: 'assets/svg_icons/Pen Animation.svg',
-        animationUrl: 'assets/svg_icons/Pen Animation.svg',
-        soundUrl: 'assets/audios/pen audio.mp4',
+        image: (existing.image != null && existing.image!.isNotEmpty)
+            ? existing.image
+            : 'assets/svg_icons/Pen Animation.svg',
+        animationUrl: (existing.animationUrl != null && existing.animationUrl!.isNotEmpty)
+            ? existing.animationUrl
+            : 'assets/svg_icons/Pen Animation.svg',
+        soundUrl: (existing.soundUrl != null && existing.soundUrl!.isNotEmpty)
+            ? existing.soundUrl
+            : 'assets/audios/pen audio.mp4',
         categoryId: existing.categoryId,
         categoryName: existing.categoryName,
+        createdAt: existing.createdAt,
+        updatedAt: existing.updatedAt,
       );
-    } else {
-      list.insert(0, Gift.penGift);
     }
     return list;
   }

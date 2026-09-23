@@ -1156,10 +1156,9 @@ class AudioRoomScreen extends StatelessWidget {
   }
 
   Widget _buildInlineGiftBar(AudioRoomController controller) {
-    final Setting? setting = SessionManager.instance.getSettings();
-    final List<Gift> allGifts = setting.allGiftsWithPen;
-
     return Obx(() {
+      final Setting? setting = SessionManager.instance.getSettings();
+      final List<Gift> allGifts = setting.allGiftsWithPen;
       final List<Gift> gifts = List<Gift>.from(allGifts);
       final favouriteId = controller.favouriteGiftId.value;
       if (favouriteId != null) {

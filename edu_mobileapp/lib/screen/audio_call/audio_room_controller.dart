@@ -1049,6 +1049,7 @@ class AudioRoomController extends BaseController {
   void openGiftBar() {
     isGiftBarOpen.value = true;
     fetchDiamondBalanceIfNeeded(force: true);
+    CommonService.instance.fetchGlobalSettings();
   }
 
   Future<void> sendGiftDirect(Gift gift) async {
@@ -1115,22 +1116,17 @@ class AudioRoomController extends BaseController {
     }
 
     // Otherwise, audience sending to host: validate and deduct through server API
-    int effectiveGiftId = giftId ?? 16;
-    if (effectiveGiftId == 18 || (gift.title?.toLowerCase().contains('pen') ?? false)) {
-      effectiveGiftId = 16;
-    } else {
-      final serverGifts = SessionManager.instance.getSettings()?.gifts ?? [];
-      final existsOnServer =
-          serverGifts.any((g) => g.id == effectiveGiftId && g.id != 18);
-      if (!existsOnServer && serverGifts.isNotEmpty) {
-        final matchingServerGift = serverGifts.firstWhere(
-          (g) => (g.coinPrice ?? 0) == coinPrice && g.id != 18,
-          orElse: () => serverGifts.firstWhere((g) => g.id != 18,
-              orElse: () => Gift(id: 16)),
-        );
-        if (matchingServerGift.id != null && matchingServerGift.id! > 0) {
-          effectiveGiftId = matchingServerGift.id!;
-        }
+    int effectiveGiftId = giftId ?? -1;
+    final serverGifts = SessionManager.instance.getSettings()?.gifts ?? [];
+    final existsOnServer =
+        serverGifts.any((g) => g.id == effectiveGiftId);
+    if (!existsOnServer && serverGifts.isNotEmpty) {
+      final matchingServerGift = serverGifts.firstWhere(
+        (g) => (g.coinPrice ?? 0) == coinPrice,
+        orElse: () => serverGifts.first,
+      );
+      if (matchingServerGift.id != null && matchingServerGift.id! > 0) {
+        effectiveGiftId = matchingServerGift.id!;
       }
     }
 
