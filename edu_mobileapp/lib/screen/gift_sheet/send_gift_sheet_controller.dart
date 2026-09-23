@@ -92,17 +92,17 @@ class SendGiftSheetController extends BaseController {
           'Invalid coin price: $coinPrice, skipping gift sending.');
     }
     showLoader();
-    int effectiveGiftId = giftId;
-    final serverGifts = SessionManager.instance.getSettings()?.gifts ?? [];
-    final existsOnServer =
-        serverGifts.any((g) => g.id == effectiveGiftId);
-    if (!existsOnServer && serverGifts.isNotEmpty) {
-      final matchingServerGift = serverGifts.firstWhere(
-        (g) => (g.coinPrice ?? 0) == coinPrice,
-        orElse: () => serverGifts.first,
-      );
-      if (matchingServerGift.id != null && matchingServerGift.id! > 0) {
-        effectiveGiftId = matchingServerGift.id!;
+    int effectiveGiftId = (giftId > 0) ? giftId : -1;
+    if (effectiveGiftId <= 0) {
+      final serverGifts = SessionManager.instance.getSettings()?.gifts ?? [];
+      if (serverGifts.isNotEmpty) {
+        final matchingServerGift = serverGifts.firstWhere(
+          (g) => (g.coinPrice ?? 0) == coinPrice,
+          orElse: () => serverGifts.first,
+        );
+        if (matchingServerGift.id != null && matchingServerGift.id! > 0) {
+          effectiveGiftId = matchingServerGift.id!;
+        }
       }
     }
     final response = await GiftWalletService.instance.spendDiamonds(

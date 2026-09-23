@@ -442,17 +442,17 @@ class LivestreamScreenController extends BaseController {
           'Invalid battle gift: giftId=$giftId receiver=$receiverId price=$coinPrice');
     }
 
-    int effectiveGiftId = giftId;
-    final serverGifts = SessionManager.instance.getSettings()?.gifts ?? [];
-    final existsOnServer =
-        serverGifts.any((g) => g.id == effectiveGiftId);
-    if (!existsOnServer && serverGifts.isNotEmpty) {
-      final matchingServerGift = serverGifts.firstWhere(
-        (g) => (g.coinPrice ?? 0) == coinPrice,
-        orElse: () => serverGifts.first,
-      );
-      if (matchingServerGift.id != null && matchingServerGift.id! > 0) {
-        effectiveGiftId = matchingServerGift.id!;
+    int effectiveGiftId = (giftId > 0) ? giftId : -1;
+    if (effectiveGiftId <= 0) {
+      final serverGifts = SessionManager.instance.getSettings()?.gifts ?? [];
+      if (serverGifts.isNotEmpty) {
+        final matchingServerGift = serverGifts.firstWhere(
+          (g) => (g.coinPrice ?? 0) == coinPrice,
+          orElse: () => serverGifts.first,
+        );
+        if (matchingServerGift.id != null && matchingServerGift.id! > 0) {
+          effectiveGiftId = matchingServerGift.id!;
+        }
       }
     }
 
@@ -481,7 +481,9 @@ class LivestreamScreenController extends BaseController {
         targetUser,
         gift.displayName,
         gift.effectiveAssetUrl.addBaseURL(),
-        gift.soundUrl?.addBaseURL() ?? 'assets/images/fairy-sparkle.mp3');
+        (gift.soundUrl != null && gift.soundUrl!.trim().isNotEmpty)
+            ? gift.soundUrl!.trim().addBaseURL()
+            : 'assets/images/fairy-sparkle.mp3');
   }
 
   @override
@@ -1306,7 +1308,9 @@ class LivestreamScreenController extends BaseController {
                 user,
                 gift.title ?? 'Gift',
                 gift.effectiveAssetUrl.addBaseURL(),
-                gift.soundUrl?.addBaseURL() ?? 'assets/images/fairy-sparkle.mp3',
+                (gift.soundUrl != null && gift.soundUrl!.trim().isNotEmpty)
+                    ? gift.soundUrl!.trim().addBaseURL()
+                    : 'assets/images/fairy-sparkle.mp3',
             );
           }
 

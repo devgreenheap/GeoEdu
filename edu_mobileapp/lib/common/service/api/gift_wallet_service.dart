@@ -158,7 +158,8 @@ class GiftWalletService {
           Params.giftId: giftId,
           Params.purpose: purpose,
           if (source != null) Params.source: source,
-          if (languageId != null) Params.languageId: languageId,
+          if (languageId != null && languageId > 0)
+            Params.languageId: languageId,
         });
     return response;
   }

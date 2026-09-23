@@ -38,7 +38,17 @@
                     </p>
                     <div class="gift-card-action">
                         <div class='d-flex justify-content-center align-items-center'>
-                            <a href="#" data-gifturl="{{ \App\Models\GlobalFunction::generateFileUrl($gift->image) ?: ($baseUrl . $gift->image) }}" data-title="{{ $gift->title }}" data-coinprice="{{$gift->coin_price}}" data-categoryid="{{ $gift->gift_category_id }}" rel="{{$gift->id}}" class="action-btn edit d-flex align-items-center justify-content-center btn border rounded-2 text-success ms-1">
+                            <a href="#"
+                               data-gifturl="{{ \App\Models\GlobalFunction::generateFileUrl($gift->image) ?: ($baseUrl . $gift->image) }}"
+                               data-title="{{ $gift->title }}"
+                               data-coinprice="{{$gift->coin_price}}"
+                               data-categoryid="{{ $gift->gift_category_id }}"
+                               data-animationurl="{{ !empty($gift->animation_url) ? (\App\Models\GlobalFunction::generateFileUrl($gift->animation_url) ?: ($baseUrl . $gift->animation_url)) : '' }}"
+                               data-animationname="{{ !empty($gift->animation_url) ? basename($gift->animation_url) : '' }}"
+                               data-soundurl="{{ !empty($gift->sound_url) ? (\App\Models\GlobalFunction::generateFileUrl($gift->sound_url) ?: ($baseUrl . $gift->sound_url)) : '' }}"
+                               data-soundname="{{ !empty($gift->sound_url) ? basename($gift->sound_url) : '' }}"
+                               rel="{{$gift->id}}"
+                               class="action-btn edit d-flex align-items-center justify-content-center btn border rounded-2 text-success ms-1">
                                 <i class="uil-pen"></i>
                             </a>
                             <a href="#" rel="{{$gift->id}}" class="action-btn delete d-flex align-items-center justify-content-center btn border rounded-2 text-danger ms-1">
@@ -66,8 +76,8 @@
                 <div class="modal-body">
                     <img id="imgAddGiftPreview" src="{{ url('assets/img/placeholder.png')}}" alt="" class="rounded" height="100" width="100">
                     <div class="my-3">
-                        <label for="image" class="form-label">{{ __('Image (thumbnail)')}}</label>
-                        <input id="inputAddGiftImage" class="form-control" type="file" accept="image/*,.svg" id="image" name="image" required>
+                        <label for="inputAddGiftImage" class="form-label">{{ __('Image (thumbnail)')}}</label>
+                        <input id="inputAddGiftImage" class="form-control" type="file" accept="image/*,.svg" name="image" required>
                     </div>
                     <div class="mb-3">
                         <label for="addGiftTitle" class="form-label">{{ __('Gift Name')}}</label>
@@ -88,12 +98,22 @@
                     </div>
                     <div class="mb-3">
                         <label for="addGiftAnimation" class="form-label">{{ __('Animation (.svga, .svg, .gif, optional)') }}</label>
-                        <input class="form-control" type="file" accept=".svga,.svg,.gif" id="addGiftAnimation" name="animation">
-                        <small class="text-muted">{{ __('Plays room-wide when this gift is sent. Falls back to the image above if left empty.') }}</small>
+                        <input class="form-control" type="file" accept=".svga,.svg,.gif,.png,.webp,.mp4" id="addGiftAnimation" name="animation">
+                        <small class="text-muted d-block">{{ __('Plays room-wide when this gift is sent. Falls back to the image above if left empty.') }}</small>
+                        <div id="addGiftAnimationPreview" class="mt-2 p-2 border rounded bg-light d-none">
+                            <span class="badge bg-success me-1">{{ __('Selected') }}:</span>
+                            <span id="addGiftAnimationFileName" class="small text-truncate"></span>
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label for="addGiftSound" class="form-label">{{ __('Sound (optional)') }}</label>
                         <input class="form-control" type="file" accept="audio/*,.mp3,.mp4,.wav,.m4a,.aac,.ogg" id="addGiftSound" name="sound">
+                        <div id="addGiftSoundPreview" class="mt-2 p-2 border rounded bg-light d-none">
+                            <span class="badge bg-info me-1">{{ __('Preview Sound') }}:</span>
+                            <audio id="audioAddGiftPreview" controls class="w-100 mt-1" style="height: 32px;">
+                                <source src="" type="audio/mpeg">
+                            </audio>
+                        </div>
                     </div>
 
                 </div>
@@ -121,8 +141,8 @@
                 <div class="modal-body">
                     <img id="imgEditGiftPreview" src="{{ url('assets/img/placeholder.png')}}" alt="" class="rounded" height="100" width="100">
                     <div class="my-3">
-                        <label for="image" class="form-label">{{ __('Image')}} (Select To Edit Only)</label>
-                        <input id="inputEditGiftImage" class="form-control" type="file" accept="image/*,.svg" id="image" name="image">
+                        <label for="inputEditGiftImage" class="form-label">{{ __('Image')}} (Select To Edit Only)</label>
+                        <input id="inputEditGiftImage" class="form-control" type="file" accept="image/*,.svg" name="image">
                     </div>
                     <div class="mb-3">
                         <label for="editGiftTitle" class="form-label">{{ __('Gift Name')}}</label>
@@ -130,7 +150,7 @@
                     </div>
                     <div class="mb-3">
                         <label for="editGiftCoinPrice" class="form-label">{{ __('Diamond Price')}}</label>
-                        <input id="editGiftCoinPrice" class="form-control" type="number" min="1" id="editGiftCoinPrice" name="coin_price" required>
+                        <input id="editGiftCoinPrice" class="form-control" type="number" min="1" name="coin_price" required>
                     </div>
                     <div class="mb-3">
                         <label for="editGiftCategoryId" class="form-label">{{ __('Gift Category') }}</label>
@@ -143,11 +163,29 @@
                     </div>
                     <div class="mb-3">
                         <label for="editGiftAnimation" class="form-label">{{ __('Animation (.svga, .svg, .gif)') }} ({{ __('Select To Edit Only') }})</label>
-                        <input class="form-control" type="file" accept=".svga,.svg,.gif" id="editGiftAnimation" name="animation">
+                        <div id="editGiftCurrentAnimation" class="mb-2 p-2 border rounded bg-light d-none">
+                            <div class="d-flex align-items-center">
+                                <span class="badge bg-success me-1">{{ __('Current') }}:</span>
+                                <span id="editGiftAnimationName" class="small text-truncate me-2" style="max-width: 200px;"></span>
+                                <a id="editGiftAnimationLink" href="#" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-2">{{ __('View') }}</a>
+                            </div>
+                        </div>
+                        <input class="form-control" type="file" accept=".svga,.svg,.gif,.png,.webp,.mp4" id="editGiftAnimation" name="animation">
+                        <small class="text-muted d-block">{{ __('Leave blank to keep current animation. Plays room-wide when sent.') }}</small>
                     </div>
                     <div class="mb-3">
                         <label for="editGiftSound" class="form-label">{{ __('Sound') }} ({{ __('Select To Edit Only') }})</label>
+                        <div id="editGiftCurrentSound" class="mb-2 p-2 border rounded bg-light d-none">
+                            <div class="d-flex align-items-center mb-1">
+                                <span class="badge bg-info me-1">{{ __('Current Sound') }}:</span>
+                                <span id="editGiftSoundName" class="small text-truncate" style="max-width: 220px;"></span>
+                            </div>
+                            <audio id="audioEditGiftPreview" controls class="w-100 mt-1" style="height: 32px;">
+                                <source src="" type="audio/mpeg">
+                            </audio>
+                        </div>
                         <input class="form-control" type="file" accept="audio/*,.mp3,.mp4,.wav,.m4a,.aac,.ogg" id="editGiftSound" name="sound">
+                        <small class="text-muted d-block">{{ __('Leave blank to keep current sound.') }}</small>
                     </div>
 
                 </div>

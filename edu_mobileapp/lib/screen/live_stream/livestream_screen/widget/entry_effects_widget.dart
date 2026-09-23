@@ -272,13 +272,14 @@ class _GiftEffectWidgetState extends State<GiftEffectWidget>
   /// visual is an SVGA animation or a static image fallback.
   Future<void> _playAudioIfNeeded(GiftEffect gift) async {
     if (_audioPlayers.containsKey(gift.timestamp)) return;
-    final audio = gift.audio;
-    if (audio == null || audio.isEmpty) return;
+    String audio = (gift.audio != null && gift.audio!.trim().isNotEmpty)
+        ? gift.audio!.trim()
+        : 'assets/images/fairy-sparkle.mp3';
 
     final player = AudioPlayer();
     _audioPlayers[gift.timestamp] = player;
     try {
-      if (audio.startsWith('http')) {
+      if (audio.startsWith('http://') || audio.startsWith('https://')) {
         await player.setUrl(audio);
       } else {
         await player.setAsset(audio);
@@ -341,11 +342,13 @@ class _GiftEffectWidgetState extends State<GiftEffectWidget>
               gift.assetUrl,
               fit: BoxFit.contain,
               placeholderBuilder: (_) => const SizedBox.shrink(),
+              errorBuilder: (_, __, ___) => Image.asset('assets/images/gifts.png', width: widget.width, height: widget.height),
             )
           : SvgPicture.asset(
               gift.assetUrl,
               fit: BoxFit.contain,
               placeholderBuilder: (_) => const SizedBox.shrink(),
+              errorBuilder: (_, __, ___) => Image.asset('assets/images/gifts.png', width: widget.width, height: widget.height),
             );
       return SizedBox(
         width: widget.width * 1.5,

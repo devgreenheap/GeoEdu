@@ -1976,9 +1976,9 @@ class WalletController extends Controller
             return 'Invalid animation file uploaded';
         }
         $ext = strtolower($file->getClientOriginalExtension());
-        $allowed = ['svga', 'svg', 'gif', 'png', 'webp'];
+        $allowed = ['svga', 'svg', 'gif', 'png', 'webp', 'mp4', 'json'];
         if (!in_array($ext, $allowed)) {
-            return 'Animation file must be an .svga, .svg, or .gif file';
+            return 'Animation file must be an .svga, .svg, .gif, .png, .webp, or .mp4 file';
         }
         return null;
     }
@@ -3350,6 +3350,9 @@ class WalletController extends Controller
                 'from_user_id' => intval($user->id),
             ]);
             return ['status' => false, 'message' => "this user is freezed!"];
+        }
+        if ($request->has('language_id') && intval($request->language_id) <= 0) {
+            $request->request->remove('language_id');
         }
         $rules = [
             'user_id' => 'required|exists:tbl_users,id',

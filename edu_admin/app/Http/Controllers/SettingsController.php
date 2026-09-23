@@ -986,6 +986,9 @@ class SettingsController extends Controller
                 $gift->diamond_price = $giftDiamondPrice > 0
                     ? $giftDiamondPrice
                     : intval(ceil(intval($gift->coin_price ?? 0) / $diamondToStarRate));
+                $gift->image = !empty($gift->image) ? (GlobalFunction::generateFileUrl($gift->image) ?: $gift->image) : null;
+                $gift->animation_url = !empty($gift->animation_url) ? (GlobalFunction::generateFileUrl($gift->animation_url) ?: $gift->animation_url) : null;
+                $gift->sound_url = !empty($gift->sound_url) ? (GlobalFunction::generateFileUrl($gift->sound_url) ?: $gift->sound_url) : null;
                 return $gift;
             })
             ->values();

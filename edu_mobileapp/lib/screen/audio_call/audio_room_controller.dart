@@ -274,24 +274,25 @@ class AudioRoomController extends BaseController {
     activeGifts.add(gift);
 
     try {
-      if (gift.audio != null && gift.audio!.isNotEmpty) {
-        try {
-          final player = AudioPlayer();
-          if (gift.audio!.startsWith('http')) {
-            await player.setUrl(gift.audio!);
-          } else {
-            await player.setAsset(gift.audio!);
-          }
-          await player.play();
-        } catch (_) {
-          try {
-            final fallbackPlayer = AudioPlayer();
-            await fallbackPlayer.setAsset('assets/images/fairy-sparkle.mp3');
-            await fallbackPlayer.play();
-          } catch (_) {}
+      String audio = (gift.audio != null && gift.audio!.trim().isNotEmpty)
+          ? gift.audio!.trim()
+          : 'assets/images/fairy-sparkle.mp3';
+      try {
+        final player = AudioPlayer();
+        if (audio.startsWith('http://') || audio.startsWith('https://')) {
+          await player.setUrl(audio);
+        } else {
+          await player.setAsset(audio);
         }
+        await player.play();
+      } catch (e) {
+        try {
+          final fallbackPlayer = AudioPlayer();
+          await fallbackPlayer.setAsset('assets/images/fairy-sparkle.mp3');
+          await fallbackPlayer.play();
+        } catch (_) {}
       }
-      await Future.delayed(const Duration(seconds: 5));
+      await Future.delayed(const Duration(seconds: 4));
     } finally {
       activeGifts.remove(gift);
       isGiftAnimating = false;
@@ -1054,34 +1055,52 @@ class AudioRoomController extends BaseController {
 
   Future<void> sendGiftDirect(Gift gift) async {
     final hostId = room.hostId;
-    if (hostId == null) return;
+    if (hostId == null) {
+      showSnackBar('Host not found');
+      return;
+    }
     final giftId = gift.id;
     final coinPrice = gift.coinPrice ?? 0;
-    if (coinPrice <= 0) return;
+    if (coinPrice <= 0) {
+      showSnackBar('Invalid gift price');
+      return;
+    }
+    if (diamondBalance.value < coinPrice) {
+      showSnackBar('Not enough diamonds in your wallet');
+      return;
+    }
+
     final isHostSelf = (hostId == myUser?.id);
+
+    final rawAsset = gift.effectiveAssetUrl;
+    final assetUrl = rawAsset.isNotEmpty
+        ? rawAsset.addBaseURL()
+        : (gift.image?.addBaseURL() ?? '');
+    final soundUrl = (gift.soundUrl != null && gift.soundUrl!.trim().isNotEmpty)
+        ? gift.soundUrl!.trim().addBaseURL()
+        : 'assets/images/fairy-sparkle.mp3';
+
+    // Instantly show local gift effect and play sound so sender sees instant action!
+    diamondBalance.value -= coinPrice;
+    hostGiftCount.value++;
+    hostStarTotal.value += coinPrice;
+
+    final giftEffect = GiftEffect(
+      userId: myUser?.id ?? 0,
+      username: myUser?.fullname ?? myUser?.username ?? 'User',
+      senderPhoto: myUser?.profilePhoto,
+      giftName: gift.displayName,
+      assetUrl: assetUrl,
+      audio: soundUrl,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      coinPrice: coinPrice,
+    );
+
+    giftQueue.add(giftEffect);
+    _processGiftQueue();
 
     // If host is testing or celebrating in their own room:
     if (isHostSelf) {
-      if (diamondBalance.value >= coinPrice) {
-        diamondBalance.value -= coinPrice;
-      }
-
-      final giftEffect = GiftEffect(
-        userId: myUser?.id ?? 0,
-        username: myUser?.fullname ?? myUser?.username ?? 'User',
-        senderPhoto: myUser?.profilePhoto,
-        giftName: gift.displayName,
-        assetUrl: gift.effectiveAssetUrl.addBaseURL(),
-        audio: gift.soundUrl?.addBaseURL() ?? 'assets/images/fairy-sparkle.mp3',
-        timestamp: DateTime.now().millisecondsSinceEpoch,
-        coinPrice: coinPrice,
-      );
-
-      hostGiftCount.value++;
-      hostStarTotal.value += coinPrice;
-      giftQueue.add(giftEffect);
-      _processGiftQueue();
-
       try {
         await _db
             .collection(FirebaseConst.audioRooms)
@@ -1092,8 +1111,8 @@ class AudioRoomController extends BaseController {
           'username': myUser?.fullname ?? myUser?.username ?? '',
           'senderPhoto': myUser?.profilePhoto ?? '',
           'giftName': gift.displayName,
-          'asset_url': gift.effectiveAssetUrl.addBaseURL(),
-          'audio': gift.soundUrl?.addBaseURL() ?? 'assets/images/fairy-sparkle.mp3',
+          'asset_url': assetUrl,
+          'audio': soundUrl,
           'timestamp': DateTime.now().millisecondsSinceEpoch,
           'coin_price': coinPrice,
         });
@@ -1116,55 +1135,37 @@ class AudioRoomController extends BaseController {
     }
 
     // Otherwise, audience sending to host: validate and deduct through server API
-    int effectiveGiftId = giftId ?? -1;
-    final serverGifts = SessionManager.instance.getSettings()?.gifts ?? [];
-    final existsOnServer =
-        serverGifts.any((g) => g.id == effectiveGiftId);
-    if (!existsOnServer && serverGifts.isNotEmpty) {
+    int effectiveGiftId = (giftId != null && giftId > 0) ? giftId : -1;
+    if (effectiveGiftId <= 0) {
+      final serverGifts = SessionManager.instance.getSettings()?.gifts ?? [];
       final matchingServerGift = serverGifts.firstWhere(
         (g) => (g.coinPrice ?? 0) == coinPrice,
-        orElse: () => serverGifts.first,
+        orElse: () => serverGifts.isNotEmpty ? serverGifts.first : Gift.penGift,
       );
       if (matchingServerGift.id != null && matchingServerGift.id! > 0) {
         effectiveGiftId = matchingServerGift.id!;
       }
     }
 
-    final response = await GiftWalletService.instance.spendDiamonds(
-        diamonds: coinPrice,
-        userId: hostId,
-        giftId: effectiveGiftId,
-        source: 'audio_gift',
-        languageId: room.languageId);
-
-    if (response.status != true) {
-      return showSnackBar(response.message);
-    }
-
-    if (diamondBalance.value >= coinPrice) {
-      diamondBalance.value -= coinPrice;
-    } else {
-      fetchDiamondBalanceIfNeeded(force: true);
-    }
-
-    final giftEffect = GiftEffect(
-      userId: myUser?.id ?? 0,
-      username: myUser?.fullname ?? myUser?.username ?? 'User',
-      senderPhoto: myUser?.profilePhoto,
-      giftName: gift.displayName,
-      assetUrl: gift.effectiveAssetUrl.addBaseURL(),
-      audio: gift.soundUrl?.addBaseURL() ?? 'assets/images/fairy-sparkle.mp3',
-      timestamp: DateTime.now().millisecondsSinceEpoch,
-      coinPrice: coinPrice,
-    );
-
-    // Immediately trigger local display and sound for sender (no delay!)
-    hostGiftCount.value++;
-    hostStarTotal.value += coinPrice;
-    giftQueue.add(giftEffect);
-    _processGiftQueue();
-
     try {
+      final int? langId = (room.languageId != null && room.languageId! > 0)
+          ? room.languageId
+          : null;
+      final response = await GiftWalletService.instance.spendDiamonds(
+          diamonds: coinPrice,
+          userId: hostId,
+          giftId: effectiveGiftId,
+          source: 'audio_gift',
+          languageId: langId);
+
+      if (response.status != true) {
+        // Rollback optimistic deduction
+        diamondBalance.value += coinPrice;
+        fetchDiamondBalanceIfNeeded(force: true);
+        return showSnackBar(response.message);
+      }
+
+      // Broadcast to all room listeners via Firestore
       await _db
           .collection(FirebaseConst.audioRooms)
           .doc(hostId.toString())
@@ -1174,32 +1175,32 @@ class AudioRoomController extends BaseController {
         'username': myUser?.fullname ?? myUser?.username ?? '',
         'senderPhoto': myUser?.profilePhoto ?? '',
         'giftName': gift.displayName,
-        'asset_url': gift.effectiveAssetUrl.addBaseURL(),
-        'audio': gift.soundUrl?.addBaseURL() ?? 'assets/images/fairy-sparkle.mp3',
+        'asset_url': assetUrl,
+        'audio': soundUrl,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
         'coin_price': coinPrice,
       });
+
+      _postComment(AudioComment(
+        senderId: myUser!.id!,
+        senderName: myUser!.fullname ?? myUser!.username ?? 'User',
+        senderPhoto: myUser!.profilePhoto,
+        senderLevel: myUser!.getLevel.level,
+        type: AudioCommentType.gift,
+        giftName: gift.displayName,
+        giftImage: gift.image,
+        giftCoinPrice: coinPrice,
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+      ));
+
+      if (pkStatus.value == 'running') {
+        await _db
+            .collection(FirebaseConst.audioRooms)
+            .doc(hostId.toString())
+            .update({'pk_coins': FieldValue.increment(coinPrice)});
+      }
     } catch (e) {
-      Loggers.error('Error broadcasting audio gift to firestore: $e');
-    }
-
-    _postComment(AudioComment(
-      senderId: myUser!.id!,
-      senderName: myUser!.fullname ?? myUser!.username ?? 'User',
-      senderPhoto: myUser!.profilePhoto,
-      senderLevel: myUser!.getLevel.level,
-      type: AudioCommentType.gift,
-      giftName: gift.displayName,
-      giftImage: gift.image,
-      giftCoinPrice: coinPrice,
-      timestamp: DateTime.now().millisecondsSinceEpoch,
-    ));
-
-    if (pkStatus.value == 'running') {
-      await _db
-          .collection(FirebaseConst.audioRooms)
-          .doc(hostId.toString())
-          .update({'pk_coins': FieldValue.increment(coinPrice)});
+      Loggers.error('Error sending audio gift: $e');
     }
   }
 
