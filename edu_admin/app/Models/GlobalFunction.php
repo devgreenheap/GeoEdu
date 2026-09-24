@@ -866,6 +866,9 @@ class GlobalFunction extends Model
         $new_post_list = [];
 
         foreach ($posts as $post) {
+            if (empty($post->thumbnail) && !empty($post->user) && !empty($post->user->profile_photo)) {
+                $post->thumbnail = $post->user->profile_photo;
+            }
             $post->is_liked = PostLikes::where('post_id', $post->id)->where('user_id', $user->id)->exists();
             $post->is_saved = PostSaves::where('post_id', $post->id)->where('user_id', $user->id)->exists();
             $post->user->is_following = Followers::where('from_user_id', $user->id)->where('to_user_id', $post->user_id)->exists();

@@ -99,6 +99,23 @@ class ReelGridCardView extends StatelessWidget {
   const ReelGridCardView(
       {super.key, this.post, this.onTap, this.isPinShow = false, this.menus});
 
+  String? get _resolvedThumbnail {
+    if (post?.thumbnail != null && post!.thumbnail!.trim().isNotEmpty) {
+      return post!.thumbnail!.trim().addBaseURL();
+    }
+    if (post?.images != null &&
+        post!.images!.isNotEmpty &&
+        post!.images!.first.image != null &&
+        post!.images!.first.image!.trim().isNotEmpty) {
+      return post!.images!.first.image!.trim().addBaseURL();
+    }
+    if (post?.user?.profilePhoto != null &&
+        post!.user!.profilePhoto!.trim().isNotEmpty) {
+      return post!.user!.profilePhoto!.trim().addBaseURL();
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return ContextMenuWidget(
@@ -110,7 +127,9 @@ class ReelGridCardView extends StatelessWidget {
             CustomImage(
                 size: const Size(172, 172),
                 strokeWidth: 0,
-                image: post?.thumbnail?.addBaseURL(),
+                image: _resolvedThumbnail,
+                fit: BoxFit.cover,
+                placeHolderImage: AssetRes.icPlay1,
                 radius: 0,
                 isShowPlaceHolder: true),
             if (post?.isPinned == 1 && isPinShow)

@@ -46,77 +46,88 @@ class AudioRoomScreen extends StatelessWidget {
     controller.onPkInviteReceived = (inviterHostId) =>
         _showPkInviteDialog(controller, inviterHostId);
 
-    return Scaffold(
-      backgroundColor: ColorRes.blackPure,
-      body: Stack(
-        children: [
-          Obx(() {
-        final bgUrl = controller.backgroundImage.value.isNotEmpty
-            ? controller.backgroundImage.value.addBaseURL()
-            : null;
-        final themeColors = controller.themeIndex.value != null &&
-                controller.themeIndex.value! < themePresets.length
-            ? themePresets[controller.themeIndex.value!]
-            : themePresets[0];
-        return Container(
-          decoration: BoxDecoration(
-            gradient: bgUrl == null
-                ? LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: themeColors,
-                  )
-                : null,
-            image: bgUrl != null
-                ? DecorationImage(
-                    image: NetworkImage(bgUrl),
-                    fit: BoxFit.cover,
-                    colorFilter: ColorFilter.mode(
-                        Colors.black.withOpacity(0.4), BlendMode.darken),
-                  )
-                : null,
-          ),
-          child: SafeArea(
-            child: Column(
-              children: [
-                // Header
-                _buildHeader(controller),
-                Obx(() => controller.pkStatus.value == 'running'
-                    ? _buildPkBattleBar(controller)
-                    : const SizedBox.shrink()),
-                const SizedBox(height: 10),
-                // Host avatar
-                _buildHostAvatar(controller),
-                const SizedBox(height: 8),
-                // Room name
-                Obx(() => Text(
-                      controller.roomName.value,
-                      style: const TextStyle(
-                        color: ColorRes.whitePure,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    )),
-                const SizedBox(height: 10),
-                SizedBox(height: 136, child: _buildSeatGrid(controller)),
-                Obx(() => controller.pinnedComment.value.isNotEmpty
-                    ? _buildPinnedCommentBanner(controller)
-                    : const SizedBox.shrink()),
-                if (isHost) _buildPinCommentInput(controller),
-                Expanded(child: _buildChatList(controller)),
-                if (!isHost)
-                  Obx(() => controller.isGiftBarOpen.value
-                      ? _buildInlineGiftBar(controller)
-                      : const SizedBox.shrink()),
-                _buildChatInput(controller),
-                _buildBottomRow(controller),
-              ],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (isHost) {
+          controller.endRoom();
+        } else {
+          controller.leaveRoom();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: ColorRes.blackPure,
+        body: Stack(
+          children: [
+            Obx(() {
+          final bgUrl = controller.backgroundImage.value.isNotEmpty
+              ? controller.backgroundImage.value.addBaseURL()
+              : null;
+          final themeColors = controller.themeIndex.value != null &&
+                  controller.themeIndex.value! < themePresets.length
+              ? themePresets[controller.themeIndex.value!]
+              : themePresets[0];
+          return Container(
+            decoration: BoxDecoration(
+              gradient: bgUrl == null
+                  ? LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: themeColors,
+                    )
+                  : null,
+              image: bgUrl != null
+                  ? DecorationImage(
+                      image: NetworkImage(bgUrl),
+                      fit: BoxFit.cover,
+                      colorFilter: ColorFilter.mode(
+                          Colors.black.withOpacity(0.4), BlendMode.darken),
+                    )
+                  : null,
             ),
-          ),
-        );
-          }),
-          GiftEffectWidget(activeGifts: controller.activeGifts),
-        ],
+            child: SafeArea(
+              child: Column(
+                children: [
+                  // Header
+                  _buildHeader(controller),
+                  Obx(() => controller.pkStatus.value == 'running'
+                      ? _buildPkBattleBar(controller)
+                      : const SizedBox.shrink()),
+                  const SizedBox(height: 10),
+                  // Host avatar
+                  _buildHostAvatar(controller),
+                  const SizedBox(height: 8),
+                  // Room name
+                  Obx(() => Text(
+                        controller.roomName.value,
+                        style: const TextStyle(
+                          color: ColorRes.whitePure,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      )),
+                  const SizedBox(height: 10),
+                  SizedBox(height: 136, child: _buildSeatGrid(controller)),
+                  Obx(() => controller.pinnedComment.value.isNotEmpty
+                      ? _buildPinnedCommentBanner(controller)
+                      : const SizedBox.shrink()),
+                  if (isHost) _buildPinCommentInput(controller),
+                  Expanded(child: _buildChatList(controller)),
+                  if (!isHost)
+                    Obx(() => controller.isGiftBarOpen.value
+                        ? _buildInlineGiftBar(controller)
+                        : const SizedBox.shrink()),
+                  _buildChatInput(controller),
+                  _buildBottomRow(controller),
+                ],
+              ),
+            ),
+          );
+            }),
+            GiftEffectWidget(activeGifts: controller.activeGifts),
+          ],
+        ),
       ),
     );
   }
@@ -473,10 +484,16 @@ class AudioRoomScreen extends StatelessWidget {
   }
 
   Widget _buildCommentContent(AudioRoomController controller, AudioComment comment) {
+    final myUserId = controller.myUser?.id ?? SessionManager.instance.getUserID();
+    final myUsername = (controller.myUser?.username ?? SessionManager.instance.getUser()?.username ?? '').toLowerCase().trim();
+    final isMe = (comment.senderId > 0 && comment.senderId == myUserId) ||
+        (myUsername.isNotEmpty && comment.senderName.toLowerCase().trim() == myUsername);
+    final displayName = isMe ? 'You' : comment.senderName;
+
     Widget nameRow(Widget trailing) => Row(
           children: [
             Flexible(
-              child: Text(comment.senderName,
+              child: Text(displayName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
@@ -525,6 +542,7 @@ class AudioRoomScreen extends StatelessWidget {
             ),
           ],
         );
+        
       case AudioCommentType.text:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1191,7 +1209,9 @@ class AudioRoomScreen extends StatelessWidget {
   Widget _buildInlineGiftBar(AudioRoomController controller) {
     return Obx(() {
       final Setting? setting = SessionManager.instance.getSettings();
-      final List<Gift> allGifts = setting.allGiftsWithPen;
+      final List<Gift> allGifts = controller.availableGifts.isNotEmpty
+          ? controller.availableGifts
+          : setting.allGiftsWithPen;
       final List<Gift> gifts = List<Gift>.from(allGifts);
       final favouriteId = controller.favouriteGiftId.value;
       if (favouriteId != null) {

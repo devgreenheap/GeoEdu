@@ -1,3 +1,8 @@
+import 'package:get/get.dart';
+import 'package:geoedu/common/extensions/string_extension.dart';
+import 'package:geoedu/common/manager/session_manager.dart';
+import 'package:geoedu/model/general/settings_model.dart';
+
 class EntryEffect {
   final int id;
   final int userId;
@@ -93,12 +98,46 @@ class GiftEffect {
       assetUrl = 'assets/svg_icons/Pen Animation.svg';
     }
 
+    final giftName = json['giftName']?.toString() ?? 'Gift';
+    final int? giftId = json['gift_id'] != null
+        ? int.tryParse(json['gift_id'].toString())
+        : (json['giftId'] != null
+            ? int.tryParse(json['giftId'].toString())
+            : null);
+
+    // Resolve audio: first priority is what's passed if valid remote/asset audio,
+    // otherwise lookup the actual gift uploaded in admin
+    String audio = json['audio']?.toString().trim() ?? '';
+    if (audio.isEmpty || audio == 'assets/images/fairy-sparkle.mp3') {
+      final serverGifts =
+          SessionManager.instance.getSettings()?.availableGifts ?? [];
+      Gift? matched;
+      if (giftId != null && giftId > 0) {
+        matched = serverGifts.firstWhereOrNull((g) => g.id == giftId);
+      }
+      if (matched == null && giftName.isNotEmpty && giftName != 'Gift') {
+        matched = serverGifts.firstWhereOrNull((g) =>
+            g.displayName.toLowerCase() == giftName.toLowerCase() ||
+            (g.title != null &&
+                g.title!.toLowerCase().trim() == giftName.toLowerCase().trim()));
+      }
+      if (matched != null && matched.effectiveSoundUrl.isNotEmpty) {
+        audio = matched.effectiveSoundUrl;
+      }
+    }
+
+    if (audio.isNotEmpty) {
+      audio = audio.addBaseURL();
+    } else {
+      audio = 'assets/images/fairy-sparkle.mp3';
+    }
+
     return GiftEffect(
       userId: parsedUserId,
       username: json['username']?.toString() ?? '',
-      giftName: json['giftName']?.toString() ?? 'Gift',
+      giftName: giftName,
       assetUrl: assetUrl,
-      audio: json['audio']?.toString() ?? 'assets/images/fairy-sparkle.mp3',
+      audio: audio,
       coinPrice: parsedCoinPrice,
       senderPhoto: json['senderPhoto']?.toString(),
       timestamp: parsedTimestamp,

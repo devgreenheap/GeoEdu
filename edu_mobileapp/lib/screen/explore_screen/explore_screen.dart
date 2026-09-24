@@ -37,7 +37,8 @@ class ExploreScreen extends StatelessWidget {
             child: Obx(() {
               final isLoading = controller.isLoading.value;
               final exploreData = controller.explorePageData.value;
-              final hasData = exploreData?.highPostHashtags?.isNotEmpty ?? false;
+              final hasData = (exploreData?.highPostHashtags?.isNotEmpty ?? false) &&
+                  exploreData!.highPostHashtags!.any((h) => h.postList?.isNotEmpty ?? false);
 
               return MyRefreshIndicator(
                 onRefresh: controller.fetchExplorePageData,
@@ -340,11 +341,15 @@ class SearchScreenGridView extends StatelessWidget {
   }
 
   Widget _buildPostItem(BuildContext context, Post post) {
-    final image =
-        (post.postType == PostType.image && (post.images?.isNotEmpty ?? false)
-                ? post.images!.first.image
-                : post.thumbnail)
-            ?.addBaseURL();
+    String? thumb = post.thumbnail;
+    if (thumb == null || thumb.trim().isEmpty) {
+      if (post.postType == PostType.image && (post.images?.isNotEmpty ?? false)) {
+        thumb = post.images!.first.image;
+      } else if (post.user?.profilePhoto != null && post.user!.profilePhoto!.trim().isNotEmpty) {
+        thumb = post.user!.profilePhoto;
+      }
+    }
+    final image = thumb?.addBaseURL();
 
     return InkWell(
       onTap: () => controller.onPostTap(post),

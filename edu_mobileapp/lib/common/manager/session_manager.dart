@@ -4,6 +4,9 @@ import 'package:geoedu/common/service/api/user_service.dart';
 import 'package:geoedu/model/general/settings_model.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/utilities/app_res.dart';
+import 'package:geoedu/common/manager/gift_audio_player.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/entry_effects_widget.dart'
+    show AnimatedSvgPlayer;
 
 class SessionManager {
   static var instance = SessionManager();
@@ -113,6 +116,11 @@ class SessionManager {
 
   void setSettings(Setting settings) {
     storage.write(SessionKeys.setting, settings.toJson());
+    final gifts = settings.gifts ?? [];
+    if (gifts.isNotEmpty) {
+      GiftAudioPlayer.preloadAll(gifts);
+      AnimatedSvgPlayer.preloadAll(gifts);
+    }
   }
 
   Setting? getSettings() {

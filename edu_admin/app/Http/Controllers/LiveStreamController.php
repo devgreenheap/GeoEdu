@@ -321,6 +321,11 @@ class LiveStreamController extends Controller
         $post->post_type = Constants::postTypeReel;
         $post->can_comment = 1;
         $post->video = $path;
+        if (!empty($stream->thumbnail)) {
+            $post->thumbnail = $stream->thumbnail;
+        } elseif (!empty($user->profile_photo)) {
+            $post->thumbnail = $user->profile_photo;
+        }
         if (!empty($stream->title)) {
             $post->description = $stream->title;
         }

@@ -21,7 +21,38 @@ class ExploreScreenController extends BaseController {
 
   Future<void> fetchExplorePageData() async {
     isLoading.value = true;
-    explorePageData.value = await PostService.instance.fetchExplorePageData();
+    final data = await PostService.instance.fetchExplorePageData();
+    List<HighPostHashtags> highHashtags = List.from(data?.highPostHashtags ?? []);
+
+    // Keep only hashtags that have posts
+    highHashtags.removeWhere((h) => h.postList == null || h.postList!.isEmpty);
+
+    // Fallback if no hashtags with posts exist:
+    // fetch discover reels & discover posts to populate the Explore grid
+    if (highHashtags.isEmpty) {
+      try {
+        final discoverReels =
+            await PostService.instance.fetchPostsDiscover(type: PostType.reels);
+        final discoverPosts =
+            await PostService.instance.fetchPostsDiscover(type: PostType.posts);
+        final combined = <Post>[...discoverReels, ...discoverPosts];
+        if (combined.isNotEmpty) {
+          highHashtags.add(HighPostHashtags(
+            id: 0,
+            hashtag: 'Explore',
+            postCount: combined.length,
+            postList: combined,
+          ));
+        }
+      } catch (e) {
+        Loggers.error('Error fetching fallback discover posts: $e');
+      }
+    }
+
+    explorePageData.value = ExplorePageData(
+      hashtags: data?.hashtags ?? [],
+      highPostHashtags: highHashtags,
+    );
     isLoading.value = false;
   }
 

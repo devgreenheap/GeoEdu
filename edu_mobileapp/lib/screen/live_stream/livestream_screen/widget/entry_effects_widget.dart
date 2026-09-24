@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_svga/flutter_svga.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
@@ -10,6 +10,8 @@ import 'package:geoedu/common/widget/custom_image.dart';
 import '../../../../model/livestream/entry_effects_model.dart';
 import '../../../effect_preview/widgets/animation_widget.dart';
 import '../livestream_screen_controller.dart';
+import 'package:geoedu/model/general/settings_model.dart';
+import 'package:geoedu/common/manager/gift_audio_player.dart';
 import 'package:geoedu/common/manager/logger.dart';
  
 class EntryEffectLayer extends StatefulWidget {
@@ -257,43 +259,23 @@ class GiftEffectWidget extends StatefulWidget {
 class _GiftEffectWidgetState extends State<GiftEffectWidget>
     with TickerProviderStateMixin {
   final Map<int, SVGAAnimationController> _svgaControllers = {};
-  final Map<int, AudioPlayer> _audioPlayers = {};
+  int _lastPlayedGiftTimestamp = 0;
 
   @override
   void dispose() {
     for (final c in _svgaControllers.values) {
       c.dispose();
     }
-    for (final p in _audioPlayers.values) {
-      p.dispose();
-    }
+    GiftAudioPlayer.stop();
     super.dispose();
   }
 
-  /// Plays the gift's own sound once per gift, independent of whether its
-  /// visual is an SVGA animation or a static image fallback.
+  /// Plays the gift's sound with 0ms delay via GiftAudioPlayer
   Future<void> _playAudioIfNeeded(GiftEffect gift) async {
-    if (_audioPlayers.containsKey(gift.timestamp)) return;
-    String audio = (gift.audio != null && gift.audio!.trim().isNotEmpty)
-        ? gift.audio!.trim()
-        : 'assets/images/fairy-sparkle.mp3';
-
-    final player = AudioPlayer();
-    _audioPlayers[gift.timestamp] = player;
-    try {
-      if (audio.startsWith('http://') || audio.startsWith('https://')) {
-        await player.setUrl(audio);
-      } else {
-        await player.setAsset(audio);
-      }
-      await player.play();
-    } catch (e) {
-      Loggers.error('Gift audio error ($audio): $e, playing fairy-sparkle fallback');
-      try {
-        await player.setAsset('assets/images/fairy-sparkle.mp3');
-        await player.play();
-      } catch (_) {}
-    }
+    if (_lastPlayedGiftTimestamp == gift.timestamp) return;
+    _lastPlayedGiftTimestamp = gift.timestamp;
+    if (gift.audio == null || gift.audio!.trim().isEmpty) return;
+    await GiftAudioPlayer.play(gift.audio);
   }
 
   Future<void> _loadSvga(GiftEffect gift) async {
@@ -368,11 +350,6 @@ class _GiftEffectWidgetState extends State<GiftEffectWidget>
     for (final key in expiredKeys) {
       _svgaControllers.remove(key)?.dispose();
     }
-    final expiredAudioKeys =
-        _audioPlayers.keys.where((k) => !activeSet.contains(k)).toList();
-    for (final key in expiredAudioKeys) {
-      _audioPlayers.remove(key)?.dispose();
-    }
   }
 
   @override
@@ -385,6 +362,11 @@ class _GiftEffectWidgetState extends State<GiftEffectWidget>
         child: Stack(
           children: widget.activeGifts.map((gift) {
             Future.microtask(() => _playAudioIfNeeded(gift));
+            final myUserId = SessionManager.instance.getUserID();
+            final myUsername = (SessionManager.instance.getUser()?.username ?? '').toLowerCase().trim();
+            final isMe = (gift.userId > 0 && gift.userId == myUserId) ||
+                (myUsername.isNotEmpty && gift.username.toLowerCase().trim() == myUsername);
+            final senderDisplayName = isMe ? 'You' : gift.username;
             return Positioned.fill(
               child: Stack(
                 children: [
@@ -433,7 +415,7 @@ class _GiftEffectWidgetState extends State<GiftEffectWidget>
                                 children: [
                                   RichText(
                                     text: TextSpan(
-                                      text: "${gift.username} sent a ",
+                                      text: "$senderDisplayName sent a ",
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 12,
@@ -483,7 +465,7 @@ class _GiftVisualWithMotion extends StatefulWidget {
 }
 
 class _GiftVisualWithMotionState extends State<_GiftVisualWithMotion>
-    with SingleTickerProviderStateMixin {
+  with SingleTickerProviderStateMixin {
   late AnimationController _animController;
   late Animation<double> _scaleAnimation;
   late Animation<double> _floatAnimation;
@@ -519,7 +501,7 @@ class _GiftVisualWithMotionState extends State<_GiftVisualWithMotion>
       CurvedAnimation(parent: _animController, curve: Curves.easeInOutSine),
     );
 
-    _tiltAnimation = Tween<double>(begin: -0.07, end: 0.07).animate(
+    _tiltAnimation = Tween<double>(begin: -0.06, end: 0.06).animate(
       CurvedAnimation(parent: _animController, curve: Curves.easeInOutSine),
     );
   }
@@ -563,11 +545,42 @@ class AnimatedSvgPlayer extends StatefulWidget {
     required this.height,
   });
 
+  static Future<void> preloadAll(List<Gift> gifts) async {
+    for (final gift in gifts) {
+      final url = gift.effectiveAssetUrl;
+      if (url.toLowerCase().contains('.svg')) {
+        preloadSvg(url.addBaseURL());
+      }
+    }
+  }
+
+  static Future<void> preloadSvg(String? url) async {
+    if (url == null || url.trim().isEmpty) return;
+    final svgUrl = url.trim();
+    if (_AnimatedSvgPlayerState._svgCache.containsKey(svgUrl)) return;
+    try {
+      if (svgUrl.startsWith('http://') || svgUrl.startsWith('https://')) {
+        final response = await http
+            .get(Uri.parse(svgUrl))
+            .timeout(const Duration(seconds: 6));
+        if (response.statusCode == 200 && response.body.contains('<svg')) {
+          _AnimatedSvgPlayerState._svgCache[svgUrl] = response.body;
+        }
+      } else if (svgUrl.startsWith('assets/')) {
+        final assetData = await rootBundle.loadString(svgUrl);
+        if (assetData.contains('<svg')) {
+          _AnimatedSvgPlayerState._svgCache[svgUrl] = assetData;
+        }
+      }
+    } catch (_) {}
+  }
+
   @override
   State<AnimatedSvgPlayer> createState() => _AnimatedSvgPlayerState();
 }
 
 class _AnimatedSvgPlayerState extends State<AnimatedSvgPlayer> {
+  static final Map<String, String> _svgCache = {};
   WebViewControllerPlus? _controller;
   bool _isReady = false;
 
@@ -584,48 +597,36 @@ class _AnimatedSvgPlayerState extends State<AnimatedSvgPlayer> {
     } catch (_) {}
     controller.setJavaScriptMode(JavaScriptMode.unrestricted);
 
-    String html;
-    try {
-      if (widget.url.startsWith('http://') || widget.url.startsWith('https://')) {
-        final response =
-            await http.get(Uri.parse(widget.url)).timeout(const Duration(seconds: 4));
-        if (response.statusCode == 200 && response.body.contains('<svg')) {
-          html = '''
-<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      width: 100vw;
-      height: 100vh;
-      background: transparent !important;
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    svg {
-      width: 100%;
-      height: 100%;
-      max-width: 100%;
-      max-height: 100%;
-      object-fit: contain;
-    }
-  </style>
-</head>
-<body style="background:transparent;">
-  \${response.body}
-</body>
-</html>''';
-        } else {
-          html = _buildImgHtml(widget.url);
+    String? svgContent = _svgCache[widget.url];
+
+    if (svgContent == null || svgContent.isEmpty) {
+      try {
+        if (widget.url.startsWith('http://') || widget.url.startsWith('https://')) {
+          final response = await http
+              .get(Uri.parse(widget.url))
+              .timeout(const Duration(seconds: 5));
+          if (response.statusCode == 200 && response.body.contains('<svg')) {
+            svgContent = response.body;
+            _svgCache[widget.url] = svgContent;
+          }
+        } else if (widget.url.startsWith('assets/')) {
+          final assetData = await rootBundle.loadString(widget.url);
+          if (assetData.contains('<svg')) {
+            svgContent = assetData;
+            _svgCache[widget.url] = svgContent;
+          }
+        } else if (widget.url.trim().startsWith('<svg')) {
+          svgContent = widget.url;
         }
-      } else {
-        html = _buildImgHtml(widget.url);
+      } catch (e) {
+        Loggers.error('AnimatedSvgPlayer fetch error: $e');
       }
-    } catch (_) {
+    }
+
+    String html;
+    if (svgContent != null && svgContent.isNotEmpty) {
+      html = _buildSvgHtml(svgContent);
+    } else {
       html = _buildImgHtml(widget.url);
     }
 
@@ -637,32 +638,99 @@ class _AnimatedSvgPlayerState extends State<AnimatedSvgPlayer> {
     });
   }
 
-  String _buildImgHtml(String url) {
-    return '''
-<!DOCTYPE html>
+  String _buildSvgHtml(String svgXml) {
+    return '''<!DOCTYPE html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      width: 100vw;
-      height: 100vh;
-      background: transparent !important;
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    *, *::before, *::after {
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 none !important;
+      border-width: 0 !important;
+      outline: 0 none !important;
+      box-shadow: none !important;
+      box-sizing: border-box !important;
+      -webkit-tap-highlight-color: transparent !important;
     }
-    img {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
+    html, body {
+      width: 100vw !important;
+      height: 100vh !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 none !important;
+      outline: 0 none !important;
+      box-shadow: none !important;
+      background: transparent !important;
+      background-color: transparent !important;
+      overflow: hidden !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      -webkit-user-select: none !important;
+      user-select: none !important;
+    }
+    svg {
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 100% !important;
+      max-height: 100% !important;
+      border: 0 none !important;
+      outline: 0 none !important;
+      box-shadow: none !important;
+      display: block !important;
+      object-fit: contain !important;
     }
   </style>
 </head>
-<body style="background:transparent;">
-  <img src="\$url" />
+<body style="background:transparent; background-color:transparent; margin:0; padding:0; border:0; outline:0;">
+  $svgXml
+</body>
+</html>''';
+  }
+
+  String _buildImgHtml(String url) {
+    return '''<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    *, *::before, *::after {
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 none !important;
+      outline: 0 none !important;
+      box-shadow: none !important;
+      box-sizing: border-box !important;
+      -webkit-tap-highlight-color: transparent !important;
+    }
+    html, body {
+      width: 100vw !important;
+      height: 100vh !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 none !important;
+      outline: 0 none !important;
+      box-shadow: none !important;
+      background: transparent !important;
+      background-color: transparent !important;
+      overflow: hidden !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    img {
+      width: 100% !important;
+      height: 100% !important;
+      border: 0 none !important;
+      outline: 0 none !important;
+      object-fit: contain !important;
+    }
+  </style>
+</head>
+<body style="background:transparent; background-color:transparent; margin:0; padding:0; border:0; outline:0;">
+  <img src="$url" />
 </body>
 </html>''';
   }
@@ -673,27 +741,6 @@ class _AnimatedSvgPlayerState extends State<AnimatedSvgPlayer> {
       return SizedBox(
         width: widget.width,
         height: widget.height,
-        child: widget.url.startsWith('http')
-            ? SvgPicture.network(
-                widget.url,
-                fit: BoxFit.contain,
-                placeholderBuilder: (_) => const SizedBox.shrink(),
-                errorBuilder: (_, __, ___) => Image.asset(
-                  'assets/images/gifts.png',
-                  width: widget.width,
-                  height: widget.height,
-                ),
-              )
-            : SvgPicture.asset(
-                widget.url,
-                fit: BoxFit.contain,
-                placeholderBuilder: (_) => const SizedBox.shrink(),
-                errorBuilder: (_, __, ___) => Image.asset(
-                  'assets/images/gifts.png',
-                  width: widget.width,
-                  height: widget.height,
-                ),
-              ),
       );
     }
 
@@ -701,7 +748,10 @@ class _AnimatedSvgPlayerState extends State<AnimatedSvgPlayer> {
       width: widget.width,
       height: widget.height,
       child: IgnorePointer(
-        child: WebViewWidget(controller: _controller!),
+        ignoring: true,
+        child: ClipRect(
+          child: WebViewWidget(controller: _controller!),
+        ),
       ),
     );
   }

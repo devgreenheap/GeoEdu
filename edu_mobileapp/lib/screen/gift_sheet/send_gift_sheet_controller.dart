@@ -5,6 +5,7 @@ import 'package:geoedu/common/manager/firebase_notification_manager.dart';
 import 'package:geoedu/common/manager/haptic_manager.dart';
 import 'package:geoedu/common/manager/logger.dart';
 import 'package:geoedu/common/manager/session_manager.dart';
+import 'package:geoedu/common/service/api/common_service.dart';
 import 'package:geoedu/common/service/api/gift_wallet_service.dart';
 import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/model/diamond_purchase/diamond_wallet_model.dart';
@@ -15,6 +16,9 @@ import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/screen/gift_sheet/send_gift_dialog.dart';
 import 'package:geoedu/screen/gift_sheet/send_gift_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
+import 'package:geoedu/common/manager/gift_audio_player.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/entry_effects_widget.dart'
+    show AnimatedSvgPlayer;
 
 class SendGiftSheetController extends BaseController {
   Rx<Setting?> settings = Rx<Setting?>(null);
@@ -58,10 +62,29 @@ class SendGiftSheetController extends BaseController {
     final s = SessionManager.instance.getSettings();
     if (s != null) {
       s.gifts = s.availableGifts;
+      if (s.gifts != null && s.gifts!.isNotEmpty) {
+        GiftAudioPlayer.preloadAll(s.gifts!);
+        AnimatedSvgPlayer.preloadAll(s.gifts!);
+      }
     }
     settings.value = s;
     myUser.value = SessionManager.instance.getUser();
     _fetchDiamondWallet();
+
+    // Fetch latest settings from admin so newly uploaded gift audios/animations are available immediately
+    CommonService.instance.fetchGlobalSettings().then((success) {
+      if (success) {
+        final fresh = SessionManager.instance.getSettings();
+        if (fresh != null) {
+          fresh.gifts = fresh.availableGifts;
+          settings.value = fresh;
+          if (fresh.gifts != null && fresh.gifts!.isNotEmpty) {
+            GiftAudioPlayer.preloadAll(fresh.gifts!);
+            AnimatedSvgPlayer.preloadAll(fresh.gifts!);
+          }
+        }
+      }
+    });
   }
 
   Future<void> _fetchDiamondWallet() async {

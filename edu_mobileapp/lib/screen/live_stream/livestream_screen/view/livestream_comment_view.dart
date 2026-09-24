@@ -72,7 +72,11 @@ class LiveStreamCommentView extends StatelessWidget {
                             children: [
                               Flexible(
                                 child: FullNameWithBlueTick(
-                                  username: senderUser?.username,
+                                  username: (senderUser?.id != null &&
+                                          senderUser!.id ==
+                                              SessionManager.instance.getUserID())
+                                      ? 'You'
+                                      : senderUser?.username,
                                   isVerify: senderUser?.isVerify,
                                   fontColor: whitePure(context),
                                   opacity: 0.7,

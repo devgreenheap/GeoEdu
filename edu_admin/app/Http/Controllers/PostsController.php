@@ -753,7 +753,7 @@ class PostsController extends Controller
 
        $hashtags = Hashtags::where('post_count','>=',1)->orderBy('post_count','DESC')->get();
 
-       $highPostHashtags = Hashtags::where('post_count','>=',4)->inRandomOrder()->get();
+       $highPostHashtags = Hashtags::where('post_count','>=',1)->inRandomOrder()->get();
 
        foreach($highPostHashtags as $singleHashtag){
 
@@ -771,6 +771,32 @@ class PostsController extends Controller
 
             $postList = GlobalFunction::processPostsListData($posts, $user);
             $singleHashtag->postList = $postList;
+       }
+
+       $highPostHashtags = $highPostHashtags->filter(function ($item) {
+           return !empty($item->postList) && count($item->postList) > 0;
+       })->values();
+
+       if ($highPostHashtags->isEmpty()) {
+           $fallbackPosts = Posts::whereHas('user', function ($query) {
+               $query->Where('is_freez', 0);
+           })
+           ->whereNotIn('user_id', $blockedUserIds)
+           ->with(Constants::postsWithArray)
+           ->whereIn('post_type', [Constants::postTypeImage, Constants::postTypeReel, Constants::postTypeVideo])
+           ->orderBy('id', 'DESC')
+           ->limit(18)
+           ->get();
+
+           $processed = GlobalFunction::processPostsListData($fallbackPosts, $user);
+           if (count($processed) > 0) {
+               $dummy = new \stdClass();
+               $dummy->id = 0;
+               $dummy->hashtag = 'Explore';
+               $dummy->post_count = count($processed);
+               $dummy->postList = $processed;
+               $highPostHashtags = collect([$dummy]);
+           }
        }
 
        $data['hashtags'] = $hashtags;

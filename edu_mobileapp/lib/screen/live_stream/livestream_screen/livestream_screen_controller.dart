@@ -20,8 +20,12 @@ import 'package:geoedu/common/manager/haptic_manager.dart';
 import 'package:geoedu/common/manager/logger.dart';
 import 'package:geoedu/common/manager/session_manager.dart';
 import 'package:geoedu/common/service/api/api_service.dart';
+import 'package:geoedu/common/service/api/common_service.dart';
 import 'package:geoedu/common/service/api/gift_wallet_service.dart';
 import 'package:geoedu/common/service/api/notification_service.dart';
+import 'package:geoedu/common/manager/gift_audio_player.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/entry_effects_widget.dart'
+    show AnimatedSvgPlayer;
 import 'package:geoedu/common/service/utils/params.dart';
 import 'package:geoedu/common/service/utils/web_service.dart';
 import 'package:geoedu/model/general/status_model.dart';
@@ -106,7 +110,24 @@ class LivestreamScreenController extends BaseController {
   bool _isRecording = false;
   Completer<void>? _recordingFinalizeCompleter;
 
-  LivestreamScreenController(this.liveData, this.isHost, {this.hostPreview, this.apiLiveStreamId});
+  LivestreamScreenController(this.liveData, this.isHost, {this.hostPreview, this.apiLiveStreamId}) {
+    // Preload all gifts audio and SVG animations for instant 0ms playback on tap
+    final gifts = SessionManager.instance.getSettings()?.availableGifts ?? [];
+    if (gifts.isNotEmpty) {
+      GiftAudioPlayer.preloadAll(gifts);
+      AnimatedSvgPlayer.preloadAll(gifts);
+    }
+    // Fetch latest settings from admin in background to ensure new gift sounds are immediately available
+    CommonService.instance.fetchGlobalSettings().then((success) {
+      if (success) {
+        final freshGifts = SessionManager.instance.getSettings()?.availableGifts ?? [];
+        if (freshGifts.isNotEmpty) {
+          GiftAudioPlayer.preloadAll(freshGifts);
+          AnimatedSvgPlayer.preloadAll(freshGifts);
+        }
+      }
+    });
+  }
 
   int totalBattleSecond = 0;
 
@@ -368,24 +389,10 @@ class LivestreamScreenController extends BaseController {
     print("🎬 Showing gift: ${gift.username} sent ${gift.giftName}");
     activeGifts.add(gift);
 
+    if (gift.audio != null && gift.audio!.isNotEmpty) {
+      GiftAudioPlayer.play(gift.audio);
+    }
     try {
-      if (gift.audio != null && gift.audio!.isNotEmpty) {
-        try {
-          final player = AudioPlayer();
-          if (gift.audio!.startsWith('http')) {
-            await player.setUrl(gift.audio!);
-          } else {
-            await player.setAsset(gift.audio!);
-          }
-          await player.play();
-        } catch (e) {
-          try {
-            final fallback = AudioPlayer();
-            await fallback.setAsset('assets/images/fairy-sparkle.mp3');
-            await fallback.play();
-          } catch (_) {}
-        }
-      }
       await Future.delayed(const Duration(seconds: 5));
     } finally {
       activeGifts.remove(gift);
@@ -395,7 +402,7 @@ class LivestreamScreenController extends BaseController {
     }
   }
 
-  Future<void> sendGift(AppUser user, String giftName, String assetUrl, String audioPath) async {
+  Future<void> sendGift(AppUser user, String giftName, String assetUrl, String audioPath, {int? giftId, int? coinPrice}) async {
     print("🚀 Sending gift for user: ${user.username}");
 
     // The sender (buyer) is who the animation credits — not the gift's
@@ -412,6 +419,8 @@ class LivestreamScreenController extends BaseController {
       "username": sender?.username ?? '',
       "senderPhoto": sender?.profile ?? '',
       "giftName": giftName,
+      "gift_id": giftId,
+      "coin_price": coinPrice,
       "asset_url": assetUrl,
       "audio": audioPath,
       "timestamp": DateTime.now().millisecondsSinceEpoch,
@@ -489,6 +498,7 @@ class LivestreamScreenController extends BaseController {
   @override
   void onClose() {
     super.onClose();
+    GiftAudioPlayer.stop();
     if (_isScreenshotPreventionActive) {
       ScreenshotPrevention.instance.disable();
     }
@@ -1304,13 +1314,16 @@ class LivestreamScreenController extends BaseController {
           );
 
           if (user != null) {
+            final sound = gift.effectiveSoundUrl.isNotEmpty
+                ? gift.effectiveSoundUrl
+                : 'assets/images/fairy-sparkle.mp3';
             sendGift(
                 user,
-                gift.title ?? 'Gift',
+                gift.displayName,
                 gift.effectiveAssetUrl.addBaseURL(),
-                (gift.soundUrl != null && gift.soundUrl!.trim().isNotEmpty)
-                    ? gift.soundUrl!.trim().addBaseURL()
-                    : 'assets/images/fairy-sparkle.mp3',
+                sound,
+                giftId: gift.id,
+                coinPrice: coinPrice,
             );
           }
 

@@ -23,6 +23,9 @@ import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/utilities/app_res.dart';
 import 'package:geoedu/utilities/firebase_const.dart';
 import 'package:zego_express_engine/zego_express_engine.dart';
+import 'package:geoedu/common/manager/gift_audio_player.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/entry_effects_widget.dart'
+    show AnimatedSvgPlayer;
 
 class AudioRoomController extends BaseController {
   final AudioRoom room;
@@ -51,6 +54,7 @@ class AudioRoomController extends BaseController {
 
   // Background music
   final AudioPlayer _musicPlayer = AudioPlayer();
+  final Set<String> _playingStreamIds = {};
   RxBool isMusicPlaying = false.obs;
   RxList<String> musicUrls = <String>[].obs;
   String _currentPlaylistKey = '';
@@ -58,6 +62,7 @@ class AudioRoomController extends BaseController {
   // Inline gift bar (EloTV-style tap-to-send row, replaces the full-screen
   // gift sheet for this screen).
   RxBool isGiftBarOpen = false.obs;
+  RxList<Gift> availableGifts = <Gift>[].obs;
   RxInt diamondBalance = 0.obs;
   bool _diamondBalanceFetched = false;
   Rx<int?> favouriteGiftId = Rx<int?>(null);
@@ -133,7 +138,9 @@ class AudioRoomController extends BaseController {
   /// Highest-priced real gift from the catalog — used as the promo card,
   /// same rule as the video host top bar.
   Gift? get featuredGift {
-    final gifts = SessionManager.instance.getSettings()?.gifts ?? [];
+    final gifts = availableGifts.isNotEmpty
+        ? availableGifts
+        : (SessionManager.instance.getSettings()?.gifts ?? []);
     if (gifts.isEmpty) return null;
     final sorted = List<Gift>.from(gifts)
       ..sort((a, b) => (b.coinPrice ?? 0).compareTo(a.coinPrice ?? 0));
@@ -146,6 +153,26 @@ class AudioRoomController extends BaseController {
     return DateTime.now().difference(createdAt).inDays <= 7;
   }
 
+  void _refreshGiftsAndPreload() {
+    final s = SessionManager.instance.getSettings();
+    if (s != null && s.availableGifts.isNotEmpty) {
+      availableGifts.value = s.availableGifts;
+      GiftAudioPlayer.preloadAll(s.availableGifts);
+      AnimatedSvgPlayer.preloadAll(s.availableGifts);
+    }
+    // Fetch latest settings from admin API in background so any updated gift audio is immediately cached
+    CommonService.instance.fetchGlobalSettings().then((success) {
+      if (success) {
+        final fresh = SessionManager.instance.getSettings();
+        if (fresh != null && fresh.availableGifts.isNotEmpty) {
+          availableGifts.value = fresh.availableGifts;
+          GiftAudioPlayer.preloadAll(fresh.availableGifts);
+          AnimatedSvgPlayer.preloadAll(fresh.availableGifts);
+        }
+      }
+    });
+  }
+
   @override
   void onInit() {
     super.onInit();
@@ -154,6 +181,8 @@ class AudioRoomController extends BaseController {
     participantIds.value = List<int>.from(room.participantIds ?? []);
     backgroundImage.value = room.backgroundImage ?? '';
     musicUrls.value = List<String>.from(room.musicUrls ?? []);
+
+    _refreshGiftsAndPreload();
   }
 
   @override
@@ -292,33 +321,7 @@ class AudioRoomController extends BaseController {
     String audio = (sound != null && sound.trim().isNotEmpty)
         ? sound.trim()
         : 'assets/images/fairy-sparkle.mp3';
-    Future.microtask(() async {
-      try {
-        final player = AudioPlayer();
-        if (audio.startsWith('http://') || audio.startsWith('https://')) {
-          await player.setUrl(audio).timeout(const Duration(seconds: 3));
-        } else {
-          await player.setAsset(audio);
-        }
-        await player.play();
-        player.playerStateStream.listen((state) {
-          if (state.processingState == ProcessingState.completed) {
-            player.dispose();
-          }
-        });
-      } catch (e) {
-        try {
-          final fallback = AudioPlayer();
-          await fallback.setAsset('assets/images/fairy-sparkle.mp3');
-          await fallback.play();
-          fallback.playerStateStream.listen((state) {
-            if (state.processingState == ProcessingState.completed) {
-              fallback.dispose();
-            }
-          });
-        } catch (_) {}
-      }
-    });
+    GiftAudioPlayer.play(audio);
   }
 
   @override
@@ -334,6 +337,7 @@ class AudioRoomController extends BaseController {
     }
     ZegoExpressEngine.onRoomStreamUpdate = null;
     ZegoExpressEngine.onRoomUserUpdate = null;
+    GiftAudioPlayer.stop();
     if (!_isCleaningUp) {
       // Only clean up if _forceExit hasn't already done it
       _musicPlayer.stop();
@@ -383,6 +387,7 @@ class AudioRoomController extends BaseController {
 
         // Manually play host's stream in case onRoomStreamUpdate didn't fire
         final hostStreamId = '${room.roomId}_${room.hostId}';
+        _playingStreamIds.add(hostStreamId);
         Future.delayed(const Duration(milliseconds: 500), () {
           ZegoExpressEngine.instance.startPlayingStream(hostStreamId);
           Loggers.info('AudioRoom: Manually started playing host stream $hostStreamId');
@@ -401,9 +406,11 @@ class AudioRoomController extends BaseController {
       List<ZegoStream> streamList, Map<String, dynamic> extendedData) {
     for (var stream in streamList) {
       if (updateType == ZegoUpdateType.Add) {
+        _playingStreamIds.add(stream.streamID);
         ZegoExpressEngine.instance.startPlayingStream(stream.streamID);
         Loggers.success('AudioRoom: Playing stream ${stream.streamID}');
       } else {
+        _playingStreamIds.remove(stream.streamID);
         ZegoExpressEngine.instance.stopPlayingStream(stream.streamID);
         Loggers.info('AudioRoom: Stopped stream ${stream.streamID}');
 
@@ -582,6 +589,7 @@ class AudioRoomController extends BaseController {
           } else {
             Loggers.error('AudioRoom: Navigator cannot pop');
           }
+          Get.delete<AudioRoomController>();
         } catch (e) {
           Loggers.error('AudioRoom: force exit navigation error: $e');
         }
@@ -1071,7 +1079,7 @@ class AudioRoomController extends BaseController {
   void openGiftBar() {
     isGiftBarOpen.value = true;
     fetchDiamondBalanceIfNeeded(force: true);
-    CommonService.instance.fetchGlobalSettings();
+    _refreshGiftsAndPreload();
   }
 
   Future<void> sendGiftDirect(Gift gift) async {
@@ -1093,13 +1101,20 @@ class AudioRoomController extends BaseController {
 
     final isHostSelf = (hostId == myUser?.id);
 
-    final rawAsset = gift.effectiveAssetUrl;
+    final freshGift = (giftId != null)
+        ? (availableGifts.firstWhereOrNull((g) => g.id == giftId) ?? gift)
+        : gift;
+
+    final rawAsset = freshGift.effectiveAssetUrl;
     final assetUrl = rawAsset.isNotEmpty
         ? rawAsset.addBaseURL()
-        : (gift.image?.addBaseURL() ?? '');
-    final soundUrl = (gift.soundUrl != null && gift.soundUrl!.trim().isNotEmpty)
-        ? gift.soundUrl!.trim().addBaseURL()
+        : (freshGift.image?.addBaseURL() ?? '');
+    final soundUrl = freshGift.effectiveSoundUrl.isNotEmpty
+        ? freshGift.effectiveSoundUrl
         : 'assets/images/fairy-sparkle.mp3';
+
+    // Instantly play audio the moment the user taps the gift (0ms delay!)
+    GiftAudioPlayer.play(soundUrl);
 
     // Instantly show local gift effect and play sound so sender sees instant action!
     diamondBalance.value -= coinPrice;
@@ -1110,7 +1125,7 @@ class AudioRoomController extends BaseController {
       userId: myUser?.id ?? 0,
       username: myUser?.fullname ?? myUser?.username ?? 'User',
       senderPhoto: myUser?.profilePhoto,
-      giftName: gift.displayName,
+      giftName: freshGift.displayName,
       assetUrl: assetUrl,
       audio: soundUrl,
       timestamp: DateTime.now().millisecondsSinceEpoch,
@@ -1131,7 +1146,8 @@ class AudioRoomController extends BaseController {
           'userId': myUser?.id,
           'username': myUser?.fullname ?? myUser?.username ?? '',
           'senderPhoto': myUser?.profilePhoto ?? '',
-          'giftName': gift.displayName,
+          'giftName': freshGift.displayName,
+          'gift_id': freshGift.id,
           'asset_url': assetUrl,
           'audio': soundUrl,
           'timestamp': DateTime.now().millisecondsSinceEpoch,
@@ -1147,8 +1163,8 @@ class AudioRoomController extends BaseController {
         senderPhoto: myUser!.profilePhoto,
         senderLevel: myUser!.getLevel.level,
         type: AudioCommentType.gift,
-        giftName: gift.displayName,
-        giftImage: gift.image,
+        giftName: freshGift.displayName,
+        giftImage: freshGift.image,
         giftCoinPrice: coinPrice,
         timestamp: DateTime.now().millisecondsSinceEpoch,
       ));
@@ -1158,7 +1174,9 @@ class AudioRoomController extends BaseController {
     // Otherwise, audience sending to host: validate and deduct through server API
     int effectiveGiftId = (giftId != null && giftId > 0) ? giftId : -1;
     if (effectiveGiftId <= 0) {
-      final serverGifts = SessionManager.instance.getSettings()?.gifts ?? [];
+      final serverGifts = availableGifts.isNotEmpty
+          ? availableGifts
+          : (SessionManager.instance.getSettings()?.gifts ?? []);
       final matchingServerGift = serverGifts.firstWhere(
         (g) => (g.coinPrice ?? 0) == coinPrice,
         orElse: () => serverGifts.isNotEmpty ? serverGifts.first : Gift.penGift,
@@ -1195,7 +1213,8 @@ class AudioRoomController extends BaseController {
         'userId': myUser?.id,
         'username': myUser?.fullname ?? myUser?.username ?? '',
         'senderPhoto': myUser?.profilePhoto ?? '',
-        'giftName': gift.displayName,
+        'giftName': freshGift.displayName,
+        'gift_id': freshGift.id,
         'asset_url': assetUrl,
         'audio': soundUrl,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
@@ -1208,8 +1227,8 @@ class AudioRoomController extends BaseController {
         senderPhoto: myUser!.profilePhoto,
         senderLevel: myUser!.getLevel.level,
         type: AudioCommentType.gift,
-        giftName: gift.displayName,
-        giftImage: gift.image,
+        giftName: freshGift.displayName,
+        giftImage: freshGift.image,
         giftCoinPrice: coinPrice,
         timestamp: DateTime.now().millisecondsSinceEpoch,
       ));
@@ -1231,7 +1250,7 @@ class AudioRoomController extends BaseController {
     _roomDocSubscription?.cancel();
     _musicPlayer.stop();
     _musicPlayer.dispose();
-    _leaveZegoRoom();
+    await _leaveZegoRoom();
     if (apiAudioRoomId != null) {
       try {
         await GiftWalletService.instance.endAudioRoom(
@@ -1247,6 +1266,7 @@ class AudioRoomController extends BaseController {
         .doc(room.hostId.toString())
         .delete();
     Get.back();
+    Get.delete<AudioRoomController>();
   }
 
   void leaveRoom() async {
@@ -1255,7 +1275,7 @@ class AudioRoomController extends BaseController {
     _roomDocSubscription?.cancel();
     _musicPlayer.stop();
     _musicPlayer.dispose();
-    _leaveZegoRoom();
+    await _leaveZegoRoom();
     try {
       await _db
           .collection(FirebaseConst.audioRooms)
@@ -1267,11 +1287,18 @@ class AudioRoomController extends BaseController {
       Loggers.error('AudioRoom: leave room update error: $e');
     }
     Get.back();
+    Get.delete<AudioRoomController>();
   }
 
   Future<void> _leaveZegoRoom() async {
     try {
       await ZegoExpressEngine.instance.stopPublishingStream();
+      final hostStreamId = '${room.roomId}_${room.hostId}';
+      await ZegoExpressEngine.instance.stopPlayingStream(hostStreamId);
+      for (final sId in _playingStreamIds) {
+        await ZegoExpressEngine.instance.stopPlayingStream(sId);
+      }
+      _playingStreamIds.clear();
       await ZegoExpressEngine.instance.logoutRoom(room.roomId ?? '');
     } catch (e) {
       Loggers.error('AudioRoom: leave zego room error: $e');

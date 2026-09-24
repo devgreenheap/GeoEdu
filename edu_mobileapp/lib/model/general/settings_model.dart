@@ -4,6 +4,7 @@
 
 import 'dart:convert';
 
+import 'package:geoedu/common/extensions/string_extension.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
 
 SettingModel settingModelFromJson(String str) =>
@@ -193,10 +194,10 @@ class Setting {
         deeparIOSKey: json["deepar_iOS_key"],
         createdAt: json["created_at"] == null
             ? null
-            : DateTime.parse(json["created_at"]),
+            : DateTime.tryParse(json["created_at"].toString()),
         updatedAt: json["updated_at"] == null
             ? null
-            : DateTime.parse(json["updated_at"]),
+            : DateTime.tryParse(json["updated_at"].toString()),
         languages: json["languages"] == null
             ? []
             : List<Language>.from(
@@ -558,6 +559,14 @@ class Gift {
   String get effectiveAssetUrl =>
       (animationUrl?.isNotEmpty ?? false) ? animationUrl! : (image ?? '');
 
+  /// Sound uploaded in admin panel for this gift, with base URL attached
+  String get effectiveSoundUrl {
+    if (soundUrl != null && soundUrl!.trim().isNotEmpty) {
+      return soundUrl!.trim().addBaseURL();
+    }
+    return '';
+  }
+
   factory Gift.fromJson(Map<String, dynamic> json) => Gift(
         id: json["id"],
         giftCategoryId: json["gift_category_id"],
@@ -565,15 +574,15 @@ class Gift {
         image: json["image"],
         title: json["title"],
         animationUrl: json["animation_url"],
-        soundUrl: json["sound_url"],
+        soundUrl: json["sound_url"] ?? json["sound"] ?? json["audio"] ?? json["audio_url"],
         categoryId: json["category_id"],
         categoryName: json["category_name"],
         createdAt: json["created_at"] == null
             ? null
-            : DateTime.parse(json["created_at"]),
+            : DateTime.tryParse(json["created_at"].toString()),
         updatedAt: json["updated_at"] == null
             ? null
-            : DateTime.parse(json["updated_at"]),
+            : DateTime.tryParse(json["updated_at"].toString()),
       );
 
   Map<String, dynamic> toJson() => {
