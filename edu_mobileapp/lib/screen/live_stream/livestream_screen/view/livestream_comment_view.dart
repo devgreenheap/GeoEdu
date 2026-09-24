@@ -6,6 +6,7 @@ import 'package:geoedu/common/extensions/string_extension.dart';
 import 'package:geoedu/common/widget/custom_image.dart';
 import 'package:geoedu/common/widget/full_name_with_blue_tick.dart';
 import 'package:geoedu/common/widget/level_badge.dart';
+import 'package:geoedu/common/manager/session_manager.dart';
 import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/model/livestream/app_user.dart';
 import 'package:geoedu/model/livestream/livestream.dart';
@@ -72,8 +73,8 @@ class LiveStreamCommentView extends StatelessWidget {
                             children: [
                               Flexible(
                                 child: FullNameWithBlueTick(
-                                  username: (senderUser?.id != null &&
-                                          senderUser!.id ==
+                                  username: (senderUser?.userId != null &&
+                                          senderUser!.userId ==
                                               SessionManager.instance.getUserID())
                                       ? 'You'
                                       : senderUser?.username,

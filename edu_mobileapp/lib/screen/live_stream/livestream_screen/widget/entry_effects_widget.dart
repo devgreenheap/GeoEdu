@@ -13,6 +13,7 @@ import '../livestream_screen_controller.dart';
 import 'package:geoedu/model/general/settings_model.dart';
 import 'package:geoedu/common/manager/gift_audio_player.dart';
 import 'package:geoedu/common/manager/logger.dart';
+import 'package:geoedu/common/manager/session_manager.dart';
  
 class EntryEffectLayer extends StatefulWidget {
   final LivestreamScreenController controller;
