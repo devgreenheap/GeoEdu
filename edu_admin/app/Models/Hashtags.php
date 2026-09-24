@@ -9,4 +9,5 @@ class Hashtags extends Model
 {
     use HasFactory;
     public $table = "tbl_hash_tags";
+    protected $guarded = [];
 }

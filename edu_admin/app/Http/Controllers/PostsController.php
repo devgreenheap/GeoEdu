@@ -689,7 +689,7 @@ class PostsController extends Controller
 
         $postList = GlobalFunction::processPostsListData($posts, $user);
 
-        $hashtag = Hashtags::where('hashtag', $request->hashtag)->first();
+        $hashtag = Hashtags::firstOrCreate(['hashtag' => $request->hashtag]);
         $hashtagText = $hashtag->hashtag;
         $hashtag->post_count = Posts::whereRaw("FIND_IN_SET('$hashtagText',hashtags)")->count();
         $hashtag->save();

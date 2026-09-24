@@ -1327,12 +1327,12 @@ class LivestreamScreenController extends BaseController {
           );
 
           AppUser effectiveUser = user ??
-              (liveData.value.hostUser != null
-                  ? AppUser.fromLiveStreamUser(liveData.value.hostUser!)
-                  : AppUser(
-                      userId: liveData.value.hostUser?.userId ?? 0,
-                      username: liveData.value.hostUser?.username ?? 'Host',
-                    ));
+              AppUser(
+                userId: liveData.value.hostUser?.userId ?? 0,
+                username: liveData.value.hostUser?.username ?? 'Host',
+                fullname: liveData.value.hostUser?.fullname,
+                profile: liveData.value.hostUser?.profile,
+              );
 
           final sound = gift.effectiveSoundUrl.isNotEmpty
               ? gift.effectiveSoundUrl
