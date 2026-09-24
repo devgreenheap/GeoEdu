@@ -270,7 +270,10 @@ class AudioRoomController extends BaseController {
     }
   }
 
+  int _roomEnteredAt = 0;
+
   void _listenGifts() {
+    _roomEnteredAt = DateTime.now().millisecondsSinceEpoch - 2000;
     _giftEffectSubscription = _db
         .collection(FirebaseConst.audioRooms)
         .doc(room.hostId.toString())
@@ -282,6 +285,15 @@ class AudioRoomController extends BaseController {
         if (change.type == DocumentChangeType.added) {
           GiftEffect gift =
               GiftEffect.fromJson(change.doc.data() as Map<String, dynamic>);
+
+          // If the gift was sent before this user entered the room, do not replay it
+          if (gift.timestamp < _roomEnteredAt) {
+            try {
+              change.doc.reference.delete();
+            } catch (_) {}
+            continue;
+          }
+
           // Sender already played the gift effect immediately locally
           if (gift.userId == myUser?.id) {
             continue;
@@ -303,7 +315,7 @@ class AudioRoomController extends BaseController {
     GiftEffect gift = giftQueue.removeAt(0);
     activeGifts.add(gift);
 
-    _playGiftAudioAsync(gift.audio);
+    // Audio is handled by GiftEffectWidget to avoid duplicate audio triggers
 
     // Guaranteed auto-dismiss after 4.5 seconds regardless of network or audio status
     try {
@@ -315,13 +327,6 @@ class AudioRoomController extends BaseController {
         _processGiftQueue();
       }
     }
-  }
-
-  void _playGiftAudioAsync(String? sound) {
-    String audio = (sound != null && sound.trim().isNotEmpty)
-        ? sound.trim()
-        : 'assets/images/fairy-sparkle.mp3';
-    GiftAudioPlayer.play(audio);
   }
 
   @override

@@ -358,8 +358,11 @@ class LivestreamScreenController extends BaseController {
   bool isGiftAnimating = false;
   RxList<GiftEffect> activeGifts = <GiftEffect>[].obs;
 
+  int _roomEnteredAt = 0;
+
   void listenGifts() {
     print("🔥 Gift LISTENER STARTED");
+    _roomEnteredAt = DateTime.now().millisecondsSinceEpoch - 2000;
     db
         .collection(FirebaseConst.liveStreams)
         .doc(liveData.value.roomID)
@@ -371,10 +374,17 @@ class LivestreamScreenController extends BaseController {
         if (change.type == DocumentChangeType.added) {
           GiftEffect gift = GiftEffect.fromJson(
               change.doc.data() as Map<String, dynamic>);
+          change.doc.reference.delete();
+
+          // If the gift was sent before this user entered the live stream, skip it
+          if (gift.timestamp < _roomEnteredAt) {
+            print("⏳ Skipping old gift sent before entering: ${gift.giftName}");
+            continue;
+          }
+
           print("📥 New Gift: ${gift.username} sent ${gift.giftName}");
           giftQueue.add(gift);
           processGiftQueue();
-          change.doc.reference.delete();
         }
       }
     });
@@ -389,9 +399,8 @@ class LivestreamScreenController extends BaseController {
     print("🎬 Showing gift: ${gift.username} sent ${gift.giftName}");
     activeGifts.add(gift);
 
-    if (gift.audio != null && gift.audio!.isNotEmpty) {
-      GiftAudioPlayer.play(gift.audio);
-    }
+    // Audio is handled by GiftEffectWidget to avoid duplicate audio triggers
+
     try {
       await Future.delayed(const Duration(seconds: 5));
     } finally {
