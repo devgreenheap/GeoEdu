@@ -495,13 +495,17 @@ class LivestreamScreenController extends BaseController {
       battleCoin: coinPrice,
       currentBattleCoin: coinPrice,
     );
+    final sound = gift.effectiveSoundUrl.isNotEmpty
+        ? gift.effectiveSoundUrl
+        : (gift.soundUrl != null && gift.soundUrl!.trim().isNotEmpty
+            ? gift.soundUrl!.trim().addBaseURL()
+            : 'assets/images/fairy-sparkle.mp3');
+    GiftAudioPlayer.play(sound);
     sendGift(
         targetUser,
         gift.displayName,
         gift.effectiveAssetUrl.addBaseURL(),
-        (gift.soundUrl != null && gift.soundUrl!.trim().isNotEmpty)
-            ? gift.soundUrl!.trim().addBaseURL()
-            : 'assets/images/fairy-sparkle.mp3');
+        sound);
   }
 
   @override
@@ -1322,19 +1326,31 @@ class LivestreamScreenController extends BaseController {
             liveCoin: type == GiftType.livestream ? coinPrice : null,
           );
 
-          if (user != null) {
-            final sound = gift.effectiveSoundUrl.isNotEmpty
-                ? gift.effectiveSoundUrl
-                : 'assets/images/fairy-sparkle.mp3';
-            sendGift(
-                user,
-                gift.displayName,
-                gift.effectiveAssetUrl.addBaseURL(),
-                sound,
-                giftId: gift.id,
-                coinPrice: coinPrice,
-            );
-          }
+          AppUser effectiveUser = user ??
+              (liveData.value.hostUser != null
+                  ? AppUser.fromLiveStreamUser(liveData.value.hostUser!)
+                  : AppUser(
+                      userId: liveData.value.hostUser?.userId ?? 0,
+                      username: liveData.value.hostUser?.username ?? 'Host',
+                    ));
+
+          final sound = gift.effectiveSoundUrl.isNotEmpty
+              ? gift.effectiveSoundUrl
+              : (gift.soundUrl != null && gift.soundUrl!.trim().isNotEmpty
+                  ? gift.soundUrl!.trim().addBaseURL()
+                  : 'assets/images/fairy-sparkle.mp3');
+
+          // Instantly play audio for sender with 0ms delay!
+          GiftAudioPlayer.play(sound);
+
+          sendGift(
+            effectiveUser,
+            gift.displayName,
+            gift.effectiveAssetUrl.addBaseURL(),
+            sound,
+            giftId: gift.id,
+            coinPrice: coinPrice,
+          );
 
         },
         giftType: type,

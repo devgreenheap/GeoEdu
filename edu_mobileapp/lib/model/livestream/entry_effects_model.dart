@@ -109,8 +109,8 @@ class GiftEffect {
     // otherwise lookup the actual gift uploaded in admin
     String audio = json['audio']?.toString().trim() ?? '';
     if (audio.isEmpty || audio == 'assets/images/fairy-sparkle.mp3') {
-      final serverGifts =
-          SessionManager.instance.getSettings()?.availableGifts ?? [];
+      final settings = SessionManager.instance.getSettings();
+      final serverGifts = settings?.availableGifts ?? settings?.gifts ?? [];
       Gift? matched;
       if (giftId != null && giftId > 0) {
         matched = serverGifts.firstWhereOrNull((g) => g.id == giftId);
@@ -123,6 +123,8 @@ class GiftEffect {
       }
       if (matched != null && matched.effectiveSoundUrl.isNotEmpty) {
         audio = matched.effectiveSoundUrl;
+      } else if (giftName.toLowerCase().trim() == 'pen') {
+        audio = Gift.penGift.effectiveSoundUrl;
       }
     }
 
