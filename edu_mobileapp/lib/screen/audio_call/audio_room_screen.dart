@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:geoedu/common/controller/follow_controller.dart';
 import 'package:geoedu/common/extensions/string_extension.dart';
 import 'package:geoedu/common/manager/session_manager.dart';
+import 'package:geoedu/common/service/api/common_service.dart';
 import 'package:geoedu/common/service/api/user_service.dart';
 import 'package:geoedu/common/widget/custom_image.dart';
 import 'package:geoedu/common/widget/level_badge.dart';
@@ -18,6 +19,7 @@ import 'package:geoedu/screen/live_stream/livestream_screen/widget/entry_effects
     show GiftEffectWidget;
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_stream_like_button.dart';
 import 'package:geoedu/screen/diamond_purchase/diamond_purchase_screen.dart';
+import 'package:geoedu/screen/star_store_diamond_and_effect/star_store_diamond _screen.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/audio_theme_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
@@ -114,11 +116,11 @@ class AudioRoomScreen extends StatelessWidget {
                       : const SizedBox.shrink()),
                   if (isHost) _buildPinCommentInput(controller),
                   Expanded(child: _buildChatList(controller)),
+                  _buildChatInput(controller),
                   if (!isHost)
                     Obx(() => controller.isGiftBarOpen.value
                         ? _buildInlineGiftBar(controller)
                         : const SizedBox.shrink()),
-                  _buildChatInput(controller),
                   _buildBottomRow(controller),
                 ],
               ),
@@ -286,7 +288,9 @@ class AudioRoomScreen extends StatelessWidget {
     final gift = controller.featuredGift;
     if (gift == null) return const SizedBox.shrink();
     return GestureDetector(
-      onTap: controller.openGiftBar,
+      onTap: controller.isHost
+          ? () => _showFavouriteGiftSheet(controller)
+          : controller.openGiftBar,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
         decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(14)),
@@ -1208,113 +1212,246 @@ class AudioRoomScreen extends StatelessWidget {
 
   Widget _buildInlineGiftBar(AudioRoomController controller) {
     return Obx(() {
-      final Setting? setting = SessionManager.instance.getSettings();
-      final List<Gift> allGifts = controller.availableGifts.isNotEmpty
+      final gifts = controller.availableGifts.isNotEmpty
           ? controller.availableGifts
-          : setting.allGiftsWithPen;
-      final List<Gift> gifts = List<Gift>.from(allGifts);
+          : (SessionManager.instance.getSettings()?.availableGifts ?? []);
+
+      if (gifts.isEmpty && controller.availableGifts.isEmpty) {
+        CommonService.instance.fetchGlobalSettings().then((_) {
+          final fresh = SessionManager.instance.getSettings();
+          if (fresh != null && fresh.availableGifts.isNotEmpty) {
+            controller.availableGifts.value = fresh.availableGifts;
+          }
+        });
+      }
+
       final favouriteId = controller.favouriteGiftId.value;
+      final sortedGifts = List<Gift>.from(gifts);
       if (favouriteId != null) {
-        gifts.sort((a, b) => (a.id == favouriteId ? 0 : 1)
+        sortedGifts.sort((a, b) => (a.id == favouriteId ? 0 : 1)
             .compareTo(b.id == favouriteId ? 0 : 1));
       }
+
       return Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         decoration: BoxDecoration(
-          color: ColorRes.cardBackground.withValues(alpha: .92),
-          borderRadius: BorderRadius.circular(14),
+          color: ColorRes.cardBackground.withValues(alpha: .96),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.08),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.4),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Text('Send a gift to ${room.hostName ?? "host"}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                Text(
+                  'Send a gift to ${room.hostName ?? "host"}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const Spacer(),
-                Text('${controller.diamondBalance.value}',
-                    style: const TextStyle(
-                        color: ColorRes.primaryColor,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600)),
-                const SizedBox(width: 4),
-                const Icon(Icons.diamond, color: ColorRes.primaryColor, size: 14),
-                const SizedBox(width: 8),
+                InkWell(
+                  onTap: () async {
+                    await Get.to(() => const StarStoreDiamondScreen());
+                    controller.fetchDiamondBalance();
+                  },
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFFF9500), Color(0xFFFF5E3A)],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFFF9500).withValues(alpha: 0.35),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.diamond_rounded,
+                            color: Colors.white, size: 13),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${controller.diamondBalance.value}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.25),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.add, color: Colors.white, size: 10),
+                              SizedBox(width: 2),
+                              Text(
+                                'Buy',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
                 GestureDetector(
                   onTap: () => controller.isGiftBarOpen.value = false,
-                  child: const Icon(Icons.close, size: 18, color: Colors.white70),
+                  behavior: HitTestBehavior.opaque,
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.close, size: 18, color: Colors.white70),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             SizedBox(
-              height: 94,
-              child: gifts.isEmpty
+              height: 106,
+              child: sortedGifts.isEmpty
                   ? const Center(
-                      child: Text('No gifts available',
-                          style: TextStyle(color: Colors.white38, fontSize: 12)))
+                      child: Padding(
+                        padding: EdgeInsets.all(20),
+                        child: CircularProgressIndicator(
+                          color: ColorRes.primaryColor,
+                          strokeWidth: 2,
+                        ),
+                      ),
+                    )
                   : ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      itemCount: gifts.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: sortedGifts.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 10),
                       itemBuilder: (context, index) {
-                        final gift = gifts[index];
-                        final isFavourite = gift.id != null &&
-                            gift.id == controller.favouriteGiftId.value;
+                        final gift = sortedGifts[index];
+                        final isFavourite =
+                            gift.id != null && gift.id == favouriteId;
+
+                        String? badgeText;
+                        if (gift.categoryName != null &&
+                            gift.categoryName!.isNotEmpty) {
+                          badgeText = gift.categoryName;
+                        } else if (gift.createdAt != null &&
+                            DateTime.now().difference(gift.createdAt!).inDays <=
+                                7) {
+                          badgeText = 'New';
+                        }
+
                         return GestureDetector(
                           behavior: HitTestBehavior.opaque,
                           onTap: () => controller.sendGiftDirect(gift),
                           child: Container(
-                            width: 66,
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 4, horizontal: 2),
+                            width: 76,
+                            height: 104,
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.05),
-                              borderRadius: BorderRadius.circular(10),
+                              color: isFavourite
+                                  ? const Color(0xFF2E221B)
+                                  : Colors.white.withValues(alpha: 0.06),
+                              borderRadius: BorderRadius.circular(16),
+                              border: isFavourite
+                                  ? Border.all(color: ColorRes.gold, width: 2)
+                                  : Border.all(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.08),
+                                      width: 1),
                             ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              mainAxisAlignment: MainAxisAlignment.center,
+                            child: Stack(
+                              alignment: Alignment.center,
                               children: [
-                                Stack(
-                                  clipBehavior: Clip.none,
+                                if (badgeText != null)
+                                  Positioned(
+                                    top: 5,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 1.5),
+                                      decoration: BoxDecoration(
+                                        color: badgeText
+                                                .toLowerCase()
+                                                .contains('love')
+                                            ? const Color(0xFFE91E63)
+                                            : const Color(0xFFFFB300),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        badgeText,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 8.5,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                if (isFavourite)
+                                  const Positioned(
+                                    top: 5,
+                                    right: 6,
+                                    child: Icon(Icons.star,
+                                        size: 14, color: ColorRes.gold),
+                                  ),
+                                Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
+                                    SizedBox(height: badgeText != null ? 10 : 0),
                                     CustomImage(
                                       image: gift.image?.addBaseURL(),
-                                      size: const Size(38, 38),
-                                      radius: 6,
+                                      size: const Size(42, 42),
+                                      radius: 8,
                                     ),
-                                    if (isFavourite)
-                                      const Positioned(
-                                        top: -4,
-                                        right: -4,
-                                        child: Icon(Icons.star,
-                                            size: 14, color: ColorRes.gold),
-                                      ),
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.diamond,
+                                            color: Colors.white, size: 12),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          '${gift.coinPrice ?? 0}',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  gift.displayName,
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${gift.coinPrice ?? 0} Diamonds',
-                                  style: const TextStyle(
-                                      color: ColorRes.primaryColor,
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w500),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.center,
                                 ),
                               ],
                             ),
@@ -1858,106 +1995,247 @@ class AudioRoomScreen extends StatelessWidget {
   }
 
   void _showFavouriteGiftSheet(AudioRoomController controller) {
-    final Setting? setting = SessionManager.instance.getSettings();
-    final List<Gift> gifts = setting.allGiftsWithPen;
+    final initialGifts = controller.availableGifts.isNotEmpty
+        ? controller.availableGifts
+        : (SessionManager.instance.getSettings()?.availableGifts ?? []);
+
+    final Rx<Gift?> selectedGift = Rx<Gift?>(null);
+    final currentFavId = controller.favouriteGiftId.value;
+    if (currentFavId != null) {
+      selectedGift.value =
+          initialGifts.firstWhereOrNull((g) => g.id == currentFavId);
+    }
+    selectedGift.value ??= initialGifts.isNotEmpty ? initialGifts.first : null;
+
+    if (controller.availableGifts.isEmpty) {
+      CommonService.instance.fetchGlobalSettings().then((_) {
+        final fresh = SessionManager.instance.getSettings();
+        if (fresh != null && fresh.availableGifts.isNotEmpty) {
+          controller.availableGifts.value = fresh.availableGifts;
+          if (selectedGift.value == null &&
+              controller.availableGifts.isNotEmpty) {
+            selectedGift.value = controller.availableGifts.first;
+          }
+        }
+      });
+    }
+
     Get.bottomSheet(
       Container(
-        constraints:
-            BoxConstraints(maxHeight: MediaQuery.of(Get.context!).size.height * 0.55),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
         decoration: const BoxDecoration(
           color: ColorRes.cardBackground,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Set Favourite Gift',
-                style: TextStyle(
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Set Favourite Gift',
+                  style: TextStyle(
                     color: Colors.white,
                     fontSize: 18,
-                    fontWeight: FontWeight.w600)),
-            const SizedBox(height: 4),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => Get.back(),
+                  behavior: HitTestBehavior.opaque,
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.close, color: Colors.white70, size: 22),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
             const Text(
-                'This will be shown to viewers, which will help you get more gifts',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white38, fontSize: 12)),
-            const SizedBox(height: 16),
-            Flexible(
-              child: gifts.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.all(20),
-                      child: Text('No gifts available',
-                          style: TextStyle(color: Colors.white38)),
-                    )
-                  : Obx(() => GridView.builder(
-                        shrinkWrap: true,
-                        itemCount: gifts.length,
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 4,
-                                mainAxisSpacing: 10,
-                                crossAxisSpacing: 10,
-                                childAspectRatio: 0.72),
-                        itemBuilder: (context, index) {
-                          final gift = gifts[index];
-                          final isFavourite = gift.id != null &&
-                              gift.id == controller.favouriteGiftId.value;
-                          return GestureDetector(
-                            onTap: () {
-                              controller.setFavouriteGift(gift);
-                              Get.back();
-                            },
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(8),
-                                color: Colors.white.withValues(alpha: 0.05),
-                                border: isFavourite
-                                    ? Border.all(color: ColorRes.gold, width: 2)
-                                    : null,
-                              ),
-                              padding: const EdgeInsets.all(4),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
+              'This will be shown to viewers, which will help you get more gifts',
+              style: TextStyle(color: Colors.white60, fontSize: 13),
+            ),
+            const SizedBox(height: 18),
+            Obx(() {
+              final gifts = controller.availableGifts.isNotEmpty
+                  ? controller.availableGifts
+                  : (SessionManager.instance.getSettings()?.availableGifts ?? []);
+
+              if (gifts.isEmpty) {
+                return const SizedBox(
+                  height: 100,
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      color: ColorRes.primaryColor,
+                      strokeWidth: 2,
+                    ),
+                  ),
+                );
+              }
+
+              if (selectedGift.value == null && gifts.isNotEmpty) {
+                final favId = controller.favouriteGiftId.value;
+                selectedGift.value =
+                    gifts.firstWhereOrNull((g) => g.id == favId) ?? gifts.first;
+              }
+
+              return SizedBox(
+                height: 102,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: gifts.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) {
+                    final gift = gifts[index];
+                    return Obx(() {
+                      final isSelected = selectedGift.value?.id != null &&
+                          selectedGift.value?.id == gift.id;
+
+                      String? badgeText;
+                      if (gift.categoryName != null &&
+                          gift.categoryName!.isNotEmpty) {
+                        badgeText = gift.categoryName;
+                      } else if (gift.createdAt != null &&
+                          DateTime.now().difference(gift.createdAt!).inDays <= 7) {
+                        badgeText = 'New';
+                      }
+
+                      return GestureDetector(
+                        onTap: () => selectedGift.value = gift,
+                        child: Container(
+                          width: 76,
+                          height: 102,
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? const Color(0xFF2E221B)
+                                : Colors.white.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(16),
+                            border: isSelected
+                                ? Border.all(
+                                    color: const Color(0xFFFF7A19), width: 2)
+                                : Border.all(
+                                    color: Colors.transparent, width: 2),
+                          ),
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              if (badgeText != null)
+                                Positioned(
+                                  top: 5,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: badgeText
+                                              .toLowerCase()
+                                              .contains('love')
+                                          ? const Color(0xFFE91E63)
+                                          : const Color(0xFFFFB300),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      badgeText,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 8.5,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
+                                  SizedBox(height: badgeText != null ? 10 : 0),
                                   CustomImage(
                                     image: gift.image?.addBaseURL(),
-                                    size: const Size(40, 40),
-                                    radius: 6,
+                                    size: const Size(42, 42),
+                                    radius: 8,
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    gift.displayName,
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${gift.coinPrice ?? 0} Diamonds',
-                                    style: const TextStyle(
-                                        color: ColorRes.primaryColor,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w500),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.diamond,
+                                          color: Colors.white, size: 12),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        '${gift.coinPrice ?? 0}',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
-                            ),
-                          );
-                        },
-                      )),
+                            ],
+                          ),
+                        ),
+                      );
+                    });
+                  },
+                ),
+              );
+            }),
+            const SizedBox(height: 22),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF9500),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  elevation: 0,
+                ),
+                onPressed: () {
+                  if (selectedGift.value != null) {
+                    controller.setFavouriteGift(selectedGift.value!);
+                    Get.back();
+                  }
+                },
+                child: const Text(
+                  'Set Gift',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Center(
+              child: GestureDetector(
+                onTap: () {
+                  controller.removeFavouriteGift();
+                  Get.back();
+                },
+                behavior: HitTestBehavior.opaque,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    'Remove Favourite Gift',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
             ),
           ],
         ),
       ),
+      isScrollControlled: true,
     );
   }
 

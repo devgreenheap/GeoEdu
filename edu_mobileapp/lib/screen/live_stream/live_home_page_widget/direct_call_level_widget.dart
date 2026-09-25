@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -6,7 +7,6 @@ import 'package:geoedu/common/manager/session_manager.dart';
 import 'package:geoedu/model/livestream/livestream.dart';
 import 'package:geoedu/screen/level_screen/level_screen_2/level_screen_new.dart';
 import 'package:geoedu/screen/live_stream/live_stream_search_screen/live_stream_search_screen_controller.dart';
-import 'package:geoedu/screen/live_stream/livestream_screen/audience/live_stream_audience_screen.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
 
@@ -36,13 +36,21 @@ class DirectCallLevelWidget extends StatelessWidget {
 
             return _buildCard(
               gradient: const LinearGradient(
-                colors: [ColorRes.cardBackground, ColorRes.surfaceBackground],
+                colors: [Color(0xFF4FACFE), Color(0xFF00C6FF)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF00C6FF).withValues(alpha: 0.35),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
               leftIcon: AssetRes.videoIcon,
               title: hasRealLive ? "Join Call" : "Direct Call",
               value: hasRealLive ? "$totalMembers watching" : "",
+              valueColor: Colors.white,
               rightIcon: AssetRes.personGirlIcon,
               onTap: () => _onDirectCallTap(controller, realLives, context),
             );
@@ -109,63 +117,79 @@ class DirectCallLevelWidget extends StatelessWidget {
     required String rightIcon,
     required VoidCallback onTap,
     Color valueColor = ColorRes.primaryColor,
+    bool isBlur = false,
+    Border? border,
+    List<BoxShadow>? boxShadow,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 64,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          gradient: gradient,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Row(
-          children: [
+    Widget cardContent = Container(
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        gradient: gradient,
+        borderRadius: BorderRadius.circular(18),
+        border: border,
+        boxShadow: boxShadow,
+      ),
+      child: Row(
+        children: [
+          /// LEFT ICON
+          FittedBox(
+            child: Image.asset(leftIcon, height: 16),
+          ),
 
-            /// LEFT ICON
-            FittedBox(
-              child: Image.asset(leftIcon, height: 16),
-            ),
+          const SizedBox(width: 10),
 
-            const SizedBox(width: 10),
-
-            /// TEXT AREA
-            Expanded(
-              child: FittedBox(
-                alignment: Alignment.centerLeft,
-                fit: BoxFit.scaleDown,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+          /// TEXT AREA
+          Expanded(
+            child: FittedBox(
+              alignment: Alignment.centerLeft,
+              fit: BoxFit.scaleDown,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  if (value.isNotEmpty)
                     Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500,
-                        fontSize: 14
+                      value,
+                      style: TextStyle(
+                        color: valueColor,
+                        fontSize: 12,
                       ),
                     ),
-                    if (value.isNotEmpty)
-                      Text(
-                        value,
-                        style: TextStyle(
-                          color: valueColor,
-                          fontSize: 12,
-                        ),
-                      ),
-                  ],
-                ),
+                ],
               ),
             ),
+          ),
 
-            /// RIGHT ICON
-            FittedBox(
-              child: Image.asset(rightIcon, height: 35),
-            ),
-          ],
-        ),
+          /// RIGHT ICON
+          FittedBox(
+            child: Image.asset(rightIcon, height: 35),
+          ),
+        ],
       ),
+    );
+
+    if (isBlur) {
+      cardContent = ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: cardContent,
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: onTap,
+      child: cardContent,
     );
   }
 }

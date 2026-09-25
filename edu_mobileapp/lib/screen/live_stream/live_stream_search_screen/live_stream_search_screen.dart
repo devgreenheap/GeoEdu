@@ -4,7 +4,6 @@ import 'package:geoedu/common/widget/live_room/popular_host_avatar.dart';
 import 'package:geoedu/model/general/coupon_model.dart';
 import 'package:geoedu/common/service/api/gift_wallet_service.dart';
 import 'package:geoedu/common/widget/loader_widget.dart';
-import 'package:geoedu/screen/live_stream/live_home_page_widget/all_rooms_screen.dart';
 import 'package:geoedu/screen/live_stream/live_home_page_widget/room_grid_with_banners.dart';
 import 'package:geoedu/screen/star_score/widgets/diamond_purchase_bottom.dart';
 import 'package:geoedu/screen/star_store_diamond_and_effect/star_store_diamond _screen.dart';
@@ -15,7 +14,6 @@ import 'package:geoedu/screen/live_stream/live_home_page_widget/geo_premium_bann
 import 'package:geoedu/screen/live_stream/live_home_page_widget/live_categories_list_widget.dart';
 import 'package:geoedu/screen/live_stream/live_stream_search_screen/live_stream_search_screen_controller.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_stream_background_blur_image.dart';
-import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
 import '../../../common/widget/banner_carousel_new.dart';
 import '../../../model/user_model/user_model.dart';
@@ -184,10 +182,8 @@ class _PopularHostsRow extends StatelessWidget {
   }
 }
 
-/// Merged 2-column preview grid (video + recorded + audio), replacing the
-/// previously separate Live Classrooms / Live Audio Rooms rows. Shows the
-/// first 6 items with a "View All" leading to [AllRoomsScreen] for the
-/// full list, mirroring the header pattern already used above it.
+/// Merged 2-column preview grid (video + recorded + audio) displayed directly
+/// below the Live Classrooms category selector. Shows the first 6 items.
 class _MergedRoomsGrid extends StatelessWidget {
   final LiveStreamSearchScreenController controller;
 
@@ -196,63 +192,12 @@ class _MergedRoomsGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final items = controller.filteredHomeRoomItems;
+      final items = controller.mergedRoomItems;
       final isInitialLoading = controller.isLoading.value && items.isEmpty;
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Row(
-              children: [
-                Image.asset(AssetRes.liveStreamIcon, height: 26),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text('Live Chatrooms',
-                      style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
-                ),
-                GestureDetector(
-                  onTap: () => Get.to(() => const AllRoomsScreen()),
-                  child: const Text('View All',
-                      style: TextStyle(color: ColorRes.primaryColor, fontSize: 12, fontWeight: FontWeight.w600)),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 32,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              itemCount: LiveStreamSearchScreenController.roomFilterLabels.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final isSelected = controller.selectedRoomFilterIndex.value == index;
-                return GestureDetector(
-                  onTap: () => controller.onRoomFilterSelected(index),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: isSelected ? null : ColorRes.cardBackground,
-                      gradient: isSelected ? ColorRes.primaryGradient : null,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      LiveStreamSearchScreenController.roomFilterLabels[index],
-                      style: TextStyle(
-                          color: isSelected ? Colors.white : const Color(0xFFB8B8B8),
-                          fontSize: 12.5,
-                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 12),
           if (items.isEmpty && !isInitialLoading)
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 14),

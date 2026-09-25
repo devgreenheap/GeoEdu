@@ -11,6 +11,7 @@ import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/model/general/settings_model.dart';
 import 'package:geoedu/model/livestream/app_user.dart';
 import 'package:geoedu/screen/gift_sheet/send_gift_sheet_controller.dart';
+import 'package:geoedu/screen/star_store_diamond_and_effect/star_store_diamond _screen.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/utilities/style_res.dart';
@@ -114,6 +115,45 @@ class SendGiftSheet extends StatelessWidget {
             Text('Diamonds You Have',
                 style: TextStyleCustom.outFitRegular400(
                     fontSize: 15, color: textLightGrey(context))),
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: () async {
+                await Get.to(() => const StarStoreDiamondScreen());
+                controller.refreshDiamondWallet();
+              },
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF9500), Color(0xFFFF5E3A)],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFF9500).withValues(alpha: 0.35),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.diamond_rounded, color: Colors.white, size: 14),
+                    SizedBox(width: 5),
+                    Text(
+                      'Purchase Diamonds',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 10),
             Expanded(child: Obx(
               () {

@@ -1951,11 +1951,21 @@ class WalletController extends Controller
 
     private function validateGiftImage(Request $request, bool $required = true)
     {
+        if (isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE) {
+            $err = $_FILES['image']['error'];
+            if ($err === UPLOAD_ERR_INI_SIZE || $err === UPLOAD_ERR_FORM_SIZE) {
+                $maxSize = ini_get('upload_max_filesize') ?: '2M';
+                return "The thumbnail image exceeds the server upload limit ($maxSize). Please choose a smaller image or increase server upload limits.";
+            } elseif ($err !== UPLOAD_ERR_OK) {
+                return 'Image upload failed with server error code ' . $err;
+            }
+        }
+
         if (!$request->hasFile('image')) {
             return $required ? 'Gift image is required' : null;
         }
         $file = $request->file('image');
-        if (!$file->isValid()) {
+        if (!$file || !$file->isValid()) {
             return 'Invalid image file uploaded';
         }
         $ext = strtolower($file->getClientOriginalExtension());
@@ -1968,11 +1978,21 @@ class WalletController extends Controller
 
     private function validateGiftAnimation(Request $request)
     {
+        if (isset($_FILES['animation']) && $_FILES['animation']['error'] !== UPLOAD_ERR_NO_FILE) {
+            $err = $_FILES['animation']['error'];
+            if ($err === UPLOAD_ERR_INI_SIZE || $err === UPLOAD_ERR_FORM_SIZE) {
+                $maxSize = ini_get('upload_max_filesize') ?: '2M';
+                return "The animation file exceeds the server upload limit ($maxSize). Please choose a smaller file or increase server upload limits.";
+            } elseif ($err !== UPLOAD_ERR_OK) {
+                return 'Animation upload failed with server error code ' . $err;
+            }
+        }
+
         if (!$request->hasFile('animation')) {
             return null;
         }
         $file = $request->file('animation');
-        if (!$file->isValid()) {
+        if (!$file || !$file->isValid()) {
             return 'Invalid animation file uploaded';
         }
         $ext = strtolower($file->getClientOriginalExtension());
@@ -1985,11 +2005,21 @@ class WalletController extends Controller
 
     private function validateGiftSound(Request $request)
     {
+        if (isset($_FILES['sound']) && $_FILES['sound']['error'] !== UPLOAD_ERR_NO_FILE) {
+            $err = $_FILES['sound']['error'];
+            if ($err === UPLOAD_ERR_INI_SIZE || $err === UPLOAD_ERR_FORM_SIZE) {
+                $maxSize = ini_get('upload_max_filesize') ?: '2M';
+                return "The sound file exceeds the server upload limit ($maxSize). Please choose a smaller audio file or increase server upload limits.";
+            } elseif ($err !== UPLOAD_ERR_OK) {
+                return 'Sound upload failed with server error code ' . $err;
+            }
+        }
+
         if (!$request->hasFile('sound')) {
             return null;
         }
         $file = $request->file('sound');
-        if (!$file->isValid()) {
+        if (!$file || !$file->isValid()) {
             return 'Invalid sound file uploaded';
         }
         $ext = strtolower($file->getClientOriginalExtension());
@@ -2008,8 +2038,6 @@ class WalletController extends Controller
             'coin_price' => 'required|integer|min:1',
             'diamond_price' => 'nullable|integer|min:1',
             'gift_category_id' => 'required|exists:tbl_gift_categories,id',
-            'animation' => 'nullable|file|max:20480',
-            'sound' => 'nullable|file|max:20480',
         ]);
         if ($validator->fails()) {
             return response()->json([
@@ -2063,8 +2091,6 @@ class WalletController extends Controller
             'coin_price' => 'required|integer|min:1',
             'diamond_price' => 'nullable|integer|min:1',
             'gift_category_id' => 'required|exists:tbl_gift_categories,id',
-            'animation' => 'nullable|file|max:20480',
-            'sound' => 'nullable|file|max:20480',
         ]);
         if ($validator->fails()) {
             return response()->json([

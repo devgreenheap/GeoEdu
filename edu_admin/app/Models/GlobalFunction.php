@@ -1198,31 +1198,34 @@ class GlobalFunction extends Model
         $rawAppName = env('APP_NAME');
         $cleanAppName = $rawAppName ? preg_replace('/[^A-Za-z0-9_\-]/', '_', $rawAppName) : '';
 
-        // Create file name without spaces
-        $fileName = time() . '_' . $cleanAppName . '_' . str_replace(' ', '_', $file->getClientOriginalName());
+        // Create safe file name
+        $originalName = preg_replace('/[^A-Za-z0-9_\-\.]/', '_', $file->getClientOriginalName());
+        $fileName = time() . '_' . ($cleanAppName ? $cleanAppName . '_' : '') . $originalName;
 
         // Set base path with cleaned app name
         $appNamePath = $cleanAppName ? $cleanAppName . '/' : '';
 
         $filePath = $storageType === 'PUBLIC' ? 'uploads/' . $fileName : $appNamePath . 'uploads/' . $fileName;
 
+        $fileContent = file_get_contents($file->getRealPath() ?: $file->getPathname());
+
         // Store file in the appropriate disk
         switch ($storageType) {
             case 'AWSS3':
-                Storage::disk('s3')->put($filePath, file_get_contents($file), 'public');
+                Storage::disk('s3')->put($filePath, $fileContent, 'public');
                 break;
             case 'DOSPACE':
-                Storage::disk('digitalocean')->put($filePath, file_get_contents($file), 'public');
+                Storage::disk('digitalocean')->put($filePath, $fileContent, 'public');
                 break;
             case 'PUBLIC':
             default:
-                Storage::disk('public')->put($filePath, file_get_contents($file), 'public');
+                Storage::disk('public')->put($filePath, $fileContent, 'public');
                 try {
-                    $targetDir = public_path('uploads');
+                    $targetDir = dirname(public_path($filePath));
                     if (!file_exists($targetDir)) {
                         @mkdir($targetDir, 0777, true);
                     }
-                    @file_put_contents(public_path($filePath), file_get_contents($file));
+                    @file_put_contents(public_path($filePath), $fileContent);
                 } catch (\Exception $e) {
                     // ignore
                 }

@@ -17,6 +17,8 @@ import 'package:geoedu/screen/gift_sheet/send_gift_dialog.dart';
 import 'package:geoedu/screen/gift_sheet/send_gift_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
 import 'package:geoedu/common/manager/gift_audio_player.dart';
+import 'package:geoedu/screen/star_store_diamond_and_effect/star_store_diamond _screen.dart';
+import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/entry_effects_widget.dart'
     show AnimatedSvgPlayer;
 
@@ -87,17 +89,183 @@ class SendGiftSheetController extends BaseController {
     });
   }
 
-  Future<void> _fetchDiamondWallet() async {
+  Future<void> refreshDiamondWallet() async {
     final response = await GiftWalletService.instance.fetchMyDiamondWallet();
     diamondWallet.value = response.data;
   }
+
+  Future<void> _fetchDiamondWallet() => refreshDiamondWallet();
 
   void onGiftTap(Gift gift, BuildContext context) {
     if (gift.id == null) {
       return showSnackBar('Gift Not Found');
     }
 
+    final coinPrice = gift.coinPrice ?? 0;
+    final currentBalance = diamondWallet.value?.diamondBalance ?? 0;
+    if (currentBalance < coinPrice) {
+      showInsufficientDiamondsDialog(
+        requiredDiamonds: coinPrice.toInt(),
+        giftName: gift.displayName,
+      );
+      return;
+    }
+
     sendGift(gift, context);
+  }
+
+  void showInsufficientDiamondsDialog({
+    required int requiredDiamonds,
+    required String giftName,
+  }) {
+    Get.dialog(
+      Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E222D),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: const Color(0xFFFF9500).withValues(alpha: 0.4),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.7),
+                blurRadius: 24,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 66,
+                height: 66,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF9500), Color(0xFFFF5E3A)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFF9500).withValues(alpha: 0.4),
+                      blurRadius: 18,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.diamond_rounded,
+                  color: Colors.white,
+                  size: 36,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Insufficient Diamonds',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 19,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 10),
+              RichText(
+                textAlign: TextAlign.center,
+                text: TextSpan(
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    height: 1.45,
+                  ),
+                  children: [
+                    const TextSpan(text: 'You need '),
+                    TextSpan(
+                      text: '$requiredDiamonds Diamonds',
+                      style: const TextStyle(
+                        color: Color(0xFFFF9500),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    TextSpan(text: ' to send $giftName.\nYour current balance is '),
+                    TextSpan(
+                      text: '${diamondWallet.value?.diamondBalance ?? 0} Diamonds',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const TextSpan(text: '.'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.25),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () => Get.back(),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(color: Colors.white60, fontSize: 14),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: ColorRes.primaryColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        elevation: 4,
+                      ),
+                      onPressed: () async {
+                        Get.back();
+                        await Get.to(() => const StarStoreDiamondScreen());
+                        refreshDiamondWallet();
+                      },
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.add_shopping_cart_rounded, size: 16, color: Colors.white),
+                          SizedBox(width: 6),
+                          Text(
+                            'Purchase',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> sendGift(Gift gift, BuildContext context) async {

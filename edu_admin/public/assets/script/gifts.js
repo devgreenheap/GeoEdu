@@ -4,46 +4,59 @@ $(document).ready(function () {
 
     $("#editGiftForm").on("submit", function (e) {
         e.preventDefault();
-            checkUserType(() => {
-                var formId = '#editGiftForm';
-                var url =  `${domainUrl}editGift`;
-                var formdata = collectFormData(formId);
-                showFormSpinner(formId);
-            try {
-                doAjax(url, formdata).then(function (response){
-                    hideFormSpinner(formId);
-                    if(response.status){
-                        location.reload();
-                    }else{
-                        showErrorToast(response.message);
-                    }
-                });
-            } catch (error) {
-            console.log('Error! : ', error.message);
-                showErrorToast(error.message);
-            }
+        checkUserType(() => {
+            var formId = '#editGiftForm';
+            var url =  `${domainUrl}editGift`;
+            var formdata = collectFormData(formId);
+            showFormSpinner(formId);
+            doAjax(url, formdata).then(function (response){
+                hideFormSpinner(formId);
+                if(response.status){
+                    location.reload();
+                }else{
+                    showErrorToast(response.message || 'Failed to update gift');
+                }
+            }).catch(function (xhr) {
+                hideFormSpinner(formId);
+                var msg = 'Upload failed. ';
+                if (xhr.status === 413) {
+                    msg += 'The file is too large for the server (HTTP 413).';
+                } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                    msg = xhr.responseJSON.message;
+                } else {
+                    msg += (xhr.statusText || 'Please try again.');
+                }
+                showErrorToast(msg);
+            });
         });
     });
+
     $("#addGiftForm").on("submit", function (e) {
         e.preventDefault();
-            checkUserType(() => {
-                var formId = '#addGiftForm';
-                var url =  `${domainUrl}addGift`;
-                var formdata = collectFormData(formId);
-                showFormSpinner(formId);
-            try {
-                doAjax(url, formdata).then(function (response){
-                    hideFormSpinner(formId);
-                    if(response.status){
-                        location.reload();
-                    }else{
-                        showErrorToast(response.message);
-                    }
-                });
-            } catch (error) {
-            console.log('Error! : ', error.message);
-                showErrorToast(error.message);
-            }
+        checkUserType(() => {
+            var formId = '#addGiftForm';
+            var url =  `${domainUrl}addGift`;
+            var formdata = collectFormData(formId);
+            showFormSpinner(formId);
+            doAjax(url, formdata).then(function (response){
+                hideFormSpinner(formId);
+                if(response.status){
+                    location.reload();
+                }else{
+                    showErrorToast(response.message || 'Failed to add gift');
+                }
+            }).catch(function (xhr) {
+                hideFormSpinner(formId);
+                var msg = 'Upload failed. ';
+                if (xhr.status === 413) {
+                    msg += 'The file is too large for the server (HTTP 413).';
+                } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                    msg = xhr.responseJSON.message;
+                } else {
+                    msg += (xhr.statusText || 'Please try again.');
+                }
+                showErrorToast(msg);
+            });
         });
     });
 
@@ -150,6 +163,21 @@ $(document).ready(function () {
         modalShow('#editGiftModal');
     });
 
+    var MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20MB
+    var MAX_ANIMATION_SIZE = 50 * 1024 * 1024; // 50MB
+    var MAX_SOUND_SIZE = 30 * 1024 * 1024; // 30MB
+
+    $('#inputAddGiftImage, #inputEditGiftImage').on('change', function () {
+        if (this.files && this.files.length > 0) {
+            var file = this.files[0];
+            if (file.size > MAX_IMAGE_SIZE) {
+                showErrorToast('Image size exceeds 20MB limit');
+                $(this).val('');
+                return;
+            }
+        }
+    });
+
     previewImage('#inputAddGiftImage', '#imgAddGiftPreview');
     previewImage('#inputEditGiftImage', '#imgEditGiftPreview');
 
@@ -157,6 +185,13 @@ $(document).ready(function () {
     previewMusic('#addGiftSound', '#audioAddGiftPreview');
     $('#addGiftSound').on('change', function () {
         if (this.files && this.files.length > 0) {
+            var file = this.files[0];
+            if (file.size > MAX_SOUND_SIZE) {
+                showErrorToast('Sound file size exceeds 30MB limit');
+                $(this).val('');
+                $('#addGiftSoundPreview').addClass('d-none');
+                return;
+            }
             $('#addGiftSoundPreview').removeClass('d-none');
         } else {
             $('#addGiftSoundPreview').addClass('d-none');
@@ -166,15 +201,36 @@ $(document).ready(function () {
     previewMusic('#editGiftSound', '#audioEditGiftPreview');
     $('#editGiftSound').on('change', function () {
         if (this.files && this.files.length > 0) {
+            var file = this.files[0];
+            if (file.size > MAX_SOUND_SIZE) {
+                showErrorToast('Sound file size exceeds 30MB limit');
+                $(this).val('');
+                return;
+            }
             $('#editGiftCurrentSound').removeClass('d-none');
-            $('#editGiftSoundName').text(this.files[0].name + ' (New file selected)');
+            $('#editGiftSoundName').text(file.name + ' (New file selected)');
         }
     });
 
     // Preview newly selected animation files
     $('#addGiftAnimation').on('change', function () {
         if (this.files && this.files.length > 0) {
-            $('#addGiftAnimationFileName').text(this.files[0].name);
+            var file = this.files[0];
+            var ext = file.name.split('.').pop().toLowerCase();
+            var allowed = ['svga', 'svg', 'gif', 'png', 'webp', 'mp4', 'json'];
+            if (!allowed.includes(ext)) {
+                showErrorToast('Animation must be .svga, .svg, .gif, .png, .webp, or .mp4');
+                $(this).val('');
+                $('#addGiftAnimationPreview').addClass('d-none');
+                return;
+            }
+            if (file.size > MAX_ANIMATION_SIZE) {
+                showErrorToast('Animation file size exceeds 50MB limit');
+                $(this).val('');
+                $('#addGiftAnimationPreview').addClass('d-none');
+                return;
+            }
+            $('#addGiftAnimationFileName').text(file.name);
             $('#addGiftAnimationPreview').removeClass('d-none');
         } else {
             $('#addGiftAnimationPreview').addClass('d-none');
@@ -183,8 +239,21 @@ $(document).ready(function () {
 
     $('#editGiftAnimation').on('change', function () {
         if (this.files && this.files.length > 0) {
+            var file = this.files[0];
+            var ext = file.name.split('.').pop().toLowerCase();
+            var allowed = ['svga', 'svg', 'gif', 'png', 'webp', 'mp4', 'json'];
+            if (!allowed.includes(ext)) {
+                showErrorToast('Animation must be .svga, .svg, .gif, .png, .webp, or .mp4');
+                $(this).val('');
+                return;
+            }
+            if (file.size > MAX_ANIMATION_SIZE) {
+                showErrorToast('Animation file size exceeds 50MB limit');
+                $(this).val('');
+                return;
+            }
             $('#editGiftCurrentAnimation').removeClass('d-none');
-            $('#editGiftAnimationName').text(this.files[0].name + ' (New file selected)');
+            $('#editGiftAnimationName').text(file.name + ' (New file selected)');
             $('#editGiftAnimationLink').addClass('d-none');
         }
     });
