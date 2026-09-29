@@ -18,6 +18,7 @@
                     <tr>
                         <th>{{ __('Category') }}</th>
                         <th>{{ __('Sub Category') }}</th>
+                        <th>{{ __('Division') }}</th>
                         <th>{{ __('Topic') }}</th>
                         <th>{{ __('Status') }}</th>
                         <th style="width: 200px;" class="text-end">{{ __('Action') }}</th>
@@ -50,6 +51,12 @@
                         <label for="topic_sub_category_id" class="form-label">{{ __('Sub Category') }}</label>
                         <select name="sub_category_id" id="topic_sub_category_id" class="form-control select2 remove-searchbar" data-toggle="select2" required>
                             <option selected disabled>{{ __('Select Sub Category') }}</option>
+                        </select>
+                    </div>
+                    <div class="my-2">
+                        <label for="topic_division_id" class="form-label">{{ __('Division') }}</label>
+                        <select name="division_id" id="topic_division_id" class="form-control select2 remove-searchbar" data-toggle="select2">
+                            <option selected value="">{{ __('Select Division (Optional)') }}</option>
                         </select>
                     </div>
                     <div class="my-2">
@@ -92,6 +99,12 @@
                         <label for="edit_topic_sub_category_id" class="form-label">{{ __('Sub Category') }}</label>
                         <select name="sub_category_id" id="edit_topic_sub_category_id" class="form-control select2 remove-searchbar" data-toggle="select2" required>
                             <option selected disabled>{{ __('Select Sub Category') }}</option>
+                        </select>
+                    </div>
+                    <div class="my-2">
+                        <label for="edit_topic_division_id" class="form-label">{{ __('Division') }}</label>
+                        <select name="division_id" id="edit_topic_division_id" class="form-control select2 remove-searchbar" data-toggle="select2">
+                            <option selected value="">{{ __('Select Division (Optional)') }}</option>
                         </select>
                     </div>
                     <div class="my-2">

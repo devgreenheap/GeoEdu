@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_svga/flutter_svga.dart';
@@ -284,18 +285,38 @@ class _GiftEffectWidgetState extends State<GiftEffectWidget>
 
     final controller = SVGAAnimationController(vsync: this);
     try {
-      final isNetwork = gift.assetUrl.startsWith('http');
+      final raw = gift.assetUrl.trim();
+      final url = (raw.isNotEmpty &&
+              !raw.startsWith('http://') &&
+              !raw.startsWith('https://') &&
+              !raw.startsWith('assets/'))
+          ? raw.addBaseURL()
+          : raw;
+      final isNetwork = url.startsWith('http');
       final videoItem = isNetwork
-          ? await SVGAParser.shared.decodeFromURL(gift.assetUrl)
-          : await SVGAParser.shared.decodeFromAssets(gift.assetUrl);
+          ? await SVGAParser.shared.decodeFromURL(url)
+          : await SVGAParser.shared.decodeFromAssets(url);
       videoItem.audios.clear();
       controller.videoItem = videoItem;
       controller.reset();
-      controller.repeat();
+
+      // Cut sound and dismiss gift immediately when SVGA finishes its single run
+      controller.addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          GiftAudioPlayer.stop();
+          widget.activeGifts.remove(gift);
+          controller.dispose();
+          _svgaControllers.remove(gift.timestamp);
+        }
+      });
+
+      // Play ONLY ONCE (never repeat!)
+      controller.forward();
     } catch (_) {
       // A broken/unsupported SVGA source shouldn't crash the gift
       // animation layer — just skip showing this one.
       controller.dispose();
+      widget.activeGifts.remove(gift);
       return;
     }
 
@@ -308,38 +329,87 @@ class _GiftEffectWidgetState extends State<GiftEffectWidget>
   }
 
   Widget _buildGiftVisual(GiftEffect gift) {
+    final rawUrl = gift.assetUrl.trim();
+    final String url = (rawUrl.isNotEmpty &&
+            !rawUrl.startsWith('http://') &&
+            !rawUrl.startsWith('https://') &&
+            !rawUrl.startsWith('assets/'))
+        ? rawUrl.addBaseURL()
+        : rawUrl;
+
+    final rawThumb = (gift.thumbnailUrl?.trim() ?? '');
+    final String resolvedThumb = (rawThumb.isNotEmpty &&
+            !rawThumb.startsWith('http://') &&
+            !rawThumb.startsWith('https://') &&
+            !rawThumb.startsWith('assets/'))
+        ? rawThumb.addBaseURL()
+        : rawThumb;
+
+    // If animation url was missing or empty, use the actual uploaded gift image/thumbnail
+    final effectiveDisplayUrl = url.isNotEmpty ? url : resolvedThumb;
+
     if (gift.isSvga) {
       Future.microtask(() => _loadSvga(gift));
       final controller = _svgaControllers[gift.timestamp];
-      if (controller == null) return SizedBox(width: widget.width, height: widget.height);
+      if (controller != null) {
+        return SizedBox(
+          width: widget.width,
+          height: widget.height,
+          child: SVGAImage(controller),
+        );
+      }
+      // While SVGA controller is decoding, display thumbnail so screen is never blank
       return SizedBox(
         width: widget.width,
         height: widget.height,
-        child: SVGAImage(controller),
+        child: _GiftVisualWithMotion(
+          child: resolvedThumb.isNotEmpty
+              ? CustomImage(
+                  image: resolvedThumb,
+                  size: Size(widget.width, widget.height),
+                  fit: BoxFit.contain,
+                )
+              : Image.asset('assets/images/gifts.png', fit: BoxFit.contain),
+        ),
       );
     }
-    if (gift.assetUrl.isEmpty) return const SizedBox.shrink();
+    if (effectiveDisplayUrl.isEmpty) return const SizedBox.shrink();
 
-    final isSvg = gift.assetUrl.toLowerCase().contains('.svg');
-    final isNetwork = gift.assetUrl.startsWith('http://') || gift.assetUrl.startsWith('https://');
+    final isSvg = effectiveDisplayUrl.toLowerCase().contains('.svg');
 
     if (isSvg) {
       return SizedBox(
         width: widget.width * 1.5,
         height: widget.height * 1.5,
         child: AnimatedSvgPlayer(
-          url: gift.assetUrl,
+          url: effectiveDisplayUrl,
+          giftName: gift.giftName,
+          thumbnailUrl: resolvedThumb.isNotEmpty ? resolvedThumb : null,
           width: widget.width * 1.5,
           height: widget.height * 1.5,
+          onAnimationEnd: () {
+            // Cut sound and dismiss gift immediately when SVG animation ends
+            GiftAudioPlayer.stop();
+            widget.activeGifts.remove(gift);
+          },
         ),
       );
     }
 
-    final imgWidget = isNetwork
-        ? Image.network(gift.assetUrl, width: widget.width, height: widget.height, fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => Image.asset('assets/images/gifts.png', width: widget.width, height: widget.height))
-        : Image.asset(gift.assetUrl, width: widget.width, height: widget.height, fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => Image.asset('assets/images/gifts.png', width: widget.width, height: widget.height));
+    // Static image / GIF / WebP: dismiss and cut audio after 2.8s
+    Future.delayed(const Duration(milliseconds: 2800), () {
+      if (mounted && widget.activeGifts.contains(gift)) {
+        GiftAudioPlayer.stop();
+        widget.activeGifts.remove(gift);
+      }
+    });
+
+    final imgWidget = CustomImage(
+      image: effectiveDisplayUrl,
+      size: Size(widget.width, widget.height),
+      fit: BoxFit.contain,
+      placeHolderImage: resolvedThumb.isNotEmpty ? resolvedThumb : null,
+    );
 
     return _GiftVisualWithMotion(child: imgWidget);
   }
@@ -357,7 +427,10 @@ class _GiftEffectWidgetState extends State<GiftEffectWidget>
   Widget build(BuildContext context) {
     return Obx(() {
       _pruneExpiredControllers(widget.activeGifts.map((g) => g.timestamp));
-      if (widget.activeGifts.isEmpty) return const SizedBox.shrink();
+      if (widget.activeGifts.isEmpty) {
+        GiftAudioPlayer.stop();
+        return const SizedBox.shrink();
+      }
       return IgnorePointer(
         ignoring: true,
         child: Stack(
@@ -538,19 +611,45 @@ class AnimatedSvgPlayer extends StatefulWidget {
   final String url;
   final double width;
   final double height;
+  final String? giftName;
+  final String? thumbnailUrl;
+
+  final VoidCallback? onAnimationEnd;
 
   const AnimatedSvgPlayer({
     super.key,
     required this.url,
     required this.width,
     required this.height,
+    this.giftName,
+    this.thumbnailUrl,
+    this.onAnimationEnd,
   });
 
+  static final Map<String, String> _svgCache = {};
+
+  /// Preload Pen Animation.svg from local assets into memory so it's ready with 0ms latency
+  static Future<void> initCache() async {
+    try {
+      final penSvg =
+          await rootBundle.loadString('assets/svg_icons/Pen Animation.svg');
+      if (penSvg.contains('<svg')) {
+        _svgCache['assets/svg_icons/Pen Animation.svg'] = penSvg;
+        _svgCache['uploads/pen_animation.svg'] = penSvg;
+        _svgCache['uploads/pen_gift.svg'] = penSvg;
+        _svgCache['pen'] = penSvg;
+      }
+    } catch (_) {}
+  }
+
   static Future<void> preloadAll(List<Gift> gifts) async {
+    await initCache();
     for (final gift in gifts) {
       final url = gift.effectiveAssetUrl;
+      if (url.toLowerCase().contains('pen')) continue;
       if (url.toLowerCase().contains('.svg')) {
         preloadSvg(url.addBaseURL());
+        preloadSvg(url);
       }
     }
   }
@@ -558,19 +657,23 @@ class AnimatedSvgPlayer extends StatefulWidget {
   static Future<void> preloadSvg(String? url) async {
     if (url == null || url.trim().isEmpty) return;
     final svgUrl = url.trim();
-    if (_AnimatedSvgPlayerState._svgCache.containsKey(svgUrl)) return;
+    if (_svgCache.containsKey(svgUrl)) return;
+    if (svgUrl.toLowerCase().contains('pen')) {
+      await initCache();
+      return;
+    }
     try {
       if (svgUrl.startsWith('http://') || svgUrl.startsWith('https://')) {
         final response = await http
             .get(Uri.parse(svgUrl))
-            .timeout(const Duration(seconds: 6));
+            .timeout(const Duration(seconds: 4));
         if (response.statusCode == 200 && response.body.contains('<svg')) {
-          _AnimatedSvgPlayerState._svgCache[svgUrl] = response.body;
+          _svgCache[svgUrl] = response.body;
         }
       } else if (svgUrl.startsWith('assets/')) {
         final assetData = await rootBundle.loadString(svgUrl);
         if (assetData.contains('<svg')) {
-          _AnimatedSvgPlayerState._svgCache[svgUrl] = assetData;
+          _svgCache[svgUrl] = assetData;
         }
       }
     } catch (_) {}
@@ -581,9 +684,25 @@ class AnimatedSvgPlayer extends StatefulWidget {
 }
 
 class _AnimatedSvgPlayerState extends State<AnimatedSvgPlayer> {
-  static final Map<String, String> _svgCache = {};
   WebViewControllerPlus? _controller;
   bool _isReady = false;
+  Timer? _fallbackTimer;
+  bool _hasEnded = false;
+
+  void _notifyEnd() {
+    if (_hasEnded) return;
+    _hasEnded = true;
+    _fallbackTimer?.cancel();
+    if (mounted) {
+      widget.onAnimationEnd?.call();
+    }
+  }
+
+  @override
+  void dispose() {
+    _fallbackTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -592,51 +711,117 @@ class _AnimatedSvgPlayerState extends State<AnimatedSvgPlayer> {
   }
 
   Future<void> _initPlayer() async {
-    final controller = WebViewControllerPlus();
     try {
-      controller.setBackgroundColor(Colors.transparent);
-    } catch (_) {}
-    controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      final isPen = (widget.giftName?.toLowerCase().contains('pen') ?? false) ||
+          widget.url.toLowerCase().contains('pen');
 
-    String? svgContent = _svgCache[widget.url];
+      String? svgContent = AnimatedSvgPlayer._svgCache[widget.url] ??
+          AnimatedSvgPlayer._svgCache[
+              widget.url.replaceAll(RegExp(r'^https?://[^/]+/'), '')];
 
-    if (svgContent == null || svgContent.isEmpty) {
-      try {
-        if (widget.url.startsWith('http://') || widget.url.startsWith('https://')) {
+      if (svgContent == null && isPen) {
+        if (!AnimatedSvgPlayer._svgCache.containsKey('pen')) {
+          await AnimatedSvgPlayer.initCache();
+        }
+        svgContent = AnimatedSvgPlayer._svgCache['pen'] ??
+            AnimatedSvgPlayer._svgCache['assets/svg_icons/Pen Animation.svg'];
+      }
+
+      if (svgContent == null || svgContent.isEmpty) {
+        if (widget.url.startsWith('http://') ||
+            widget.url.startsWith('https://')) {
           final response = await http
               .get(Uri.parse(widget.url))
-              .timeout(const Duration(seconds: 5));
+              .timeout(const Duration(seconds: 4));
           if (response.statusCode == 200 && response.body.contains('<svg')) {
             svgContent = response.body;
-            _svgCache[widget.url] = svgContent;
+            AnimatedSvgPlayer._svgCache[widget.url] = svgContent;
           }
         } else if (widget.url.startsWith('assets/')) {
           final assetData = await rootBundle.loadString(widget.url);
           if (assetData.contains('<svg')) {
             svgContent = assetData;
-            _svgCache[widget.url] = svgContent;
+            AnimatedSvgPlayer._svgCache[widget.url] = svgContent;
           }
         } else if (widget.url.trim().startsWith('<svg')) {
           svgContent = widget.url;
         }
-      } catch (e) {
-        Loggers.error('AnimatedSvgPlayer fetch error: $e');
       }
-    }
 
-    String html;
-    if (svgContent != null && svgContent.isNotEmpty) {
-      html = _buildSvgHtml(svgContent);
+      if (svgContent == null || svgContent.isEmpty) {
+        return;
+      }
+
+      final controller = WebViewControllerPlus();
+      try {
+        controller.setBackgroundColor(Colors.transparent);
+      } catch (_) {}
+      controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      controller.addJavaScriptChannel(
+        'SvgEndChannel',
+        onMessageReceived: (message) {
+          _notifyEnd();
+        },
+      );
+
+      final html = _buildSvgHtml(svgContent);
+      await controller.loadHtmlString(html);
+
+      // Fallback timer: ensure animation end is notified even if SVG has no end events (e.g. 3.2s)
+      _fallbackTimer?.cancel();
+      _fallbackTimer = Timer(const Duration(milliseconds: 3200), _notifyEnd);
+
+      if (!mounted) return;
+      setState(() {
+        _controller = controller;
+        _isReady = true;
+      });
+    } catch (e) {
+      Loggers.error('AnimatedSvgPlayer init error: $e');
+    }
+  }
+
+  Widget _buildNativeVisual() {
+    final isPen = (widget.giftName?.toLowerCase().contains('pen') ?? false) ||
+        widget.url.toLowerCase().contains('pen');
+
+    Widget imageChild;
+    if (isPen) {
+      // Instant high-res pen visual loaded from local asset (0ms latency!)
+      imageChild = Image.asset(
+        'assets/images/pen_gift.png',
+        width: widget.width,
+        height: widget.height,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => Image.asset(
+          'assets/svg_icons/pen_frame_0.png',
+          width: widget.width,
+          height: widget.height,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => Image.asset(
+            'assets/images/gifts.png',
+            width: widget.width,
+            height: widget.height,
+            fit: BoxFit.contain,
+          ),
+        ),
+      );
+    } else if (widget.thumbnailUrl != null && widget.thumbnailUrl!.trim().isNotEmpty) {
+      imageChild = CustomImage(
+        image: widget.thumbnailUrl!,
+        size: Size(widget.width, widget.height),
+        fit: BoxFit.contain,
+      );
     } else {
-      html = _buildImgHtml(widget.url);
+      imageChild = Image.asset(
+        'assets/images/gifts.png',
+        width: widget.width,
+        height: widget.height,
+        fit: BoxFit.contain,
+      );
     }
 
-    await controller.loadHtmlString(html);
-    if (!mounted) return;
-    setState(() {
-      _controller = controller;
-      _isReady = true;
-    });
+    return _GiftVisualWithMotion(child: imageChild);
   }
 
   String _buildSvgHtml(String svgXml) {
@@ -672,6 +857,10 @@ class _AnimatedSvgPlayerState extends State<AnimatedSvgPlayer> {
       -webkit-user-select: none !important;
       user-select: none !important;
     }
+    *, *::before, *::after, svg, svg * {
+      animation-iteration-count: 1 !important;
+      -webkit-animation-iteration-count: 1 !important;
+    }
     svg {
       width: 100% !important;
       height: 100% !important;
@@ -687,72 +876,66 @@ class _AnimatedSvgPlayerState extends State<AnimatedSvgPlayer> {
 </head>
 <body style="background:transparent; background-color:transparent; margin:0; padding:0; border:0; outline:0;">
   $svgXml
+  <script>
+    (function() {
+      // Force SMIL elements to play only once
+      var anims = document.querySelectorAll('animate, animateTransform, animateMotion, animateColor');
+      anims.forEach(function(el) {
+        el.setAttribute('repeatCount', '1');
+      });
+
+      var posted = false;
+      function notifyFlutter() {
+        if (posted) return;
+        posted = true;
+        if (window.SvgEndChannel) {
+          window.SvgEndChannel.postMessage('completed');
+        }
+      }
+
+      // Listen for CSS animation end
+      document.addEventListener('animationend', notifyFlutter);
+      document.addEventListener('webkitAnimationEnd', notifyFlutter);
+
+      // Listen for SVG SMIL animation end
+      anims.forEach(function(el) {
+        el.addEventListener('endEvent', notifyFlutter);
+      });
+
+      // Calculate duration from CSS
+      var maxDur = 2500;
+      try {
+        var allEls = document.querySelectorAll('*');
+        allEls.forEach(function(el) {
+          var dur = parseFloat(window.getComputedStyle(el).animationDuration) || 0;
+          var delay = parseFloat(window.getComputedStyle(el).animationDelay) || 0;
+          if (dur + delay > 0) {
+            maxDur = Math.max(maxDur, (dur + delay) * 1000 + 200);
+          }
+        });
+      } catch(e) {}
+      setTimeout(notifyFlutter, Math.min(Math.max(maxDur, 1500), 3800));
+    })();
+  </script>
 </body>
 </html>''';
   }
 
-  String _buildImgHtml(String url) {
-    return '''<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <style>
-    *, *::before, *::after {
-      margin: 0 !important;
-      padding: 0 !important;
-      border: 0 none !important;
-      outline: 0 none !important;
-      box-shadow: none !important;
-      box-sizing: border-box !important;
-      -webkit-tap-highlight-color: transparent !important;
-    }
-    html, body {
-      width: 100vw !important;
-      height: 100vh !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      border: 0 none !important;
-      outline: 0 none !important;
-      box-shadow: none !important;
-      background: transparent !important;
-      background-color: transparent !important;
-      overflow: hidden !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-    }
-    img {
-      width: 100% !important;
-      height: 100% !important;
-      border: 0 none !important;
-      outline: 0 none !important;
-      object-fit: contain !important;
-    }
-  </style>
-</head>
-<body style="background:transparent; background-color:transparent; margin:0; padding:0; border:0; outline:0;">
-  <img src="$url" />
-</body>
-</html>''';
-  }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isReady || _controller == null) {
-      return SizedBox(
-        width: widget.width,
-        height: widget.height,
-      );
-    }
-
     return SizedBox(
       width: widget.width,
       height: widget.height,
-      child: IgnorePointer(
-        ignoring: true,
-        child: ClipRect(
-          child: WebViewWidget(controller: _controller!),
-        ),
+      child: Center(
+        child: (_isReady && _controller != null)
+            ? IgnorePointer(
+                ignoring: true,
+                child: ClipRect(
+                  child: WebViewWidget(controller: _controller!),
+                ),
+              )
+            : _buildNativeVisual(),
       ),
     );
   }

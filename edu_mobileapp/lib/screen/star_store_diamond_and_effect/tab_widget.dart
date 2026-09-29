@@ -14,57 +14,75 @@ class StarStepTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tabs = [
-      "Diamond",
-      "Entry effects",
+      "Diamonds",
+      "Entry Effects",
     ];
 
     return Container(
-      height: 50,
+      height: 48,
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [ColorRes.cardBackground, ColorRes.surfaceBackground],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
+        color: Colors.transparent,
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           double tabWidth = constraints.maxWidth / tabs.length;
           return Stack(
             children: [
-              /// 🔹 Sliding Rounded Indicator
+              /// Bottom subtle divider line
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: 1,
+                  color: Colors.white.withValues(alpha: 0.08),
+                ),
+              ),
+
+              /// Glowing sliding gold indicator
               AnimatedPositioned(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-                left: currentStep * tabWidth,
-                // top: 0,
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
+                left: currentStep * tabWidth + (tabWidth * 0.15),
                 bottom: 0,
                 child: Container(
-                  width: tabWidth,
+                  width: tabWidth * 0.7,
                   height: 3,
                   decoration: BoxDecoration(
-                    color: ColorRes.primaryColor,
-                    borderRadius: BorderRadius.circular(25),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFFB300), Color(0xFFFFD54F)],
+                    ),
+                    borderRadius: BorderRadius.circular(4),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFFFB300).withValues(alpha: 0.8),
+                        blurRadius: 8,
+                        spreadRadius: 1,
+                        offset: const Offset(0, -1),
+                      ),
+                    ],
                   ),
                 ),
               ),
 
-              /// 🔹 Tab Items
+              /// Tab items
               Row(
                 children: List.generate(tabs.length, (index) {
                   bool isSelected = index == currentStep;
-                  return GestureDetector(
-                    onTap: () => onChanged(index),
-                    child: SizedBox(
-                      width: tabWidth,
+                  return Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => onChanged(index),
                       child: Center(
                         child: Text(
                           tabs[index],
                           style: TextStyle(
                             color: isSelected
-                                ? const Color(0xFFb6ff52)
-                                : Colors.white,
-                            fontWeight: FontWeight.w600,
+                                ? const Color(0xFFFFB300)
+                                : const Color(0xFF8E95A5),
+                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                            fontSize: 15,
+                            letterSpacing: 0.2,
                           ),
                         ),
                       ),

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Categories;
+use App\Models\Divisions;
 use App\Models\GlobalFunction;
 use App\Models\SubCategories;
 use App\Models\Topics;
@@ -29,6 +30,19 @@ class TopicController extends Controller
         ]);
     }
 
+    public function listDivisionsBySubCategory(Request $request)
+    {
+        $divisions = Divisions::where('sub_category_id', $request->sub_category_id)
+            ->where('status', 1)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return response()->json([
+            'status' => true,
+            'data' => $divisions,
+        ]);
+    }
+
     public function listTopics(Request $request)
     {
         $query = Topics::query();
@@ -52,7 +66,7 @@ class TopicController extends Controller
 
         $totalFiltered = $query->count();
 
-        $result = $query->with('category:id,name', 'subCategory:id,name')
+        $result = $query->with('category:id,name', 'subCategory:id,name', 'division:id,name')
             ->offset($start)
             ->limit($limit)
             ->orderBy('id', 'DESC')
@@ -63,6 +77,7 @@ class TopicController extends Controller
                         rel='{$item->id}'
                         data-category='{$item->category_id}'
                         data-sub-category='{$item->sub_category_id}'
+                        data-division='{$item->division_id}'
                         data-name='{$item->name}'
                         class='action-btn edit d-flex align-items-center justify-content-center btn border rounded-2 text-success ms-1'>
                         <i class='uil-pen'></i>
@@ -82,6 +97,7 @@ class TopicController extends Controller
             return [
                 $item->category?->name ?? '-',
                 $item->subCategory?->name ?? '-',
+                $item->division?->name ?? '-',
                 $item->name,
                 $status,
                 $action,
@@ -103,6 +119,7 @@ class TopicController extends Controller
         $item = new Topics();
         $item->category_id = $request->category_id;
         $item->sub_category_id = $request->sub_category_id;
+        $item->division_id = $request->division_id ?: null;
         $item->name = $request->name;
         $item->status = 1;
         $item->save();
@@ -115,6 +132,7 @@ class TopicController extends Controller
         $item = Topics::find($request->id);
         $item->category_id = $request->category_id;
         $item->sub_category_id = $request->sub_category_id;
+        $item->division_id = $request->division_id ?: null;
         $item->name = $request->name;
         $item->save();
 

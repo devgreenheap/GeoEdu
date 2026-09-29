@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svga/flutter_svga.dart';
 import 'package:geoedu/common/manager/logger.dart';
@@ -114,7 +113,7 @@ class _EffectsStoreScreenState extends State<EffectsStoreScreen> {
     return Column(
       children: [
         EffectsToggle(selectedIndex: selectedTab, onChanged: _onTabChanged),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
         if (selectedTab == 0)
           _buildBuyEffects()
         else
@@ -156,7 +155,22 @@ class _EffectsStoreScreenState extends State<EffectsStoreScreen> {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(40),
-          child: Text("No purchased effects yet", style: TextStyle(color: Colors.white70)),
+          child: Column(
+            children: [
+              Icon(Icons.auto_awesome, color: ColorRes.gold, size: 48),
+              SizedBox(height: 12),
+              Text(
+                "No purchased effects yet",
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              SizedBox(height: 4),
+              Text(
+                "Buy an effect to make a stunning entrance!",
+                style: TextStyle(color: Colors.white38, fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -167,149 +181,286 @@ class _EffectsStoreScreenState extends State<EffectsStoreScreen> {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       itemCount: effects.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-        childAspectRatio: 3 / 4,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.72,
       ),
       itemBuilder: (context, index) {
-        final entryEffect = effects[index];
-        return Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: const LinearGradient(
-                colors: [ColorRes.gold, ColorRes.green],
-              ),
+        final effect = effects[index];
+        return _EffectCard(
+          effect: effect,
+          showBuyButton: showBuyButton,
+          onBuy: () => _buyEffect(effect),
+        );
+      },
+    );
+  }
+}
+
+// ─── Premium Effect Card ─────────────────────────────────────────────────────
+
+class _EffectCard extends StatelessWidget {
+  final EntryEffectModel effect;
+  final bool showBuyButton;
+  final VoidCallback onBuy;
+
+  const _EffectCard({
+    required this.effect,
+    required this.showBuyButton,
+    required this.onBuy,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // Outer glow border (green neon)
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1DB954), Color(0xFFB8860B)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            child: Container(
-              margin: const EdgeInsets.all(2),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                gradient: const LinearGradient(colors: [
-                  ColorRes.cardBackground,
-                  ColorRes.surfaceBackground,
-                ]),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF1DB954).withOpacity(0.35),
+                blurRadius: 12,
+                spreadRadius: 1,
               ),
-              child: Stack(
-                children: [
-                  if (showBuyButton && entryEffect.discountPercent > 0)
-                    Positioned(
-                      top: 0,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 4),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          color: ColorRes.likeRed,
-                        ),
-                        child: Text(
-                          "${entryEffect.discountPercent}% off",
-                          style: const TextStyle(fontSize: 7, color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: entryEffect.image.isNotEmpty
-                              ? () => Navigator.of(context).push(
-                                    PageRouteBuilder(
-                                      opaque: false,
-                                      barrierColor: Colors.black.withOpacity(.70),
-                                      pageBuilder: (context, animation, secondaryAnimation) {
-                                        return EffectPreviewScreen(
-                                          effectName: entryEffect.title,
-                                          assetUrl: entryEffect.image,
-                                          audio: entryEffect.audio,
-                                          isDefault: entryEffect.isDefaultAudio,
-                                        );
-                                      },
-                                    ),
-                                  )
-                              : null,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              Image.asset(AssetRes.effectFlash, fit: BoxFit.contain),
-                              Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Colors.black.withOpacity(0.5),
-                                  border: Border.all(color: Colors.white.withOpacity(0.6), width: 2),
-                                ),
-                                child: const Icon(Icons.play_arrow, color: Colors.white, size: 24),
+            ],
+          ),
+          child: Container(
+            margin: const EdgeInsets.all(1.5),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(15),
+              color: const Color(0xFF0E1210),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // ── Preview area ──────────────────────────
+                Expanded(
+                  child: GestureDetector(
+                    onTap: effect.image.isNotEmpty
+                        ? () => Navigator.of(context).push(
+                              PageRouteBuilder(
+                                opaque: false,
+                                barrierColor: Colors.black.withOpacity(.70),
+                                pageBuilder: (context, animation, secondaryAnimation) {
+                                  return EffectPreviewScreen(
+                                    effectName: effect.title,
+                                    assetUrl: effect.image,
+                                    audio: effect.audio,
+                                    isDefault: effect.isDefaultAudio,
+                                  );
+                                },
                               ),
-                            ],
+                            )
+                        : null,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Effect flash background image
+                        Positioned.fill(
+                          child: ClipRRect(
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(15),
+                            ),
+                            child: Image.asset(
+                              AssetRes.effectFlash,
+                              fit: BoxFit.contain,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      if (entryEffect.title.isNotEmpty)
+                        // Play button overlay
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.black.withValues(alpha: 0.55),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.7),
+                              width: 2,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 26,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // ── Info + Buy area ───────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Effect name
+                      if (effect.title.isNotEmpty)
                         Text(
-                          entryEffect.title,
-                          style: const TextStyle(fontSize: 12, color: Colors.white),
+                          effect.title,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
                           textAlign: TextAlign.center,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 5),
+
+                      // Price row: 🔴 100  (strikethrough original)
                       Row(
-                        spacing: 5,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Image.asset(AssetRes.coinIcon, width: 20, height: 20),
-                          Text("${entryEffect.currentPrice}",
-                              style: const TextStyle(fontSize: 16, color: Colors.yellow)),
-                          if (entryEffect.originalPrice > entryEffect.currentPrice)
-                            Text("${entryEffect.originalPrice}",
-                                style: const TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.white54,
-                                    decoration: TextDecoration.lineThrough)),
+                          // Red diamond icon (coin)
+                          Image.asset(AssetRes.coinIcon, width: 18, height: 18),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${effect.currentPrice}',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: ColorRes.gold,
+                            ),
+                          ),
+                          if (effect.originalPrice > effect.currentPrice) ...[
+                            const SizedBox(width: 5),
+                            Text(
+                              '${effect.originalPrice}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.white38,
+                                decoration: TextDecoration.lineThrough,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
-                      if (entryEffect.duration.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(entryEffect.duration,
-                            style: const TextStyle(fontSize: 10, color: Colors.white)),
+
+                      // Duration
+                      if (effect.duration.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          effect.duration,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.white54,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ],
-                      const SizedBox(height: 10),
+
+                      const SizedBox(height: 8),
+
+                      // Buy button (full width, gold)
                       if (showBuyButton)
-                        InkWell(
-                          onTap: () => _buyEffect(entryEffect),
+                        GestureDetector(
+                          onTap: onBuy,
                           child: Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 25),
                             width: double.infinity,
-                            padding: const EdgeInsets.all(4),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
                             decoration: BoxDecoration(
-                              border: Border.all(width: 1, color: ColorRes.whitePure),
-                              borderRadius: BorderRadius.circular(18),
-                              color: ColorRes.whitePure.withOpacity(.40),
+                              borderRadius: BorderRadius.circular(20),
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFFFFD700), Color(0xFFE6A800)],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFFFD700).withValues(alpha: 0.3),
+                                  blurRadius: 8,
+                                  spreadRadius: 0,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
-                            child: const Center(
-                              child: Text("Buy >",
-                                  style: TextStyle(fontSize: 16, color: Colors.white)),
+                            child: const Text(
+                              'Buy  ›',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        // "My Effects" — show active badge or time remaining
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 7),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: const Color(0xFF1DB954),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Text(
+                            effect.isExpired
+                                ? 'Expired'
+                                : (effect.expiresAt != null
+                                    ? effect.remainingTimeDisplay
+                                    : 'Active'),
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: effect.isExpired
+                                  ? Colors.white38
+                                  : const Color(0xFF1DB954),
                             ),
                           ),
                         ),
                     ],
                   ),
-                ],
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Discount badge (top-right)
+        if (showBuyButton && effect.discountPercent > 0)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                color: ColorRes.likeRed,
+              ),
+              child: Text(
+                '${effect.discountPercent}% off',
+                style: const TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
             ),
-          );
-      },
+          ),
+      ],
     );
   }
 }
+
+// ─── SVGA preview widget (unchanged) ─────────────────────────────────────────
 
 class SvgaPreview extends StatefulWidget {
   final String assetPath;
@@ -321,8 +472,7 @@ class SvgaPreview extends StatefulWidget {
   State<SvgaPreview> createState() => _SvgaPreviewState();
 }
 
-class _SvgaPreviewState extends State<SvgaPreview>
-    with TickerProviderStateMixin {
+class _SvgaPreviewState extends State<SvgaPreview> with TickerProviderStateMixin {
   late SVGAAnimationController _controller;
   final SVGAParser _parser = SVGAParser.shared;
 

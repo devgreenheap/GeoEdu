@@ -54,6 +54,27 @@ class AudioRoomController extends BaseController {
   RxBool isSpeaker = false.obs;
   RxBool hasRequested = false.obs;
 
+  // Real-time top gifter tracking
+  final RxMap<String, int> gifterTotals = <String, int>{}.obs;
+  final RxString topGifterName = ''.obs;
+  final RxInt topGifterDiamonds = 0.obs;
+
+  void recordGiftForTopGifter(String username, int coinPrice) {
+    if (username.isEmpty || coinPrice <= 0) return;
+    final current = (gifterTotals[username] ?? 0) + coinPrice;
+    gifterTotals[username] = current;
+    String top = topGifterName.value;
+    int maxC = topGifterDiamonds.value;
+    gifterTotals.forEach((name, coins) {
+      if (coins > maxC) {
+        maxC = coins;
+        top = name;
+      }
+    });
+    topGifterName.value = top;
+    topGifterDiamonds.value = maxC;
+  }
+
   // Background music
   final AudioPlayer _musicPlayer = AudioPlayer();
   final Set<String> _playingStreamIds = {};
@@ -63,7 +84,7 @@ class AudioRoomController extends BaseController {
 
   // Inline gift bar (EloTV-style tap-to-send row, replaces the full-screen
   // gift sheet for this screen).
-  RxBool isGiftBarOpen = false.obs;
+  RxBool isGiftBarOpen = true.obs;
   RxList<Gift> availableGifts = <Gift>[].obs;
   RxInt diamondBalance = 0.obs;
   bool _diamondBalanceFetched = false;
@@ -112,7 +133,7 @@ class AudioRoomController extends BaseController {
   // GiftEffectWidget/listenGifts) — everyone in the room sees the effect,
   // not just the sender.
   List<GiftEffect> giftQueue = [];
-  bool isGiftAnimating = false;
+  final RxBool isGiftAnimating = false.obs;
   RxList<GiftEffect> activeGifts = <GiftEffect>[].obs;
   StreamSubscription? _giftEffectSubscription;
 
@@ -293,6 +314,8 @@ class AudioRoomController extends BaseController {
           GiftEffect gift =
               GiftEffect.fromJson(change.doc.data() as Map<String, dynamic>);
 
+          recordGiftForTopGifter(gift.username, gift.coinPrice ?? 0);
+
           // If the gift was sent before this user entered the room, do not replay it
           if (gift.timestamp < _roomEnteredAt) {
             try {
@@ -315,23 +338,32 @@ class AudioRoomController extends BaseController {
   }
 
   void _processGiftQueue() async {
-    if (isGiftAnimating) return;
-    if (giftQueue.isEmpty) return;
+    if (activeGifts.isNotEmpty) return;
+    if (giftQueue.isEmpty) {
+      isGiftAnimating.value = false;
+      return;
+    }
 
-    isGiftAnimating = true;
+    isGiftAnimating.value = true;
     GiftEffect gift = giftQueue.removeAt(0);
     activeGifts.add(gift);
 
     // Audio is handled by GiftEffectWidget to avoid duplicate audio triggers
 
-    // Guaranteed auto-dismiss after 4.5 seconds regardless of network or audio status
+    // Wait until animation ends and removes gift from activeGifts (or max 4.5s timeout)
     try {
-      await Future.delayed(const Duration(milliseconds: 4500));
+      int waited = 0;
+      while (activeGifts.contains(gift) && waited < 4500) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        waited += 100;
+      }
     } finally {
       activeGifts.remove(gift);
-      isGiftAnimating = false;
+      GiftAudioPlayer.stop();
       if (giftQueue.isNotEmpty) {
         _processGiftQueue();
+      } else {
+        isGiftAnimating.value = false;
       }
     }
   }
@@ -653,14 +685,36 @@ class AudioRoomController extends BaseController {
   /// Participant requests to speak
   void requestToSpeak() async {
     if (isHost || myUser?.id == null) return;
-    if (hasRequested.value || isSpeaker.value) return;
-    await _db
-        .collection(FirebaseConst.audioRooms)
-        .doc(room.hostId.toString())
-        .update({
-      'request_ids': FieldValue.arrayUnion([myUser!.id]),
-    });
-    showSnackBar('Request sent to host');
+    if (isSpeaker.value) {
+      showSnackBar('You are already connected as a speaker');
+      return;
+    }
+    if (hasRequested.value) {
+      showSnackBar('Join Call request is pending host approval');
+      return;
+    }
+    hasRequested.value = true;
+    try {
+      await _db
+          .collection(FirebaseConst.audioRooms)
+          .doc(room.hostId.toString())
+          .update({
+        'request_ids': FieldValue.arrayUnion([myUser!.id]),
+      });
+      _postComment(AudioComment(
+        senderId: myUser!.id!,
+        senderName: myUser!.fullname ?? myUser!.username ?? 'User',
+        senderPhoto: myUser!.profilePhoto,
+        senderLevel: myUser!.getLevel.level,
+        type: AudioCommentType.text,
+        text: '📹 requested to Join Call',
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+      ));
+      showSnackBar('Join Call request sent to host');
+    } catch (e) {
+      hasRequested.value = false;
+      showSnackBar('Failed to send request: $e');
+    }
   }
 
   /// Host accepts a speaker request
@@ -673,6 +727,17 @@ class AudioRoomController extends BaseController {
       'speaker_ids': FieldValue.arrayUnion([userId]),
       'request_ids': FieldValue.arrayRemove([userId]),
     });
+    final participant =
+        participants.firstWhereOrNull((p) => p.userId == userId);
+    _postComment(AudioComment(
+      senderId: userId,
+      senderName: participant?.fullname ?? 'User',
+      senderPhoto: participant?.profilePhoto,
+      type: AudioCommentType.text,
+      text: '🎙️ joined the call as speaker',
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+    ));
+    showSnackBar('Accepted ${participant?.fullname ?? "User"} to call');
   }
 
   /// Host rejects a speaker request
@@ -1101,17 +1166,25 @@ class AudioRoomController extends BaseController {
   Future<void> fetchDiamondBalance() => fetchDiamondBalanceIfNeeded(force: true);
 
   void openGiftBar() {
-    isGiftBarOpen.value = !isGiftBarOpen.value;
-    if (isGiftBarOpen.value) {
-      fetchDiamondBalanceIfNeeded(force: true);
-      _refreshGiftsAndPreload();
-    }
+    if (isHost) return;
+    isGiftBarOpen.value = true;
+    fetchDiamondBalanceIfNeeded(force: true);
+    _refreshGiftsAndPreload();
   }
 
   Future<void> sendGiftDirect(Gift gift) async {
+    // Prevent clicking another gift until the 1st one finishes loading & animating!
+    if (isGiftAnimating.value || activeGifts.isNotEmpty) {
+      return;
+    }
+
     final hostId = room.hostId;
     if (hostId == null) {
       showSnackBar('Host not found');
+      return;
+    }
+    if (isHost || hostId == myUser?.id) {
+      showSnackBar('You cannot send gifts to yourself');
       return;
     }
     final giftId = gift.id;
@@ -1128,16 +1201,19 @@ class AudioRoomController extends BaseController {
       return;
     }
 
-    final isHostSelf = (hostId == myUser?.id);
+    // Immediately lock to prevent concurrent taps
+    isGiftAnimating.value = true;
 
     final freshGift = (giftId != null)
         ? (availableGifts.firstWhereOrNull((g) => g.id == giftId) ?? gift)
         : gift;
 
-    final rawAsset = freshGift.effectiveAssetUrl;
-    final assetUrl = rawAsset.isNotEmpty
-        ? rawAsset.addBaseURL()
-        : (freshGift.image?.addBaseURL() ?? '');
+    final rawAnim = freshGift.animationUrl?.trim() ?? '';
+    final rawImage = freshGift.image?.trim() ?? '';
+    final resolvedThumbnail = rawImage.isNotEmpty ? rawImage.addBaseURL() : '';
+    final resolvedAsset = rawAnim.isNotEmpty
+        ? rawAnim.addBaseURL()
+        : (resolvedThumbnail.isNotEmpty ? resolvedThumbnail : freshGift.effectiveAssetUrl.addBaseURL());
     final soundUrl = freshGift.effectiveSoundUrl.isNotEmpty
         ? freshGift.effectiveSoundUrl
         : 'assets/images/fairy-sparkle.mp3';
@@ -1155,7 +1231,8 @@ class AudioRoomController extends BaseController {
       username: myUser?.fullname ?? myUser?.username ?? 'User',
       senderPhoto: myUser?.profilePhoto,
       giftName: freshGift.displayName,
-      assetUrl: assetUrl,
+      assetUrl: resolvedAsset,
+      thumbnailUrl: resolvedThumbnail,
       audio: soundUrl,
       timestamp: DateTime.now().millisecondsSinceEpoch,
       coinPrice: coinPrice,
@@ -1163,44 +1240,10 @@ class AudioRoomController extends BaseController {
 
     giftQueue.add(giftEffect);
     _processGiftQueue();
+    recordGiftForTopGifter(
+        myUser?.fullname ?? myUser?.username ?? 'User', coinPrice);
 
-    // If host is testing or celebrating in their own room:
-    if (isHostSelf) {
-      try {
-        await _db
-            .collection(FirebaseConst.audioRooms)
-            .doc(hostId.toString())
-            .collection('gifts')
-            .add({
-          'userId': myUser?.id,
-          'username': myUser?.fullname ?? myUser?.username ?? '',
-          'senderPhoto': myUser?.profilePhoto ?? '',
-          'giftName': freshGift.displayName,
-          'gift_id': freshGift.id,
-          'asset_url': assetUrl,
-          'audio': soundUrl,
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-          'coin_price': coinPrice,
-        });
-      } catch (e) {
-        Loggers.error('Error broadcasting audio gift to firestore: $e');
-      }
-
-      _postComment(AudioComment(
-        senderId: myUser!.id!,
-        senderName: myUser!.fullname ?? myUser!.username ?? 'User',
-        senderPhoto: myUser!.profilePhoto,
-        senderLevel: myUser!.getLevel.level,
-        type: AudioCommentType.gift,
-        giftName: freshGift.displayName,
-        giftImage: freshGift.image,
-        giftCoinPrice: coinPrice,
-        timestamp: DateTime.now().millisecondsSinceEpoch,
-      ));
-      return;
-    }
-
-    // Otherwise, audience sending to host: validate and deduct through server API
+    // Audience sending to host: validate and deduct through server API
     int effectiveGiftId = (giftId != null && giftId > 0) ? giftId : -1;
     if (effectiveGiftId <= 0) {
       final serverGifts = availableGifts.isNotEmpty
@@ -1244,7 +1287,8 @@ class AudioRoomController extends BaseController {
         'senderPhoto': myUser?.profilePhoto ?? '',
         'giftName': freshGift.displayName,
         'gift_id': freshGift.id,
-        'asset_url': assetUrl,
+        'asset_url': resolvedAsset,
+        'thumbnail_url': resolvedThumbnail,
         'audio': soundUrl,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
         'coin_price': coinPrice,

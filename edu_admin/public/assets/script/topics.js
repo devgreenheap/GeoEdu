@@ -60,12 +60,49 @@ $(document).ready(function () {
         },
     });
 
+    function setDivisionOptions(selector, options, selectedId = null) {
+        let html = `<option value="" ${selectedId ? "" : "selected"}>Select Division (Optional)</option>`;
+        options.forEach((item) => {
+            const selected = selectedId && Number(selectedId) === Number(item.id) ? "selected" : "";
+            html += `<option value="${item.id}" ${selected}>${item.name}</option>`;
+        });
+        $(selector).html(html).trigger("change");
+    }
+
+    function loadDivisions(subCategoryId, selector, selectedId = null) {
+        if (!subCategoryId) {
+            setDivisionOptions(selector, []);
+            return;
+        }
+        const formData = new FormData();
+        formData.append("sub_category_id", subCategoryId);
+        doAjax(`${domainUrl}listDivisionsBySubCategoryForTopic`, formData).then(function (response) {
+            if (response.status) {
+                setDivisionOptions(selector, response.data, selectedId);
+            } else {
+                setDivisionOptions(selector, []);
+            }
+        }).catch(function () {
+            setDivisionOptions(selector, []);
+        });
+    }
+
     $("#topic_category_id").on("change", function () {
         loadSubCategories($(this).val(), "#topic_sub_category_id");
+        setDivisionOptions("#topic_division_id", []);
+    });
+
+    $("#topic_sub_category_id").on("change", function () {
+        loadDivisions($(this).val(), "#topic_division_id");
     });
 
     $("#edit_topic_category_id").on("change", function () {
         loadSubCategories($(this).val(), "#edit_topic_sub_category_id");
+        setDivisionOptions("#edit_topic_division_id", []);
+    });
+
+    $("#edit_topic_sub_category_id").on("change", function () {
+        loadDivisions($(this).val(), "#edit_topic_division_id");
     });
 
     $("#addTopicForm").on("submit", function (e) {
@@ -189,11 +226,16 @@ $(document).ready(function () {
         var name = $(this).data("name");
         var categoryId = $(this).data("category");
         var subCategoryId = $(this).data("sub-category");
+        var divisionId = $(this).data("division");
 
         $("#editTopicId").val(id);
         $("#edit_topic_name").val(name);
         $("#edit_topic_category_id").val(categoryId).trigger("change.select2");
         loadSubCategories(categoryId, "#edit_topic_sub_category_id", subCategoryId);
+        // Load divisions once subcategory is known
+        setTimeout(function () {
+            loadDivisions(subCategoryId, "#edit_topic_division_id", divisionId);
+        }, 400);
 
         modalShow("#editTopicModal");
     });
@@ -201,10 +243,12 @@ $(document).ready(function () {
     $("#addTopicModal").on("hidden.bs.modal", function () {
         resetForm("#addTopicForm");
         setSubCategoryOptions("#topic_sub_category_id", []);
+        setDivisionOptions("#topic_division_id", []);
     });
 
     $("#editTopicModal").on("hidden.bs.modal", function () {
         resetForm("#editTopicForm");
         setSubCategoryOptions("#edit_topic_sub_category_id", []);
+        setDivisionOptions("#edit_topic_division_id", []);
     });
 });

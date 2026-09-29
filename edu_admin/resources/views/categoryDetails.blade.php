@@ -17,6 +17,11 @@
         </a>
     </li>
     <li class="nav-item" role="presentation">
+        <a class="nav-link category-details-tab" data-bs-toggle="tab" href="#divisions-tab" role="tab" data-url="{{ url('divisions') }}?embed=1">
+            {{ __('Divisions') }}
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
         <a class="nav-link category-details-tab" data-bs-toggle="tab" href="#topics-tab" role="tab" data-url="{{ url('topics') }}?embed=1">
             {{ __('Topics') }}
         </a>
@@ -45,6 +50,9 @@
     <div class="tab-pane fade" id="sub-categories-tab" role="tabpanel">
         <iframe id="category-details-frame-sub-categories-tab" class="w-100 border rounded-2 category-details-frame" data-loaded="0"></iframe>
     </div>
+    <div class="tab-pane fade" id="divisions-tab" role="tabpanel">
+        <iframe id="category-details-frame-divisions-tab" class="w-100 border rounded-2 category-details-frame" data-loaded="0"></iframe>
+    </div>
     <div class="tab-pane fade" id="topics-tab" role="tabpanel">
         <iframe id="category-details-frame-topics-tab" class="w-100 border rounded-2 category-details-frame" data-loaded="0"></iframe>
     </div>
@@ -59,3 +67,4 @@
     </div>
 </div>
 @endsection
+

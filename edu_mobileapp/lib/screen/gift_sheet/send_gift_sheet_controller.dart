@@ -31,6 +31,7 @@ class SendGiftSheetController extends BaseController {
   GiftType? giftType;
   String? source;
   late LivestreamScreenController livestreamController;
+  final RxBool isSending = false.obs;
 
   SendGiftSheetController(this.giftType, this.userId, this.liveUsers, {this.source});
 
@@ -97,6 +98,7 @@ class SendGiftSheetController extends BaseController {
   Future<void> _fetchDiamondWallet() => refreshDiamondWallet();
 
   void onGiftTap(Gift gift, BuildContext context) {
+    if (isSending.value) return;
     if (gift.id == null) {
       return showSnackBar('Gift Not Found');
     }
@@ -269,16 +271,20 @@ class SendGiftSheetController extends BaseController {
   }
 
   Future<void> sendGift(Gift gift, BuildContext context) async {
+    if (isSending.value) return;
+    isSending.value = true;
     final giftId = gift.id?.toInt() ?? -1;
 
     final coinPrice = gift.coinPrice ?? 0;
     userId ??= livestreamController.selectedGiftUser.value?.userId;
 
     if (giftId == -1 || userId == -1) {
+      isSending.value = false;
       return Loggers.error('Invalid Gift: $giftId or User: $userId');
     }
 
     if (coinPrice <= 0) {
+      isSending.value = false;
       return Loggers.error(
           'Invalid coin price: $coinPrice, skipping gift sending.');
     }
@@ -320,6 +326,7 @@ class SendGiftSheetController extends BaseController {
     } else {
       showSnackBar(response.message);
     }
+    isSending.value = false;
   }
 }
 

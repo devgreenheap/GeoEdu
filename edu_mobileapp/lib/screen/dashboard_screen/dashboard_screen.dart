@@ -6,6 +6,7 @@ import 'package:proste_indexed_stack/proste_indexed_stack.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/screen/dashboard_screen/dashboard_screen_controller.dart';
 import 'package:geoedu/screen/explore_screen/explore_screen.dart';
+import 'package:geoedu/screen/live_stream/live_reels_feed/live_reels_feed_screen.dart';
 import 'package:geoedu/screen/live_stream/live_stream_search_screen/live_stream_search_screen.dart';
 import 'package:geoedu/screen/star_store_diamond_and_effect/star_store_diamond _screen.dart';
 import 'package:geoedu/utilities/color_res.dart';
@@ -36,19 +37,141 @@ class DashboardScreen extends StatelessWidget {
           }
           final shouldExit = await showDialog<bool>(
             context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Exit App'),
-              content: const Text('Are you sure you want to exit?'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel'),
+            barrierColor: Colors.black.withValues(alpha: 0.75),
+            builder: (context) => Dialog(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(22, 26, 22, 22),
+                decoration: BoxDecoration(
+                  color: ColorRes.cardBackground.withValues(alpha: 0.98),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
                 ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Exit'),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 62,
+                      height: 62,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            const Color(0xFFFF5E3A).withValues(alpha: 0.22),
+                            const Color(0xFFFF9500).withValues(alpha: 0.12),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFFFF5E3A).withValues(alpha: 0.35),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.power_settings_new_rounded,
+                          color: Color(0xFFFF5E3A),
+                          size: 30,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Exit GeoEdu?',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 19,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Are you sure you want to exit? We hope to see you back soon!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13.5,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => Navigator.of(context).pop(false),
+                            child: Container(
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.1),
+                                  width: 1,
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: const Text(
+                                'Cancel',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => Navigator.of(context).pop(true),
+                            child: Container(
+                              height: 44,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFFFF9500), Color(0xFFFF5E3A)],
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFFF5E3A).withValues(alpha: 0.4),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              alignment: Alignment.center,
+                              child: const Text(
+                                'Exit Now',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           );
           if (shouldExit == true) {
@@ -69,11 +192,8 @@ class DashboardScreen extends StatelessWidget {
                       IndexedStackChild(child: const ExploreScreen(), preload: false),
                       IndexedStackChild(
                           child: const StarStoreDiamondScreen(showBackButton: false), preload: false),
-                      // "Live" tab shows the same live-rooms browse screen/data
-                      // as Home (the reference screenshot itself labels this
-                      // screen "Home / Live Tab" as one target) rather than a
-                      // separate, undifferentiated duplicate feature.
-                      IndexedStackChild(child: LiveStreamSearchScreen(myUser: myUser), preload: false),
+                      // "Live" tab shows direct full-screen vertical swipeable reels feed
+                      IndexedStackChild(child: const LiveReelsFeedScreen(), preload: false),
                     ],
                   ),
                 ),
@@ -180,38 +300,60 @@ class DashboardScreen extends StatelessWidget {
         child: GestureDetector(
           onTap: () => controller.onChanged(index),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
             child: AnimatedScale(
               scale: scaleValue,
               duration: const Duration(milliseconds: 300),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? ColorRes.primaryColor.withValues(alpha: 0.14)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                padding: isSelected
+                    ? const EdgeInsets.symmetric(horizontal: 18, vertical: 6)
+                    : const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  gradient: isSelected
+                      ? const LinearGradient(
+                          colors: [Color(0xFF381B08), Color(0xFF1F0F04)],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        )
+                      : null,
+                  border: isSelected
+                      ? Border.all(
+                          color: const Color(0xFFFF6D00).withValues(alpha: 0.35),
+                          width: 1.2,
+                        )
+                      : null,
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: const Color(0xFFFF6D00).withValues(alpha: 0.28),
+                            blurRadius: 14,
+                            spreadRadius: 0,
+                            offset: const Offset(0, -1),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
                       controller.bottomIcons[index],
-                      size: 23,
-                      color: isSelected ? ColorRes.primaryColor : Colors.white,
+                      size: 24,
+                      color: isSelected ? const Color(0xFFFF7A00) : Colors.white,
                     ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    controller.bottomNameList[index],
-                    style: TextStyle(
-                      color: isSelected ? ColorRes.primaryColor : Colors.white,
-                      fontSize: 10.5,
-                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    const SizedBox(height: 3),
+                    Text(
+                      controller.bottomNameList[index],
+                      style: TextStyle(
+                        color: isSelected ? const Color(0xFFFF7A00) : Colors.white,
+                        fontSize: 10.5,
+                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

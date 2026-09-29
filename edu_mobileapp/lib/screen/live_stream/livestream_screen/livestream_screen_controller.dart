@@ -3,16 +3,13 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:geoedu/common/controller/base_controller.dart';
 import 'package:geoedu/common/manager/screenshot_prevention.dart';
-import 'package:geoedu/common/service/api/user_service.dart';
 import 'package:geoedu/common/controller/firebase_firestore_controller.dart';
 import 'package:geoedu/common/extensions/user_extension.dart';
 import 'package:geoedu/common/manager/firebase_notification_manager.dart';
@@ -44,6 +41,7 @@ import 'package:geoedu/screen/live_stream/live_stream_end_screen/widget/livestre
 import 'package:geoedu/screen/live_stream/livestream_screen/audience/widget/live_stream_join_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/host/widget/live_stream_host_top_view.dart';
 import 'package:geoedu/screen/report_sheet/report_sheet.dart';
+import 'package:geoedu/screen/dashboard_screen/dashboard_screen_controller.dart';
 import 'package:geoedu/utilities/app_res.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/firebase_const.dart';
@@ -62,6 +60,8 @@ class LivestreamScreenController extends BaseController {
 
   Timer? timer;
   Timer? minViewerTimeoutTimer;
+  Timer? _dummyChatTimer;
+  Timer? _dummyLikeTimer;
   Function? onLikeTap;
 
   Setting? get setting => SessionManager.instance.getSettings();
@@ -355,7 +355,7 @@ class LivestreamScreenController extends BaseController {
   }
 
   List<GiftEffect> giftQueue = [];
-  bool isGiftAnimating = false;
+  final RxBool isGiftAnimating = false.obs;
   RxList<GiftEffect> activeGifts = <GiftEffect>[].obs;
 
   int _roomEnteredAt = 0;
@@ -391,10 +391,13 @@ class LivestreamScreenController extends BaseController {
   }
 
   void processGiftQueue() async {
-    if (isGiftAnimating) return;
-    if (giftQueue.isEmpty) return;
+    if (activeGifts.isNotEmpty) return;
+    if (giftQueue.isEmpty) {
+      isGiftAnimating.value = false;
+      return;
+    }
 
-    isGiftAnimating = true;
+    isGiftAnimating.value = true;
     GiftEffect gift = giftQueue.removeAt(0);
     print("🎬 Showing gift: ${gift.username} sent ${gift.giftName}");
     activeGifts.add(gift);
@@ -402,16 +405,24 @@ class LivestreamScreenController extends BaseController {
     // Audio is handled by GiftEffectWidget to avoid duplicate audio triggers
 
     try {
-      await Future.delayed(const Duration(seconds: 5));
+      int waited = 0;
+      while (activeGifts.contains(gift) && waited < 4500) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        waited += 100;
+      }
     } finally {
       activeGifts.remove(gift);
+      GiftAudioPlayer.stop();
       print("✅ Finished gift: ${gift.username} sent ${gift.giftName}");
-      isGiftAnimating = false;
-      processGiftQueue();
+      if (giftQueue.isNotEmpty) {
+        processGiftQueue();
+      } else {
+        isGiftAnimating.value = false;
+      }
     }
   }
 
-  Future<void> sendGift(AppUser user, String giftName, String assetUrl, String audioPath, {int? giftId, int? coinPrice}) async {
+  Future<void> sendGift(AppUser user, String giftName, String assetUrl, String audioPath, {int? giftId, int? coinPrice, String? thumbnailUrl}) async {
     print("🚀 Sending gift for user: ${user.username}");
 
     // The sender (buyer) is who the animation credits — not the gift's
@@ -431,6 +442,7 @@ class LivestreamScreenController extends BaseController {
       "gift_id": giftId,
       "coin_price": coinPrice,
       "asset_url": assetUrl,
+      "thumbnail_url": thumbnailUrl ?? '',
       "audio": audioPath,
       "timestamp": DateTime.now().millisecondsSinceEpoch,
     });
@@ -446,19 +458,32 @@ class LivestreamScreenController extends BaseController {
   }
 
   void openBattleGiftBar(BattleView side) {
+    if (isHost) {
+      showSnackBar('Hosts cannot send gifts');
+      return;
+    }
     selectedBattleSide.value = side;
     isBattleGiftBarOpen.value = true;
     fetchDiamondBalanceIfNeeded();
   }
 
   Future<void> sendBattleGiftDirect(Gift gift, AppUser targetUser) async {
+    if (isGiftAnimating.value || activeGifts.isNotEmpty) {
+      return;
+    }
     final giftId = gift.id?.toInt();
     final coinPrice = gift.coinPrice?.toInt() ?? 0;
     final receiverId = targetUser.userId;
+    if (isHost || receiverId == myUserId) {
+      showSnackBar('You cannot send gifts to yourself');
+      return;
+    }
     if (giftId == null || receiverId == null || coinPrice <= 0) {
       return Loggers.error(
           'Invalid battle gift: giftId=$giftId receiver=$receiverId price=$coinPrice');
     }
+
+    isGiftAnimating.value = true;
 
     int effectiveGiftId = (giftId > 0) ? giftId : -1;
     if (effectiveGiftId <= 0) {
@@ -481,6 +506,7 @@ class LivestreamScreenController extends BaseController {
         source: 'video_gift',
         languageId: liveData.value.languageId);
     if (response.status != true) {
+      isGiftAnimating.value = false;
       return showSnackBar(response.message);
     }
 
@@ -505,7 +531,10 @@ class LivestreamScreenController extends BaseController {
         targetUser,
         gift.displayName,
         gift.effectiveAssetUrl.addBaseURL(),
-        sound);
+        sound,
+        giftId: gift.id,
+        coinPrice: gift.coinPrice,
+        thumbnailUrl: gift.image?.addBaseURL());
   }
 
   @override
@@ -519,24 +548,62 @@ class LivestreamScreenController extends BaseController {
     WakelockPlus.disable();
     timer?.cancel();
     minViewerTimeoutTimer?.cancel();
-    videoPlayerController.value?.dispose();
+    _dummyChatTimer?.cancel();
+    _dummyLikeTimer?.cancel();
+
+    // Immediately silence and dispose video player
+    try {
+      videoPlayerController.value?.setVolume(0.0);
+      videoPlayerController.value?.pause();
+      videoPlayerController.value?.dispose();
+      videoPlayerController.value = null;
+    } catch (_) {}
+
     liveStreamUserStatesListener?.cancel();
     liveStreamCommentsListener?.cancel();
     liveStreamDocListener?.cancel();
-    countdownPlayer.dispose();
-    winAudioPlayer.dispose();
+    try {
+      countdownPlayer.stop();
+      countdownPlayer.dispose();
+      winAudioPlayer.stop();
+      winAudioPlayer.dispose();
+      battleStartPlayer.stop();
+      battleStartPlayer.dispose();
+    } catch (_) {}
     stopListenEvent();
     logoutRoom();
   }
 
   Future<void> initVideoPlayer() async {
-    final url = liveData.value.dummyUserLink ?? '';
-    if (url.isEmpty) return;
+    final rawUrl = liveData.value.dummyUserLink ?? '';
+    if (rawUrl.isEmpty) {
+      Loggers.warning('initVideoPlayer: dummyUserLink is empty');
+      _startDummyInteraction();
+      return;
+    }
+
+    final url = rawUrl.addBaseURL();
+    Loggers.info('initVideoPlayer: loading video from $url (raw: $rawUrl)');
 
     // Dispose old controller if exists to avoid memory leak
-    await videoPlayerController.value?.dispose();
+    try {
+      await videoPlayerController.value?.dispose();
+    } catch (_) {}
+    videoPlayerController.value = null;
 
-    final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+    VideoPlayerController controller;
+    if (url.startsWith('assets/')) {
+      controller = VideoPlayerController.asset(url);
+    } else {
+      final uri = Uri.tryParse(url);
+      if (uri == null || !uri.hasScheme) {
+        Loggers.error('initVideoPlayer: invalid URI: $url');
+        _startDummyInteraction();
+        return;
+      }
+      controller = VideoPlayerController.networkUrl(uri);
+    }
+
     isPlayerMute.value = false;
 
     try {
@@ -547,10 +614,107 @@ class LivestreamScreenController extends BaseController {
 
       videoPlayerController.value = controller;
       videoPlayerController.value?.setLooping(true);
-    } on PlatformException catch (e) {
-      showSnackBar(e.message);
-      Loggers.error(e);
+    } catch (e) {
+      Loggers.error('initVideoPlayer error: $e');
+      // Graceful fallback: do NOT pop raw ExoPlayer crash snackbar to end user
     }
+
+    _startDummyInteraction();
+  }
+
+  void _startDummyInteraction() {
+    _dummyChatTimer?.cancel();
+    _dummyLikeTimer?.cancel();
+
+    // Realistic initial watching count
+    if ((liveData.value.watchingCount ?? 0) <= 0) {
+      liveData.value.watchingCount = 22 + Random().nextInt(16);
+      liveData.refresh();
+    }
+
+    // Seed welcoming classroom chat if comments are currently empty
+    if (comments.isEmpty) {
+      final initialSeed = [
+        LivestreamComment(
+          id: DateTime.now().millisecondsSinceEpoch - 12000,
+          senderId: -101,
+          comment: 'Hello everyone! Excited for today’s session 📚',
+          commentType: LivestreamCommentType.text,
+        )..senderUserRx.value = AppUser(
+            userId: -101,
+            username: 'sarah_m',
+            fullname: 'Sarah Miller',
+            profile: 'assets/images/profile-1.jpg',
+            level: 2,
+          ),
+        LivestreamComment(
+          id: DateTime.now().millisecondsSinceEpoch - 6000,
+          senderId: -102,
+          comment: 'Great stream! Greetings to the host 🍁',
+          commentType: LivestreamCommentType.text,
+        )..senderUserRx.value = AppUser(
+            userId: -102,
+            username: 'alex_geo',
+            fullname: 'Alexandre Roy',
+            profile: 'assets/images/profile-2.jpg',
+            level: 4,
+          ),
+      ];
+      comments.assignAll(initialSeed);
+    }
+
+    final dummyPool = [
+      {'user': 'david_k', 'name': 'David Kim', 'text': 'Very clear explanation, thank you! 👍', 'avatar': 'assets/images/profile-3.jpg', 'level': 3},
+      {'user': 'elena_v', 'name': 'Elena Vance', 'text': 'Taking detailed notes 📝', 'avatar': 'assets/images/profile-4.jpg', 'level': 5},
+      {'user': 'lucas_b', 'name': 'Lucas Brown', 'text': 'Love this lesson! Super helpful ✨', 'avatar': 'assets/images/profile-5.jpg', 'level': 1},
+      {'user': 'sophia_l', 'name': 'Sophia Liu', 'text': 'Can you explain the previous point again?', 'avatar': 'assets/images/profile-6.jpg', 'level': 2},
+      {'user': 'marcus_w', 'name': 'Marcus Wright', 'text': 'Following now! Great stream 👏', 'avatar': 'assets/images/profile-7.jpg', 'level': 6},
+    ];
+
+    int dummyIndex = 0;
+    _dummyChatTimer = Timer.periodic(const Duration(seconds: 8), (t) {
+      if (isClosed || liveData.value.isDummyLive != 1) {
+        t.cancel();
+        return;
+      }
+      final item = dummyPool[dummyIndex % dummyPool.length];
+      dummyIndex++;
+
+      final newComment = LivestreamComment(
+        id: DateTime.now().millisecondsSinceEpoch,
+        senderId: -200 - dummyIndex,
+        comment: item['text'] as String,
+        commentType: LivestreamCommentType.text,
+      )..senderUserRx.value = AppUser(
+          userId: -200 - dummyIndex,
+          username: item['user'] as String,
+          fullname: item['name'] as String,
+          profile: item['avatar'] as String,
+          level: item['level'] as int,
+        );
+
+      comments.insert(0, newComment);
+      if (comments.length > 50) comments.removeLast();
+      comments.refresh();
+
+      // Fluctuate viewer count naturally
+      final delta = Random().nextBool() ? 1 : -1;
+      final currentViewers = liveData.value.watchingCount ?? 22;
+      liveData.value.watchingCount = (currentViewers + delta).clamp(15, 99);
+      liveData.refresh();
+    });
+
+    _dummyLikeTimer = Timer.periodic(const Duration(seconds: 4), (t) {
+      if (isClosed || liveData.value.isDummyLive != 1) {
+        t.cancel();
+        return;
+      }
+      if (Random().nextDouble() < 0.60) {
+        onLikeTap?.call();
+        liveData.value.likeCount = (liveData.value.likeCount ?? 0) + 1;
+        liveData.refresh();
+      }
+    });
   }
 
   void initAudioPlayer() {
@@ -565,6 +729,25 @@ class LivestreamScreenController extends BaseController {
     }
     stopPreview();
     stopPublish();
+
+    // Stop and destroy all remote stream views to guarantee audio cutoff
+    for (var stream in List<StreamView>.from(streamViews)) {
+      try {
+        ZegoExpressEngine.instance.stopPlayingStream(stream.streamId);
+        if (stream.streamViewId != -1) {
+          ZegoExpressEngine.instance.destroyCanvasView(stream.streamViewId);
+        }
+      } catch (e) {
+        Loggers.error('Error stopping stream playback: $e');
+      }
+    }
+    streamViews.clear();
+
+    try {
+      ZegoExpressEngine.instance.muteAllPlayStreamAudio(true);
+      ZegoExpressEngine.instance.muteAllPlayStreamVideo(true);
+    } catch (_) {}
+
     ZegoExpressEngine.instance.logoutRoom(liveData.value.roomID ?? '');
   }
 
@@ -576,6 +759,12 @@ class LivestreamScreenController extends BaseController {
       ..isUserStatusNotify = true;
 
     try {
+      // Ensure playback audio is unmuted when joining room
+      try {
+        ZegoExpressEngine.instance.muteAllPlayStreamAudio(false);
+        ZegoExpressEngine.instance.muteAllPlayStreamVideo(false);
+      } catch (_) {}
+
       final result = await ZegoExpressEngine.instance.loginRoom(roomID, user, config: roomConfig);
 
       if (result.errorCode != 0) {
@@ -621,9 +810,7 @@ class LivestreamScreenController extends BaseController {
           _sendCommentToFirestore(type: LivestreamCommentType.joined);
 
           // 🔥 NEW: Send entry effect for current user
-          if (myUser.appUser != null) {
-            sendEntryEffect(myUser.appUser!);
-          }
+          sendEntryEffect(myUser.appUser);
         } else {
           Loggers.error('User not found');
         }
@@ -637,8 +824,8 @@ class LivestreamScreenController extends BaseController {
               videoStatus: state.videoStatus);
 
           User? myUser = this.myUser.value;
-          if (myUser?.appUser != null) {
-            sendEntryEffect(myUser!.appUser!);
+          if (myUser != null) {
+            sendEntryEffect(myUser.appUser);
           }
         }
       }
@@ -1180,7 +1367,9 @@ class LivestreamScreenController extends BaseController {
                 !isHost) {
               continue;
             }
-            comments.add(comment);
+            if (!comments.any((c) => c.id == comment.id)) {
+              comments.add(comment);
+            }
             // Loggers.info('New comment added: ${comment.toJson()}');
             break;
 
@@ -1218,6 +1407,9 @@ class LivestreamScreenController extends BaseController {
     ZegoExpressEngine.instance.useFrontCamera(isFrontCamera, channel: ZegoPublishChannel.Main);
   }
 
+  RxBool isAudioOn = true.obs;
+  RxBool isVideoOn = true.obs;
+
   void toggleFlipCamera() {
     isFrontCamera = !isFrontCamera;
     ZegoExpressEngine.instance.useFrontCamera(isFrontCamera, channel: ZegoPublishChannel.Main);
@@ -1228,34 +1420,39 @@ class LivestreamScreenController extends BaseController {
       return showSnackBar(LKey.theHostHasTurnedOffYourAudio);
     }
 
-    bool isAudioOn = state?.audioStatus == VideoAudioStatus.on;
+    bool audioCurrentlyOn = state != null
+        ? state.audioStatus == VideoAudioStatus.on
+        : isAudioOn.value;
 
-    if (isAudioOn) {
+    if (audioCurrentlyOn) {
+      isAudioOn.value = false;
       updateUserStateToFirestore(myUserId,
           audioStatus: VideoAudioStatus.offByMe);
       ZegoExpressEngine.instance.muteMicrophone(true);
     } else {
+      isAudioOn.value = true;
       updateUserStateToFirestore(myUserId, audioStatus: VideoAudioStatus.on);
       ZegoExpressEngine.instance.muteMicrophone(false);
     }
   }
 
-  // RxBool isVideoOn = true.obs;
   void toggleVideo(LivestreamUserState? state) async {
     if (state?.videoStatus == VideoAudioStatus.offByHost) {
       return showSnackBar(LKey.theHostHasTurnedOffYourVideo.tr);
     }
-    bool isVideoOn = state?.videoStatus == VideoAudioStatus.on;
-    Loggers.error(isVideoOn);
-    if (isVideoOn) {
+    bool videoCurrentlyOn = state != null
+        ? state.videoStatus == VideoAudioStatus.on
+        : isVideoOn.value;
+    Loggers.error(videoCurrentlyOn);
+    if (videoCurrentlyOn) {
+      isVideoOn.value = false;
       updateUserStateToFirestore(myUserId,
           videoStatus: VideoAudioStatus.offByMe);
       await ZegoExpressEngine.instance.enableCamera(false);
-      print('HELLO WOW');
     } else {
+      isVideoOn.value = true;
       updateUserStateToFirestore(myUserId, videoStatus: VideoAudioStatus.on);
       await ZegoExpressEngine.instance.enableCamera(true);
-      print('HELLO NOTHING');
     }
   }
 
@@ -1273,13 +1470,26 @@ class LivestreamScreenController extends BaseController {
     }
   }
 
-  void onLikeButtonTap() async {
-    bool isExist = (await liveStreamDocRef.get()).exists;
-    if (isExist) {
-      HapticManager.shared.light();
-      liveStreamDocRef
-          .update({FirebaseConst.likeCount: FieldValue.increment(1)});
-    }
+  void onLikeButtonTap() {
+    HapticManager.shared.light();
+    onLikeTap?.call(); // Instant floating heart reaction!
+    final currentLikes = liveData.value.likeCount ?? 0;
+    liveData.value.likeCount = currentLikes + 1;
+    liveData.refresh();
+
+    // Async sync to Firestore in background
+    liveStreamDocRef.get().then((doc) {
+      if (doc.exists) {
+        liveStreamDocRef.update({FirebaseConst.likeCount: FieldValue.increment(1)});
+      } else {
+        liveStreamDocRef.set({
+          ...liveData.value.toJson(),
+          FirebaseConst.likeCount: currentLikes + 1,
+        }, SetOptions(merge: true));
+      }
+    }).catchError((e) {
+      Loggers.error('onLikeButtonTap error: $e');
+    });
   }
 
   void onTextCommentSend() {
@@ -1302,12 +1512,27 @@ class LivestreamScreenController extends BaseController {
   void onGiftTap(GiftType type,
       {BattleView battleViewType = BattleView.red,
       List<AppUser> users = const []}) {
-    users.removeWhere((element) => element.userId == myUserId);
+    if (isHost) {
+      showSnackBar('Hosts cannot send gifts to themselves');
+      return;
+    }
+    final targetUsers = List<AppUser>.from(users);
+    targetUsers.removeWhere((element) => element.userId == myUserId);
     if (liveData.value.type == LivestreamType.battle &&
         liveData.value.battleType == BattleType.end) {
       return showSnackBar(LKey.battleEndedGiftNotSent.tr);
     }
+
+    final effectiveTargetId = liveData.value.hostId;
+    final effectiveStreamUsers = targetUsers.isNotEmpty
+        ? targetUsers
+        : (liveData.value.hostUser != null ? [liveData.value.hostUser!] : <AppUser>[]);
+
     GiftManager.openGiftSheet(
+        userId: effectiveTargetId,
+        giftType: type,
+        battleViewType: battleViewType,
+        streamUsers: effectiveStreamUsers,
         source: 'video_gift',
         onCompletion: (giftManager) {
           Gift gift = giftManager.gift;
@@ -1318,7 +1543,7 @@ class LivestreamScreenController extends BaseController {
           _sendCommentToFirestore(
               type: LivestreamCommentType.gift,
               giftId: gift.id,
-              receiverId: user?.userId);
+              receiverId: user?.userId ?? effectiveTargetId);
           updateUserStateToFirestore(
             user?.userId,
             battleCoin: type == GiftType.battle ? coinPrice : null,
@@ -1350,12 +1575,10 @@ class LivestreamScreenController extends BaseController {
             sound,
             giftId: gift.id,
             coinPrice: coinPrice,
+            thumbnailUrl: gift.image?.addBaseURL(),
           );
 
-        },
-        giftType: type,
-        battleViewType: battleViewType,
-        streamUsers: users);
+        });
   }
 
   _sendCommentToFirestore(
@@ -1364,21 +1587,48 @@ class LivestreamScreenController extends BaseController {
       int? giftId,
       int? receiverId}) async {
     int time = DateTime.now().millisecondsSinceEpoch;
-    try {
-      await _addUsersFirebaseFireStore();
-      liveStreamCommentsRef.doc('$time').set(LivestreamComment(
-              comment: comment,
-              commentType: type,
-              id: time,
-              senderId: myUserId,
-              receiverId: receiverId,
-              giftId: giftId)
-          .toJson());
 
-      // GIFT comments feed the end-of-session "Premium Gifts"/"Stars Earned"
-      // insight stats, so a dropped write here silently zeroes those out even
-      // though the diamonds already left the sender's wallet. Await it and
-      // retry once instead of firing-and-forgetting like other comment types.
+    // 1. Immediately create comment model
+    final newComment = LivestreamComment(
+      comment: comment,
+      commentType: type,
+      id: time,
+      senderId: myUserId,
+      receiverId: receiverId,
+      giftId: giftId,
+    );
+
+    // Bind current user immediately so avatar, username & level render without delay
+    final currentUser = SessionManager.instance.getUser();
+    newComment.senderUserRx.value = myUser.value?.appUser ?? (currentUser != null
+        ? AppUser(
+            userId: myUserId,
+            username: currentUser.username ?? 'You',
+            fullname: currentUser.fullname ?? 'You',
+            profile: currentUser.profilePhoto,
+            level: currentUser.level,
+            isVerify: currentUser.isVerify,
+          )
+        : null);
+
+    if (giftId != null) {
+      newComment.gift = gifts.firstWhereOrNull((g) => g.id == giftId);
+    }
+
+    // 2. Insert into local comments list immediately
+    if (!comments.any((c) => c.id == time)) {
+      comments.insert(0, newComment);
+      comments.refresh();
+    }
+
+    // 3. Persist to Firestore and API asynchronously
+    try {
+      _addUsersFirebaseFireStore().catchError((e) {
+        Loggers.error('addUsersFirebaseFireStore error: $e');
+      });
+
+      await liveStreamCommentsRef.doc('$time').set(newComment.toJson());
+
       bool saved = await _saveCommentToApi(
         commentType: type,
         comment: comment,
@@ -1387,16 +1637,12 @@ class LivestreamScreenController extends BaseController {
       );
       if (!saved && type == LivestreamCommentType.gift) {
         await Future.delayed(const Duration(milliseconds: 800));
-        saved = await _saveCommentToApi(
+        await _saveCommentToApi(
           commentType: type,
           comment: comment,
           giftId: giftId,
           receiverId: receiverId,
         );
-        if (!saved) {
-          Loggers.error(
-              'Gift comment failed to save after retry: giftId=$giftId receiverId=$receiverId');
-        }
       }
     } catch (e) {
       Loggers.error('Message Error : $e');
@@ -1921,6 +2167,11 @@ class LivestreamScreenController extends BaseController {
             closeCoHostStream(myUserId);
           }
           logoutRoom();
+          if (Get.isRegistered<DashboardScreenController>()) {
+            Get.find<DashboardScreenController>().onChanged(0);
+          } else {
+            Get.back();
+          }
         }));
   }
 

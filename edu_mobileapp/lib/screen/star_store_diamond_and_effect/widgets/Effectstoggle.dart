@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:geoedu/utilities/color_res.dart';
 
 class EffectsToggle extends StatelessWidget {
   final int selectedIndex;
@@ -16,10 +15,11 @@ class EffectsToggle extends StatelessWidget {
     final tabs = ["Buy Effects", "My Effects"];
 
     return Container(
-      padding: const EdgeInsets.all(1),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: ColorRes.cardBackground,
-        borderRadius: BorderRadius.circular(30),
+        color: const Color(0xFF1A1D20),
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: Colors.white10, width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -29,21 +29,33 @@ class EffectsToggle extends StatelessWidget {
           return GestureDetector(
             onTap: () => onChanged(index),
             child: AnimatedContainer(
-              margin: const EdgeInsets.symmetric(horizontal: 2),
-              duration: const Duration(milliseconds: 250),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 18, vertical: 10),
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeInOut,
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
               decoration: BoxDecoration(
-                color: isSelected ? ColorRes.gold : Colors.transparent,
-                borderRadius: BorderRadius.circular(25),
+                gradient: isSelected
+                    ? const LinearGradient(
+                        colors: [Color(0xFFFFD700), Color(0xFFE6A800)],
+                      )
+                    : null,
+                color: isSelected ? null : Colors.transparent,
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: const Color(0xFFFFD700).withValues(alpha: 0.3),
+                          blurRadius: 10,
+                          spreadRadius: 0,
+                        ),
+                      ]
+                    : null,
               ),
               child: Text(
                 tabs[index],
                 style: TextStyle(
-                  color: isSelected
-                      ? Colors.black
-                      : Colors.white70,
-                  fontWeight: FontWeight.w600,
+                  color: isSelected ? Colors.black : Colors.white60,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  fontSize: 14,
                 ),
               ),
             ),

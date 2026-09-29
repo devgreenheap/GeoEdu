@@ -61,6 +61,8 @@ class LiveStreamTextFieldView extends StatelessWidget {
             ),
             child: TextField(
               controller: controller.textCommentController,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => controller.onTextCommentSend(),
               onChanged: (value) {
                 controller.isTextEmpty.value = value.isEmpty ? true : false;
               },
@@ -205,8 +207,9 @@ class BattleInlineGiftBar extends StatelessWidget {
                                   children: [
                                     CustomImage(
                                       image: gift.image?.addBaseURL(),
-                                      size: const Size(38, 38),
-                                      radius: 6,
+                                      size: const Size(42, 42),
+                                      fit: BoxFit.contain,
+                                      radius: 4,
                                     ),
                                     if (isFavourite)
                                       const Positioned(
@@ -311,7 +314,14 @@ class TextFieldSuffixIcon extends StatelessWidget {
         isGiftIconVisible &&
         users.length == 2;
 
-    final bool showSendButton = !isBattleOn || !isGiftIconVisible;
+    if (!isAudience) {
+      return AnimatedContainer(
+        width: !isTextEmpty ? 80 : 0,
+        alignment: AlignmentDirectional.centerEnd,
+        duration: const Duration(milliseconds: 100),
+        child: !isTextEmpty ? _sendButton(context) : const SizedBox.shrink(),
+      );
+    }
 
     return AnimatedContainer(
       width: isTextEmpty && isAudience ? 100 : 80,
@@ -336,16 +346,10 @@ class TextFieldSuffixIcon extends StatelessWidget {
                     ),
                   ],
                 )
-              : showSendButton && isTextEmpty && !isAudience
-                  ? _sendButton(context)
-                  : isBattleOn && isAudience
-                      ? _sendButton(context)
-                      : !isTextEmpty
-                          ? _sendButton(context)
-                          : GiftIcon(
-                              onTap: () => controller
-                                  .onGiftTap(GiftType.livestream, users: users),
-                            ),
+              : GiftIcon(
+                  onTap: () => controller
+                      .onGiftTap(GiftType.livestream, users: users),
+                ),
     );
   }
 

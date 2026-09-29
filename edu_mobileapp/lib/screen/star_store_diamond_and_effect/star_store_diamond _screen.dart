@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:geoedu/common/widget/custom_app_bar.dart';
 import 'package:geoedu/screen/leader_board/leader_board_screen.dart';
 import 'package:geoedu/screen/star_store_diamond_and_effect/tab_widget.dart';
 import 'package:geoedu/screen/diamond_purchase/diamond_purchase_screen.dart';
 import 'package:geoedu/screen/star_store_diamond_and_effect/widgets/diamond_store.dart';
 import 'package:geoedu/screen/star_store_diamond_and_effect/widgets/effects_store.dart';
-import 'package:geoedu/utilities/color_res.dart';
-
-import '../../utilities/theme_res.dart';
 
 class StarStoreDiamondScreen extends StatefulWidget {
   // False when embedded as the "Premium" bottom-nav tab body — there's
@@ -28,19 +24,64 @@ class _StarStoreDiamondScreenState extends State<StarStoreDiamondScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF090A0F),
       appBar: AppBar(
-        automaticallyImplyLeading: widget.showBackButton,
+        automaticallyImplyLeading: false,
+        leadingWidth: widget.showBackButton ? 56 : 0,
         leading: widget.showBackButton
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
-                onPressed: () {
-                  Get.back();
-                },
+            ? Center(
+                child: GestureDetector(
+                  onTap: () => Get.back(),
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        width: 1,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.chevron_left_rounded,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                ),
               )
             : null,
-        title: const Text(
-          "Diamond Store",
-          style: TextStyle(color: ColorRes.whitePure, fontWeight: FontWeight.w700),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.workspace_premium_rounded,
+              color: Color(0xFFFFB300),
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            RichText(
+              text: const TextSpan(
+                text: 'Diamond ',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.2,
+                ),
+                children: [
+                  TextSpan(
+                    text: 'Store',
+                    style: TextStyle(
+                      color: Color(0xFFFFB300),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
         actions: [
           GestureDetector(
@@ -50,24 +91,49 @@ class _StarStoreDiamondScreenState extends State<StarStoreDiamondScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: ColorRes.gold, width: 1.2),
+                color: const Color(0xFFFFB300).withValues(alpha: 0.12),
+                border: Border.all(
+                  color: const Color(0xFFFFB300).withValues(alpha: 0.8),
+                  width: 1.2,
+                ),
               ),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.emoji_events_rounded, color: ColorRes.gold, size: 16),
+                  Icon(Icons.emoji_events_rounded, color: Color(0xFFFFB300), size: 16),
                   SizedBox(width: 5),
                   Text(
                     'Top',
-                    style: TextStyle(color: ColorRes.gold, fontSize: 13, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: Color(0xFFFFB300),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.receipt_long_rounded, color: Colors.white),
-            onPressed: () => Get.to(() => const DiamondPurchaseScreen()),
+          GestureDetector(
+            onTap: () => Get.to(() => const DiamondPurchaseScreen()),
+            child: Container(
+              margin: const EdgeInsets.only(right: 14),
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  width: 1,
+                ),
+              ),
+              child: const Icon(
+                Icons.receipt_long_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
           ),
         ],
         backgroundColor: Colors.transparent,
@@ -75,32 +141,59 @@ class _StarStoreDiamondScreenState extends State<StarStoreDiamondScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         shadowColor: Colors.transparent,
-        flexibleSpace: const DecoratedBox(
-          decoration: BoxDecoration(gradient: kAppBarGradient),
-        ),
-        bottom: const PreferredSize(
-          preferredSize: Size.zero,
-          child: SizedBox.shrink(),
-        ),
       ),
       body: Stack(
         children: [
-          const Positioned.fill(child: ColoredBox(color: Colors.black)),
+          // Background ambient illumination
+          Positioned.fill(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Color(0xFF090A0F),
+                    Color(0xFF0D101A),
+                    Color(0xFF090A0F),
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: -60,
+            left: -40,
+            child: Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFFFB300).withValues(alpha: 0.08),
+              ),
+            ),
+          ),
           Column(
             children: [
-              StarStepTabs(currentStep: currentTab, onChanged: (index){
-                setState(() {
-                  currentTab = index;
-                });
-              }),
-              Container(height: .5, color: textLightGrey(context)),
+              StarStepTabs(
+                currentStep: currentTab,
+                onChanged: (index) {
+                  setState(() {
+                    currentTab = index;
+                  });
+                },
+              ),
               Expanded(
                 child: SingleChildScrollView(
-                  child: currentTab == 0 ? Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                      child: const DiamondStore()) : Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                      child: const EffectsStoreScreen()),
+                  physics: const BouncingScrollPhysics(),
+                  child: currentTab == 0
+                      ? Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          child: const DiamondStore(),
+                        )
+                      : Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          child: const EffectsStoreScreen(),
+                        ),
                 ),
               )
             ],

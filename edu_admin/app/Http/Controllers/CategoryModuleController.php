@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Categories;
 use App\Models\CountryMaster;
+use App\Models\Divisions;
 use App\Models\GlobalFunction;
 use App\Models\StateMaster;
 use App\Models\SubCategories;
@@ -20,6 +21,12 @@ class CategoryModuleController extends Controller
     {
         $categories = Categories::where('status', 1)->orderBy('name')->get();
         return view('categories', compact('categories'));
+    }
+
+    public function divisions()
+    {
+        $categories = Categories::where('status', 1)->orderBy('name')->get();
+        return view('divisions', compact('categories'));
     }
 
     public function listCategories(Request $request)
@@ -229,6 +236,134 @@ class CategoryModuleController extends Controller
     public function changeSubCategoryStatus(Request $request)
     {
         $item = SubCategories::find($request->id);
+        $item->status = $request->status;
+        $item->save();
+
+        return GlobalFunction::sendSimpleResponse(true, 'Status changed successfully!');
+    }
+
+    // Divisions
+
+    public function listDivisionsBySubCategory(Request $request)
+    {
+        $divisions = Divisions::where('sub_category_id', $request->sub_category_id)
+            ->where('status', 1)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return response()->json([
+            'status' => true,
+            'data' => $divisions,
+        ]);
+    }
+
+    public function listDivisions(Request $request)
+    {
+        $query = Divisions::query();
+        $totalData = $query->count();
+
+        $limit = $request->input('length');
+        $start = $request->input('start');
+        $searchValue = $request->input('search.value');
+
+        if (!empty($searchValue)) {
+            $query->where(function ($q) use ($searchValue) {
+                $q->where('name', 'LIKE', "%{$searchValue}%");
+            });
+        }
+
+        $totalFiltered = $query->count();
+
+        $result = $query->with('category:id,name', 'subCategory:id,name')
+            ->offset($start)
+            ->limit($limit)
+            ->orderBy('id', 'DESC')
+            ->get();
+
+        $data = $result->map(function ($item) {
+            $edit = "<a href='#'
+                        rel='{$item->id}'
+                        data-category='{$item->category_id}'
+                        data-sub-category='{$item->sub_category_id}'
+                        data-name='{$item->name}'
+                        class='action-btn edit-division d-flex align-items-center justify-content-center btn border rounded-2 text-success ms-1'>
+                        <i class='uil-pen'></i>
+                        </a>";
+
+            $delete = "<a href='#'
+                          rel='{$item->id}'
+                          class='action-btn delete-division d-flex align-items-center justify-content-center btn border rounded-2 text-danger ms-1'>
+                            <i class='uil-trash-alt'></i>
+                        </a>";
+            $action = "<span class='d-flex justify-content-end align-items-center'>{$edit}{$delete}</span>";
+
+            $checked = $item->status == 1 ? 'checked' : '';
+            $status = "<input type='checkbox' id='divisionStatus-{$item->id}' rel='{$item->id}' class='onOffDivision' {$checked} data-switch='none'/>
+                    <label for='divisionStatus-{$item->id}'></label>";
+
+            return [
+                $item->category?->name ?? '-',
+                $item->subCategory?->name ?? '-',
+                $item->name,
+                $status,
+                $action,
+            ];
+        });
+
+        $json_data = [
+            "draw" => intval($request->input('draw')),
+            "recordsTotal" => intval($totalData),
+            "recordsFiltered" => intval($totalFiltered),
+            "data" => $data,
+        ];
+
+        return response()->json($json_data);
+    }
+
+    public function addDivision(Request $request)
+    {
+        $name = trim((string) ($request->name ?? ''));
+        if ($name === '') {
+            return GlobalFunction::sendSimpleResponse(false, 'Division name is required');
+        }
+
+        $item = new Divisions();
+        $item->category_id = $request->category_id;
+        $item->sub_category_id = $request->sub_category_id;
+        $item->name = $name;
+        $item->status = 1;
+        $item->save();
+
+        return GlobalFunction::sendSimpleResponse(true, 'Division added successfully');
+    }
+
+    public function editDivision(Request $request)
+    {
+        $name = trim((string) ($request->name ?? ''));
+        if ($name === '') {
+            return GlobalFunction::sendSimpleResponse(false, 'Division name is required');
+        }
+
+        $item = Divisions::find($request->id);
+        $item->category_id = $request->category_id;
+        $item->sub_category_id = $request->sub_category_id;
+        $item->name = $name;
+        $item->save();
+
+        return GlobalFunction::sendSimpleResponse(true, 'Division updated successfully');
+    }
+
+    public function deleteDivision(Request $request)
+    {
+        $item = Divisions::find($request->id);
+        $item->delete();
+
+        return GlobalFunction::sendSimpleResponse(true, 'Division deleted successfully');
+    }
+
+    public function changeDivisionStatus(Request $request)
+    {
+        $item = Divisions::find($request->id);
         $item->status = $request->status;
         $item->save();
 

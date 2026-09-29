@@ -47,6 +47,7 @@ class _SendGiftDialogState extends State<SendGiftDialog> {
               CustomImage(
                   image: widget.gift.image?.addBaseURL(),
                   size: const Size(90, 90),
+                  fit: BoxFit.contain,
                   radius: 0),
               Text(LKey.yourGiftHasBeenSent.tr,
                   style: TextStyleCustom.outFitRegular400(

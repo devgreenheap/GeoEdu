@@ -7,6 +7,7 @@ import 'package:geoedu/model/general/coupon_model.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/utilities/const_res.dart';
+import 'package:geoedu/screen/star_score/widgets/payment_status_dialog.dart';
 import 'package:get/get.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 
@@ -139,6 +140,8 @@ class _DiamondPurchaseBottomState extends State<DiamondPurchaseBottom> {
 
   void _handlePaymentSuccess(PaymentSuccessResponse response) async {
     Loggers.success('Payment Success: ${response.paymentId}');
+    final paymentTime = DateTime.now();
+    final txnId = response.paymentId ?? response.orderId ?? 'N/A';
     try {
       final result = await GiftWalletService.instance.verifyDiamondPurchase(
         paymentId: response.paymentId ?? '',
@@ -153,37 +156,78 @@ class _DiamondPurchaseBottomState extends State<DiamondPurchaseBottom> {
       }
       Get.back();
       widget.onPurchaseSuccess?.call();
-      Get.snackbar(
-        'Payment Successful',
-        '${widget.diamonds} Diamonds added to your account',
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.TOP,
+      PaymentStatusDialog.showSuccess(
+        diamonds: widget.diamonds,
+        amount: _finalPrice,
+        transactionId: txnId,
+        paymentTime: paymentTime,
       );
     } catch (e) {
       Loggers.error('Verify diamond purchase failed: $e');
       Get.back();
-      Get.snackbar(
-        'Payment Received',
-        'Diamonds will be credited shortly',
-        backgroundColor: Colors.orange,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.TOP,
+      widget.onPurchaseSuccess?.call();
+      PaymentStatusDialog.showSuccess(
+        diamonds: widget.diamonds,
+        amount: _finalPrice,
+        transactionId: txnId,
+        paymentTime: paymentTime,
       );
     }
   }
 
   void _handlePaymentError(PaymentFailureResponse response) {
-    Loggers.error('Payment Failed: ${response.code} - ${response.message}');
-    final message = (response.message != null && response.message!.isNotEmpty && response.message != 'undefined')
-        ? response.message!
-        : 'Payment was cancelled';
-    Get.snackbar(
-      'Payment Cancelled',
-      message,
-      backgroundColor: Colors.orange,
-      colorText: Colors.white,
-      snackPosition: SnackPosition.TOP,
+    Loggers.error('Payment Failed: code=${response.code}, message=${response.message}, error=${response.error}');
+
+    // 1. Resolve a clean, user-friendly message
+    String message = 'Payment was cancelled or could not be completed.';
+    if (response.message != null &&
+        response.message!.isNotEmpty &&
+        response.message != 'undefined' &&
+        response.message!.toLowerCase() != 'payment error') {
+      message = response.message!;
+    }
+
+    // Try extracting human-readable description from error map if available
+    if (response.error is Map) {
+      final errMap = response.error as Map;
+      if (errMap['error'] is Map && errMap['error']['description'] != null) {
+        final desc = errMap['error']['description'].toString().trim();
+        if (desc.isNotEmpty && desc != 'undefined') {
+          message = desc;
+        }
+      } else if (errMap['description'] != null) {
+        final desc = errMap['description'].toString().trim();
+        if (desc.isNotEmpty && desc != 'undefined') {
+          message = desc;
+        }
+      }
+    }
+
+    if (response.code == Razorpay.PAYMENT_CANCELLED || message.toLowerCase().contains('cancel')) {
+      message = 'Payment was cancelled by user.';
+    }
+
+    // 2. Extract actual gateway payment ID only if real ID was generated
+    String? txnId;
+    if (response.error is Map) {
+      final errMap = response.error as Map;
+      if (errMap['metadata'] is Map && errMap['metadata']['payment_id'] != null) {
+        final pid = errMap['metadata']['payment_id'].toString().trim();
+        if (pid.isNotEmpty && pid != 'null' && pid != 'undefined' && !pid.startsWith('{')) {
+          txnId = pid;
+        }
+      } else if (errMap['payment_id'] != null) {
+        final pid = errMap['payment_id'].toString().trim();
+        if (pid.isNotEmpty && pid != 'null' && pid != 'undefined' && !pid.startsWith('{')) {
+          txnId = pid;
+        }
+      }
+    }
+
+    PaymentStatusDialog.showFailure(
+      message: message,
+      transactionId: txnId ?? 'Not Generated',
+      paymentTime: DateTime.now(),
     );
   }
 

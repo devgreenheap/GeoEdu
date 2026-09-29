@@ -198,42 +198,77 @@ Widget _buildGiftGrid(
     List<Gift> gifts, SendGiftSheetController controller, BuildContext context) {
   return GridView.builder(
     itemCount: gifts.length,
-    padding: const EdgeInsets.symmetric(horizontal: 11),
+    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 4,
-        mainAxisExtent: 142,
-        crossAxisSpacing: 5,
-        mainAxisSpacing: 5),
+        mainAxisExtent: 104,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8),
     itemBuilder: (context, index) {
       Gift gift = gifts[index];
+      String? badgeText = gift.categoryName;
       return InkWell(
         onTap: () => controller.onGiftTap(gift, context),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          decoration: ShapeDecoration(
-            shape: SmoothRectangleBorder(
-              borderRadius:
-                  SmoothBorderRadius(cornerRadius: 5, cornerSmoothing: 1),
-            ),
-            color: const Color(0xFF031631),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08), width: 1),
           ),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              CustomImage(
-                  image: gift.image?.addBaseURL(),
-                  size: const Size(60, 60),
-                  radius: 8),
-              Text(gift.displayName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyleCustom.outFitMedium500(
-                      fontSize: 12, color: whitePure(context))),
-              Text('${(gift.coinPrice ?? 0).numberFormat} Diamonds',
-                  style: TextStyleCustom.outFitMedium500(
-                      fontSize: 13, color: textLightGrey(context))),
-              GradientText(LKey.send.tr,
-                  gradient: StyleRes.themeGradient,
-                  style: TextStyleCustom.unboundedMedium500(fontSize: 13))
+              const SizedBox(height: 5),
+              SizedBox(
+                height: 16,
+                child: badgeText != null && badgeText.isNotEmpty
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: badgeText.toLowerCase().contains('love')
+                              ? const Color(0xFFE91E63)
+                              : const Color(0xFFFFB300),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          badgeText,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              Expanded(
+                child: Center(
+                  child: CustomImage(
+                    image: gift.image?.addBaseURL(),
+                    size: const Size(48, 48),
+                    fit: BoxFit.contain,
+                    radius: 4,
+                  ),
+                ),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.diamond, color: Colors.white, size: 12),
+                  const SizedBox(width: 3),
+                  Text(
+                    '${gift.coinPrice ?? 0}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
             ],
           ),
         ),

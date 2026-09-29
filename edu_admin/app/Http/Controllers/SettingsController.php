@@ -1010,6 +1010,7 @@ class SettingsController extends Controller
         $data->reportReasons = $reportReasons;
         $data->deepARFilters = $deepARFilters;
         $data->gifts = $gifts;
+        $data->gift_categories = \App\Models\GiftCategory::orderBy('id', 'ASC')->get(['id', 'name']);
         $data->diamond_buying_information = $diamondBuyingInformation;
         $data->musicCategories = $musicCategories;
         $data->userLevels = $userLevels;

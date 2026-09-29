@@ -54,6 +54,7 @@ class GiftEffect {
   final String username;
   final String giftName;
   final String assetUrl;
+  final String? thumbnailUrl;
   final String? audio;
   final String? senderPhoto;
   final int timestamp;
@@ -64,6 +65,7 @@ class GiftEffect {
     required this.username,
     required this.giftName,
     required this.assetUrl,
+    this.thumbnailUrl,
     this.audio,
     this.senderPhoto,
     required this.timestamp,
@@ -93,11 +95,6 @@ class GiftEffect {
       parsedCoinPrice = int.tryParse(json['coin_price'].toString());
     }
 
-    String assetUrl = json['asset_url']?.toString() ?? '';
-    if (assetUrl.isEmpty) {
-      assetUrl = 'assets/svg_icons/Pen Animation.svg';
-    }
-
     final giftName = json['giftName']?.toString() ?? 'Gift';
     final int? giftId = json['gift_id'] != null
         ? int.tryParse(json['gift_id'].toString())
@@ -105,22 +102,55 @@ class GiftEffect {
             ? int.tryParse(json['giftId'].toString())
             : null);
 
+    final settings = SessionManager.instance.getSettings();
+    final serverGifts = settings?.availableGifts ?? settings?.gifts ?? [];
+    Gift? matched;
+    if (giftId != null && giftId > 0) {
+      matched = serverGifts.firstWhereOrNull((g) => g.id == giftId);
+    }
+    if (matched == null && giftName.isNotEmpty && giftName != 'Gift') {
+      matched = serverGifts.firstWhereOrNull((g) =>
+          g.displayName.toLowerCase() == giftName.toLowerCase() ||
+          (g.title != null &&
+              g.title!.toLowerCase().trim() == giftName.toLowerCase().trim()));
+    }
+
+    String thumbnailUrl = json['thumbnail_url']?.toString().trim() ?? '';
+    if (thumbnailUrl.isEmpty && matched != null && (matched.image?.isNotEmpty ?? false)) {
+      thumbnailUrl = matched.image!;
+    }
+    if (thumbnailUrl.isNotEmpty &&
+        !thumbnailUrl.startsWith('http://') &&
+        !thumbnailUrl.startsWith('https://') &&
+        !thumbnailUrl.startsWith('assets/')) {
+      thumbnailUrl = thumbnailUrl.addBaseURL();
+    }
+
+    String assetUrl = json['asset_url']?.toString().trim() ?? '';
+    if (assetUrl.isEmpty || assetUrl == 'assets/svg_icons/Pen Animation.svg') {
+      if (matched != null && matched.effectiveAssetUrl.isNotEmpty) {
+        assetUrl = matched.effectiveAssetUrl;
+      }
+    }
+    if (assetUrl.isEmpty && thumbnailUrl.isNotEmpty) {
+      assetUrl = thumbnailUrl;
+    }
+
+    if (assetUrl.isNotEmpty &&
+        !assetUrl.startsWith('http://') &&
+        !assetUrl.startsWith('https://') &&
+        !assetUrl.startsWith('assets/')) {
+      assetUrl = assetUrl.addBaseURL();
+    }
+
+    if (assetUrl.isEmpty) {
+      assetUrl = thumbnailUrl.isNotEmpty ? thumbnailUrl : 'assets/svg_icons/Pen Animation.svg';
+    }
+
     // Resolve audio: first priority is what's passed if valid remote/asset audio,
     // otherwise lookup the actual gift uploaded in admin
     String audio = json['audio']?.toString().trim() ?? '';
     if (audio.isEmpty || audio == 'assets/images/fairy-sparkle.mp3') {
-      final settings = SessionManager.instance.getSettings();
-      final serverGifts = settings?.availableGifts ?? settings?.gifts ?? [];
-      Gift? matched;
-      if (giftId != null && giftId > 0) {
-        matched = serverGifts.firstWhereOrNull((g) => g.id == giftId);
-      }
-      if (matched == null && giftName.isNotEmpty && giftName != 'Gift') {
-        matched = serverGifts.firstWhereOrNull((g) =>
-            g.displayName.toLowerCase() == giftName.toLowerCase() ||
-            (g.title != null &&
-                g.title!.toLowerCase().trim() == giftName.toLowerCase().trim()));
-      }
       if (matched != null && matched.effectiveSoundUrl.isNotEmpty) {
         audio = matched.effectiveSoundUrl;
       } else if (giftName.toLowerCase().trim() == 'pen') {
@@ -139,6 +169,7 @@ class GiftEffect {
       username: json['username']?.toString() ?? '',
       giftName: giftName,
       assetUrl: assetUrl,
+      thumbnailUrl: thumbnailUrl.isNotEmpty ? thumbnailUrl : null,
       audio: audio,
       coinPrice: parsedCoinPrice,
       senderPhoto: json['senderPhoto']?.toString(),
@@ -146,5 +177,5 @@ class GiftEffect {
     );
   }
 
-  bool get isSvga => assetUrl.toLowerCase().endsWith('.svga');
+  bool get isSvga => assetUrl.toLowerCase().contains('.svga');
 }

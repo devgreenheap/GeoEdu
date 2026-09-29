@@ -20,4 +20,9 @@ class Topics extends Model
     {
         return $this->belongsTo(SubCategories::class, 'sub_category_id', 'id');
     }
+
+    public function division()
+    {
+        return $this->belongsTo(Divisions::class, 'division_id', 'id');
+    }
 }

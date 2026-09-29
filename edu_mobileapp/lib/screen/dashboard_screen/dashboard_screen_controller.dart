@@ -19,6 +19,7 @@ import 'package:geoedu/screen/audio_call/audio_call_list_controller.dart';
 import 'package:geoedu/screen/camera_screen/camera_screen.dart';
 import 'package:geoedu/screen/feed_screen/feed_screen_controller.dart';
 import 'package:geoedu/screen/gif_sheet/gif_sheet_controller.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/firebase_const.dart';
 import 'package:just_audio/just_audio.dart';
@@ -137,11 +138,26 @@ class DashboardScreenController extends BaseController with GetSingleTickerProvi
     // Menu is no longer a tab (moved to a LiveTopBar icon), so index 3 is
     // now the real "Live" page like the other three.
     SystemChrome.setSystemUIOverlayStyle(
-        SystemUiOverlayStyle(statusBarBrightness: index == 0 || index == 1 ? Brightness.dark : Brightness.light));
+        SystemUiOverlayStyle(statusBarBrightness: index == 0 || index == 1 || index == 3 ? Brightness.dark : Brightness.light));
     if (index == 1) {
       onFeedPostScrollDown(index);
     }
     if (selectedPageIndex.value == index) return;
+
+    // If leaving Live tab (index 3), immediately cut off all live audio!
+    if (selectedPageIndex.value == 3 && index != 3) {
+      try {
+        ZegoExpressEngine.instance.muteAllPlayStreamAudio(true);
+      } catch (_) {}
+      if (Get.isRegistered<LivestreamScreenController>()) {
+        try {
+          final liveCtrl = Get.find<LivestreamScreenController>();
+          liveCtrl.onClose();
+          Get.delete<LivestreamScreenController>(force: true);
+        } catch (_) {}
+      }
+    }
+
     HapticFeedback.lightImpact();
     onBottomIndexChanged?.call(index);
     selectedPageIndex.value = index;

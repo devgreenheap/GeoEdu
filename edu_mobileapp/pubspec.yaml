@@ -127,6 +127,7 @@ dependencies:
   image: ^4.5.4
   device_info_plus: ^10.1.0
   flutter_svg: ^2.2.3
+  lottie: ^3.1.2
   flutter_svga: ^0.0.11
 
   ### 🔌 Custom Plugins
@@ -166,6 +167,9 @@ flutter:
     - assets/icons/
     - assets/csv/
     - assets/audios/
+    - "assets/payment audio/"
+    - assets/register/
+    - assets/interest/
     - android/app/src/main/res/mipmap-hdpi/
     - ios/Runner/Assets.xcassets/AppIcon.appiconset/
 

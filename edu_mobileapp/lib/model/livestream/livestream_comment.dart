@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 import 'package:geoedu/common/controller/firebase_firestore_controller.dart';
+import 'package:geoedu/common/manager/session_manager.dart';
 import 'package:geoedu/model/general/settings_model.dart';
 import 'package:geoedu/model/livestream/app_user.dart';
 
@@ -82,14 +83,33 @@ class LivestreamComment {
   /// ✅ Expose Rx version for reactive UI (`Obx`)
   Rx<AppUser?> get senderUserRx => _senderUser;
 
+  bool _isBound = false;
+
   /// ✅ Initialize and auto-sync with controller
   void bindCommentUser() {
+    if (_isBound) return;
+    _isBound = true;
+
+    if (!Get.isRegistered<FirebaseFirestoreController>()) return;
     final controller = Get.find<FirebaseFirestoreController>();
 
     void updateUser() {
       final appUser = controller.users.firstWhereOrNull((element) => element.userId == senderId);
-
-      _senderUser.value = appUser;
+      if (appUser != null) {
+        _senderUser.value = appUser;
+      } else if (senderId == SessionManager.instance.getUserID() && _senderUser.value == null) {
+        final current = SessionManager.instance.getUser();
+        if (current != null) {
+          _senderUser.value = AppUser(
+            userId: current.id,
+            username: current.username ?? 'You',
+            fullname: current.fullname ?? 'You',
+            profile: current.profilePhoto,
+            level: current.level,
+            isVerify: current.isVerify,
+          );
+        }
+      }
     }
 
     // React when users list changes

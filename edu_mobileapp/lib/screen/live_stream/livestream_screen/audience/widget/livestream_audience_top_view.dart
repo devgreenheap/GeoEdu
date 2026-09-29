@@ -131,8 +131,21 @@ class _BuildCenterView extends StatelessWidget {
     User? target = user.value;
     final hostId = controller.liveData.value.hostId;
     if (target == null && hostId != null) {
-      target = await UserService.instance.fetchUserDetails(userId: hostId);
-      if (target != null) {
+      try {
+        target = await UserService.instance.fetchUserDetails(userId: hostId);
+      } catch (_) {}
+      if (target == null) {
+        final hostAppUser = controller.liveData.value.hostUser;
+        target = User(
+          id: hostId,
+          username: hostAppUser?.username,
+          fullname: hostAppUser?.fullname,
+          profilePhoto: hostAppUser?.profile,
+          isFollowing: false,
+        );
+      }
+      user.value = target;
+      if (target.id != null) {
         final index = controller.usersList.indexWhere((u) => u.id == target!.id);
         if (index != -1) {
           controller.usersList[index] = target;
@@ -141,20 +154,28 @@ class _BuildCenterView extends StatelessWidget {
         }
       }
     }
-    if (target?.id == null) return;
-    final userId = target!.id!;
+    final currentTarget = target;
+    if (currentTarget?.id == null) return;
+    final userId = currentTarget!.id!;
     FollowController followController;
     if (Get.isRegistered<FollowController>(tag: userId.toString())) {
       followController = Get.find<FollowController>(tag: userId.toString());
-      followController.updateUser(target);
+      followController.updateUser(currentTarget);
     } else {
-      followController = Get.put(FollowController(target.obs), tag: userId.toString());
+      followController = Get.put(FollowController(currentTarget.obs), tag: userId.toString());
     }
-    final updated = await followController.followUnFollowUser();
-    controller.updateUserStateToFirestore(userId, isFollow: updated?.isFollowing);
-    if (updated != null) {
-      final index = controller.usersList.indexWhere((u) => u.id == userId);
-      if (index != -1) controller.usersList[index] = updated;
+    try {
+      final updated = await followController.followUnFollowUser();
+      controller.updateUserStateToFirestore(userId, isFollow: updated?.isFollowing);
+      if (updated != null) {
+        user.value = updated;
+        final index = controller.usersList.indexWhere((u) => u.id == userId);
+        if (index != -1) controller.usersList[index] = updated;
+      }
+    } catch (_) {
+      currentTarget.isFollowing = !(currentTarget.isFollowing ?? false);
+      user.value = currentTarget;
+      user.refresh();
     }
   }
 

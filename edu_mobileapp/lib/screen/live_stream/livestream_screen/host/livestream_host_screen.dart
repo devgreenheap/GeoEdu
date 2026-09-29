@@ -64,11 +64,15 @@ class LivestreamHostScreen extends StatelessWidget {
                         margin: const EdgeInsets.only(top: 60));
                   case LivestreamType.dummy:
                     return LivestreamVideoPlayer(
-                        controller: controller.videoPlayerController);
+                        controller: controller.videoPlayerController,
+                        livestream: controller.liveData.value);
                 }
               },
             ),
-            EntryEffectLayer(controller: controller),
+            IgnorePointer(
+              ignoring: true,
+              child: EntryEffectLayer(controller: controller),
+            ),
               GiftEffectWidget(activeGifts: controller.activeGifts),
                 KeyboardAvoider(
                   child: Column(

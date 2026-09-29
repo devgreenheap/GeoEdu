@@ -1,7 +1,9 @@
-import 'dart:io';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:lottie/lottie.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:get/get.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:geoedu/common/controller/base_controller.dart';
@@ -19,7 +21,10 @@ import 'package:geoedu/model/general/city_model.dart';
 import 'package:geoedu/model/general/country_state_model.dart';
 import 'package:geoedu/model/general/settings_model.dart';
 import 'package:geoedu/model/user_model/user_model.dart' as user;
+import 'package:geoedu/screen/auth_screen/interest_category_screen.dart';
+import 'package:geoedu/screen/auth_screen/interest_topic_screen.dart';
 import 'package:geoedu/screen/dashboard_screen/dashboard_screen.dart';
+import 'package:geoedu/screen/auth_screen/widget/auth_status_dialog.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 class AuthScreenController extends BaseController {
@@ -34,6 +39,198 @@ class AuthScreenController extends BaseController {
   TextEditingController address1Controller = TextEditingController();
   TextEditingController address2Controller = TextEditingController();
   TextEditingController zipcodeController = TextEditingController();
+
+  // ── Registration step (1 = Personal, 2 = Category, 3 = Address) ──
+  int registrationStep = 1;
+
+  void goToStep(int step) {
+    registrationStep = step;
+    update();
+  }
+
+  void goToPreviousStep() {
+    if (registrationStep > 1) {
+      registrationStep--;
+      update();
+    }
+  }
+
+  // ── Location detection ──
+  bool isDetectingLocation = false;
+  String? detectedLocationLabel;
+
+  Future<void> autoDetectLocation() async {
+    isDetectingLocation = true;
+    update();
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        showSnackBar('Location services are disabled. Please enable them.');
+        isDetectingLocation = false;
+        update();
+        return;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          showSnackBar('Location permission denied.');
+          isDetectingLocation = false;
+          update();
+          return;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        showSnackBar(
+            'Location permission permanently denied. Enable in settings.');
+        isDetectingLocation = false;
+        update();
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.medium),
+      );
+
+      final placemarks =
+          await placemarkFromCoordinates(position.latitude, position.longitude);
+
+      if (placemarks.isNotEmpty) {
+        final place = placemarks.first;
+
+        // ── Fill text fields ──────────────────────────────────────────────
+        final street = [place.street, place.subLocality]
+            .where((e) => e != null && e.isNotEmpty)
+            .join(', ');
+        if (street.isNotEmpty) address1Controller.text = street;
+        if ((place.postalCode ?? '').isNotEmpty) {
+          zipcodeController.text = place.postalCode!;
+        }
+        detectedLocationLabel = [
+          place.locality,
+          place.administrativeArea,
+          place.country,
+        ].where((e) => e != null && e.isNotEmpty).join(', ');
+
+        // ── Auto-select Country ──────────────────────────────────────────
+        if (place.country != null && place.country!.isNotEmpty) {
+          final countryMatch = countryDataList.firstWhereOrNull((e) =>
+              e.name?.toLowerCase() == place.country!.toLowerCase());
+
+          if (countryMatch != null) {
+            // Directly set country state without triggering the
+            // fire-and-forget fetchStatesForCountry inside selectCountry().
+            // We will await the fetch ourselves so state/city selection
+            // happens only after the lists are actually populated.
+            selectedCountry = countryMatch.name;
+            selectedCountryObj = countryMatch;
+            selectedState = null;
+            stateList = [];
+            selectedCity = null;
+            cityDataList = [];
+            update();
+
+            // ── Await state loading ────────────────────────────────────
+            if (countryMatch.id != null) {
+              await fetchStatesForCountry(countryMatch.id!);
+            }
+
+            // ── Auto-select State ──────────────────────────────────────
+            if (place.administrativeArea != null &&
+                place.administrativeArea!.isNotEmpty &&
+                stateList.isNotEmpty) {
+              final stateMatch = stateList.firstWhereOrNull((s) =>
+                  s.toLowerCase().contains(
+                      place.administrativeArea!.toLowerCase()) ||
+                  place.administrativeArea!
+                      .toLowerCase()
+                      .contains(s.toLowerCase()));
+
+              if (stateMatch != null) {
+                selectedState = stateMatch;
+                selectedCity = null;
+                cityDataList = [];
+                update();
+
+                // ── Await city loading ─────────────────────────────────
+                final stateObj = selectedCountryObj?.states
+                    ?.firstWhereOrNull((e) => e.name == stateMatch);
+                if (stateObj?.id != null) {
+                  await fetchCityListForState(stateObj!.id!);
+                }
+
+                // ── Auto-select City ───────────────────────────────────
+                if (place.locality != null &&
+                    place.locality!.isNotEmpty &&
+                    cityList.isNotEmpty) {
+                  final cityMatch = cityList.firstWhereOrNull((c) =>
+                      c.toLowerCase()
+                          .contains(place.locality!.toLowerCase()) ||
+                      place.locality!
+                          .toLowerCase()
+                          .contains(c.toLowerCase()));
+                  if (cityMatch != null) {
+                    selectedCity = cityMatch;
+                    update();
+                  }
+                }
+              }
+            }
+          }
+        }
+        update();
+        showSnackBar('Location detected successfully ✅');
+      }
+    } catch (e) {
+      Loggers.error('Location detection failed: $e');
+      showSnackBar('Failed to detect location. Please fill manually.');
+    }
+    isDetectingLocation = false;
+    update();
+  }
+
+  // ── Step 1 validation & navigation ──
+  void onStep1Continue() {
+    fieldErrors.clear();
+    if (fullNameController.text.trim().isEmpty) {
+      fieldErrors['fullName'] = 'Full name is required';
+    }
+    if (mobileController.text.trim().isEmpty) {
+      fieldErrors['mobile'] = 'Mobile number is required';
+    } else if (!isOtpVerified) {
+      fieldErrors['mobile'] = 'Please verify your phone number with OTP';
+    }
+    if (emailController.text.trim().isEmpty) {
+      fieldErrors['email'] = 'Email is required';
+    } else if (!GetUtils.isEmail(emailController.text.trim())) {
+      fieldErrors['email'] = 'Enter a valid email address';
+    }
+    update();
+    if (fieldErrors.isEmpty) {
+      goToStep(2);
+    }
+  }
+
+  // ── Step 2 validation & navigation ──
+  void onStep2Continue() {
+    fieldErrors.clear();
+    if (selectedLanguage == null || selectedLanguage!.isEmpty) {
+      fieldErrors['language'] = 'Please select a language';
+    }
+    if (selectedCategory == null || selectedCategory!.isEmpty) {
+      fieldErrors['category'] = 'Please select a category';
+    }
+    update();
+    if (fieldErrors.isEmpty) {
+      goToStep(3);
+    }
+  }
+
+  // ── Skip address & create account directly ──
+  Future<void> onSkipAddress() async {
+    await _submitRegistration();
+  }
 
   // OTP (signup)
   String selectedCountryCode = '+91';
@@ -126,45 +323,9 @@ class AuthScreenController extends BaseController {
 
   bool validateForm() {
     fieldErrors.clear();
-
-    if (fullNameController.text.trim().isEmpty) {
-      fieldErrors['fullName'] = 'Full name is required';
-    }
-    if (emailController.text.trim().isEmpty) {
-      fieldErrors['email'] = 'Email is required';
-    } else if (!GetUtils.isEmail(emailController.text.trim())) {
-      fieldErrors['email'] = 'Enter a valid email address';
-    } else if (signupIdentityTab.value == 1 && !isOtpVerified) {
-      fieldErrors['email'] = 'Please verify your email with OTP';
-    }
-    if (signupIdentityTab.value == 0) {
-      if (mobileController.text.trim().isEmpty) {
-        fieldErrors['mobile'] = 'Mobile number is required';
-      } else if (!isOtpVerified) {
-        fieldErrors['mobile'] = 'Please verify your mobile number with OTP';
-      }
-    }
-    if (address1Controller.text.trim().isEmpty) {
-      fieldErrors['address1'] = 'Address is required';
-    }
-    if (selectedCity == null || selectedCity!.isEmpty) {
-      fieldErrors['city'] = 'Please select a city';
-    }
-    if (selectedCountry == null || selectedCountry!.isEmpty) {
-      fieldErrors['country'] = 'Please select a country';
-    }
-    if (selectedState == null || selectedState!.isEmpty) {
-      fieldErrors['state'] = 'Please select a state';
-    }
-    if (zipcodeController.text.trim().isEmpty) {
-      fieldErrors['zipcode'] = 'Zipcode is required';
-    } else if (zipcodeController.text.trim().length != 6 ||
-        int.tryParse(zipcodeController.text.trim()) == null) {
-      fieldErrors['zipcode'] = 'Zipcode must be exactly 6 digits';
-    }
-
+    // Step 3 (address) is optional — no mandatory address fields here.
     update();
-    return fieldErrors.isEmpty;
+    return true;
   }
 
   List<String> get categories =>
@@ -324,14 +485,20 @@ class AuthScreenController extends BaseController {
     update();
   }
 
-  Future<void> verifyOtp() async {
+  Future<bool> verifyOtp() async {
     final otp = otpController.text.trim();
     if (otp.isEmpty) {
-      return showSnackBar('Please enter OTP');
+      AuthStatusDialog.show(
+        isSuccess: false,
+        title: 'OTP Required',
+        message: 'Please enter the 6-digit OTP sent to your number.',
+      );
+      return false;
     }
     final bool byEmail = signupIdentityTab.value == 1;
     isVerifyingOtp = true;
     update();
+    bool success = false;
     try {
       final result = await UserService.instance.verifySignupOtp(
         mobile: byEmail ? null : mobileController.text.trim(),
@@ -340,15 +507,24 @@ class AuthScreenController extends BaseController {
       );
       if (result.status == true) {
         isOtpVerified = true;
-        showSnackBar('OTP verified successfully');
+        success = true;
       } else {
-        showSnackBar(result.message ?? 'Invalid OTP');
+        AuthStatusDialog.show(
+          isSuccess: false,
+          title: 'Verification Failed',
+          message: result.message ?? 'Invalid OTP code. Please check and try again.',
+        );
       }
     } catch (e) {
-      showSnackBar('Failed to verify OTP');
+      AuthStatusDialog.show(
+        isSuccess: false,
+        title: 'Verification Failed',
+        message: 'Failed to verify OTP. Please check your network and try again.',
+      );
     }
     isVerifyingOtp = false;
     update();
+    return success;
   }
 
   void selectLoginCountryCode(String? value) {
@@ -395,14 +571,20 @@ class AuthScreenController extends BaseController {
     update();
   }
 
-  Future<void> verifyLoginOtp() async {
+  Future<bool> verifyLoginOtp() async {
     final otp = loginOtpController.text.trim();
     if (otp.isEmpty) {
-      return showSnackBar('Please enter OTP');
+      AuthStatusDialog.show(
+        isSuccess: false,
+        title: 'OTP Required',
+        message: 'Please enter the 6-digit OTP sent to your number.',
+      );
+      return false;
     }
     final bool byEmail = loginIdentityTab.value == 1;
     isVerifyingLoginOtp = true;
     update();
+    bool success = false;
     try {
       final result = await UserService.instance.verifySignupOtp(
         mobile: byEmail ? null : loginMobileController.text.trim(),
@@ -411,15 +593,24 @@ class AuthScreenController extends BaseController {
       );
       if (result.status == true) {
         isLoginOtpVerified = true;
-        showSnackBar('OTP verified successfully');
+        success = true;
       } else {
-        showSnackBar(result.message ?? 'Invalid OTP');
+        AuthStatusDialog.show(
+          isSuccess: false,
+          title: 'Verification Failed',
+          message: result.message ?? 'Invalid OTP code. Please check and try again.',
+        );
       }
     } catch (e) {
-      showSnackBar('Failed to verify OTP');
+      AuthStatusDialog.show(
+        isSuccess: false,
+        title: 'Verification Failed',
+        message: 'Failed to verify OTP. Please check your network and try again.',
+      );
     }
     isVerifyingLoginOtp = false;
     update();
+    return success;
   }
 
   Future<void> fetchCategorySubCategoryTopic() async {
@@ -507,12 +698,28 @@ class AuthScreenController extends BaseController {
     stopLoader();
 
     if (data != null) {
-      _navigateScreen(data);
+      await AuthStatusDialog.show(
+        isSuccess: true,
+        title: 'Welcome Back! 👋',
+        message: 'You have logged in successfully.',
+        autoDismiss: true,
+        autoDismissDuration: const Duration(milliseconds: 1800),
+        onConfirm: () => _navigateScreen(data),
+      );
+    } else {
+      AuthStatusDialog.show(
+        isSuccess: false,
+        title: 'Login Failed',
+        message: 'No account found for this number. Please register first.',
+      );
     }
   }
 
   Future<void> onCreateAccount() async {
-    if (!validateForm()) return;
+    await _submitRegistration();
+  }
+
+  Future<void> _submitRegistration() async {
     showLoader();
     user.User? data = await _registration(
         identity: emailController.text.trim(),
@@ -528,7 +735,7 @@ class AuthScreenController extends BaseController {
         topicName: selectedTopicObj?.name,
         languageName: selectedLanguageObj?.title,
         isAdult: isAdult,
-        referId: referIdController.text.trim(),
+        referId: '',
         mobile: mobileController.text.trim(),
         mobileCountryCode: selectedCountryCode,
         address1: address1Controller.text.trim(),
@@ -539,9 +746,30 @@ class AuthScreenController extends BaseController {
         zipcode: zipcodeController.text.trim());
     stopLoader();
     if (data != null) {
-      _navigateScreen(data);
+      // Show success dialog with sound & SVG then navigate
+      await AuthStatusDialog.show(
+        isSuccess: true,
+        title: 'Profile Created Successfully! 🎉',
+        message: 'Welcome to GeoEdu, ${data.fullname ?? 'Explorer'}! Your account is ready.',
+        autoDismiss: true,
+        autoDismissDuration: const Duration(milliseconds: 2200),
+        onConfirm: () => _navigateScreenWithInterest(data),
+      );
     } else {
-      showSnackBar('Account created successfully! Please login.');
+      // API returned null — likely session was set internally, navigate to home
+      await AuthStatusDialog.show(
+        isSuccess: true,
+        title: 'Welcome Back! 👋',
+        message: 'You have been signed in successfully.',
+        autoDismiss: true,
+        autoDismissDuration: const Duration(milliseconds: 1800),
+        onConfirm: () {
+          DebounceAction.shared.call(() async {
+            SessionManager.instance.setLogin(true);
+            Get.offAll(() => const InterestCategoryScreen(userData: null));
+          }, milliseconds: 250);
+        },
+      );
     }
   }
 
@@ -754,9 +982,134 @@ class AuthScreenController extends BaseController {
     DebounceAction.shared.call(() async {
       SessionManager.instance.setLogin(true);
       SessionManager.instance.setUser(data);
-      Get.offAll(() => DashboardScreen(myUser: data));
+      // Show interest success animation then go to dashboard
+      Get.to(
+        () => _LoginSuccessScreen(userData: data),
+        transition: Transition.fadeIn,
+        duration: const Duration(milliseconds: 400),
+        fullscreenDialog: true,
+      );
+    }, milliseconds: 250);
+  }
+
+  /// For new registrations — route through Interest selection first.
+  void _navigateScreenWithInterest(user.User? data) {
+    DebounceAction.shared.call(() async {
+      SessionManager.instance.setLogin(true);
+      SessionManager.instance.setUser(data);
+      if (data?.newRegister == true) {
+        // New user: show interest selection screens before dashboard
+        Get.offAll(() => InterestCategoryScreen(userData: data));
+      } else {
+        Get.offAll(() => DashboardScreen(myUser: data));
+      }
     }, milliseconds: 250);
   }
 }
 
 enum LoginVia { loginInUser, logInFakeUser }
+
+/// Full-screen Lottie success animation shown after a successful login.
+/// Uses the same interest/success.json as the interest selection flow.
+/// Auto-navigates to Dashboard after 2.5 seconds.
+class _LoginSuccessScreen extends StatefulWidget {
+  final dynamic userData;
+  const _LoginSuccessScreen({this.userData});
+
+  @override
+  State<_LoginSuccessScreen> createState() => _LoginSuccessScreenState();
+}
+
+class _LoginSuccessScreenState extends State<_LoginSuccessScreen> {
+  AudioPlayer? _player;
+
+  @override
+  void initState() {
+    super.initState();
+    _playSound();
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (mounted) {
+        Get.offAll(() => DashboardScreen(myUser: widget.userData));
+      }
+    });
+  }
+
+  Future<void> _playSound() async {
+    try {
+      _player = AudioPlayer();
+      await _player?.setAsset('assets/interest/Success.mp3');
+      await _player?.play();
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _player?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF071A0F),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 240,
+                  height: 240,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFF1DB954).withValues(alpha: 0.08),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF1DB954).withValues(alpha: 0.3),
+                        blurRadius: 70,
+                        spreadRadius: 15,
+                      ),
+                    ],
+                  ),
+                  child: Lottie.asset(
+                    'assets/interest/success.json',
+                    fit: BoxFit.contain,
+                    repeat: false,
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.check_circle_rounded,
+                      color: Color(0xFF1DB954),
+                      size: 100,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 40),
+                const Text(
+                  'Welcome Back! 👋',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF1DB954),
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'You have logged in successfully.\nLet\'s get learning!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.65),
+                    fontSize: 15,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

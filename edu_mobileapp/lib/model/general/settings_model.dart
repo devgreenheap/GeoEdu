@@ -91,6 +91,7 @@ class Setting {
   List<DummyLive>? dummyLives;
   List<ReportReason>? reportReason;
   List<DeepARFilters>? deepARFilters;
+  List<GiftCategoryItem>? giftCategories;
 
   Setting({
     this.id,
@@ -147,6 +148,7 @@ class Setting {
     this.dummyLives,
     this.reportReason,
     this.deepARFilters,
+    this.giftCategories,
   });
 
   factory Setting.fromJson(Map<String, dynamic> json) => Setting(
@@ -237,6 +239,10 @@ class Setting {
             ? []
             : List<DeepARFilters>.from(
                 json["deepARFilters"]?.map((x) => DeepARFilters.fromJson(x))),
+        giftCategories: json["gift_categories"] == null
+            ? []
+            : List<GiftCategoryItem>.from(
+                json["gift_categories"]?.map((x) => GiftCategoryItem.fromJson(x))),
       );
 
   Map<String, dynamic> toJson() => {
@@ -299,6 +305,9 @@ class Setting {
         "gifts": gifts == null
             ? []
             : List<dynamic>.from(gifts!.map((x) => x.toJson())),
+        "gift_categories": giftCategories == null
+            ? []
+            : List<dynamic>.from(giftCategories!.map((x) => x.toJson())),
         "musicCategories": musicCategories == null
             ? []
             : List<dynamic>.from(musicCategories!.map((x) => x.toJson())),
@@ -472,6 +481,26 @@ class DummyLive {
         "created_at": createdAt?.toIso8601String(),
         "updated_at": updatedAt?.toIso8601String(),
         "user": user?.toJson(),
+      };
+}
+
+class GiftCategoryItem {
+  int? id;
+  String? name;
+  String? image;
+
+  GiftCategoryItem({this.id, this.name, this.image});
+
+  factory GiftCategoryItem.fromJson(Map<String, dynamic> json) => GiftCategoryItem(
+        id: json["id"],
+        name: json["name"],
+        image: json["image"],
+      );
+
+  Map<String, dynamic> toJson() => {
+        "id": id,
+        "name": name,
+        "image": image,
       };
 }
 

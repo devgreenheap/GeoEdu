@@ -228,6 +228,17 @@ Route::middleware(['checkLogin'])->group(function () {
     Route::post('editSubCategory', [CategoryModuleController::class, 'editSubCategory'])->name('editSubCategory');
     Route::post('deleteSubCategory', [CategoryModuleController::class, 'deleteSubCategory'])->name('deleteSubCategory');
     Route::post('changeSubCategoryStatus', [CategoryModuleController::class, 'changeSubCategoryStatus'])->name('changeSubCategoryStatus');
+
+    // Divisions
+    Route::get('divisions', [CategoryModuleController::class, 'divisions'])->name('divisions');
+    Route::post('listDivisions', [CategoryModuleController::class, 'listDivisions'])->name('listDivisions');
+    Route::post('addDivision', [CategoryModuleController::class, 'addDivision'])->name('addDivision');
+    Route::post('editDivision', [CategoryModuleController::class, 'editDivision'])->name('editDivision');
+    Route::post('deleteDivision', [CategoryModuleController::class, 'deleteDivision'])->name('deleteDivision');
+    Route::post('changeDivisionStatus', [CategoryModuleController::class, 'changeDivisionStatus'])->name('changeDivisionStatus');
+    Route::post('listDivisionsBySubCategory', [CategoryModuleController::class, 'listDivisionsBySubCategory'])->name('listDivisionsBySubCategory');
+    Route::post('listDivisionsBySubCategoryForTopic', [TopicController::class, 'listDivisionsBySubCategory'])->name('listDivisionsBySubCategoryForTopic');
+
     Route::get('countries', [CategoryModuleController::class, 'countries'])->name('countries');
     Route::post('listCountries', [CategoryModuleController::class, 'listCountries'])->name('listCountries');
     Route::post('addCountry', [CategoryModuleController::class, 'addCountry'])->name('addCountry');

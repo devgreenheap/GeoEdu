@@ -48,10 +48,6 @@ class LiveStreamHostTopView extends StatelessWidget {
                       _TopRightBlock(controller: controller, stream: stream),
                     ],
                   ),
-                  if (controller.isHost) ...[
-                    const SizedBox(height: 8),
-                    _PromoGiftCard(controller: controller),
-                  ],
                 ],
               ),
             ),
@@ -199,46 +195,6 @@ class _Pill extends StatelessWidget {
   }
 }
 
-/// Promo gift card — the real, highest-priced gift from the catalog, tagged
-/// "New" only when it was genuinely added recently.
-class _PromoGiftCard extends StatelessWidget {
-  final LivestreamScreenController controller;
-
-  const _PromoGiftCard({required this.controller});
-
-  @override
-  Widget build(BuildContext context) {
-    final gift = controller.featuredGift;
-    if (gift == null) return const SizedBox.shrink();
-    return GestureDetector(
-      onTap: () => controller.onGiftTap(GiftType.livestream),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (controller.featuredGiftIsNew)
-              Container(
-                margin: const EdgeInsets.only(right: 6),
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                decoration: BoxDecoration(color: ColorRes.primaryColor, borderRadius: BorderRadius.circular(4)),
-                child: const Text('New', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700)),
-              ),
-            CustomImage(size: const Size(28, 28), image: gift.image?.addBaseURL(), fullName: gift.title, radius: 6),
-            const SizedBox(width: 6),
-            Image.asset(AssetRes.coinIcon, height: 14, width: 14),
-            const SizedBox(width: 3),
-            Text('${gift.coinPrice ?? 0}', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 /// Top-right: LIVE badge, watching count, network status, timer, stop, new
 /// followers this session.

@@ -147,60 +147,72 @@ class LiveStreamBottomView extends StatelessWidget {
                             }),
                             Obx(
                               () {
-                                int? userId = controller.myUser.value?.id;
+                                final isHost = controller.isHost || !isAudience;
+                                int? userId = controller.myUser.value?.id ?? controller.myUserId;
                                 LivestreamUserState? userState =
                                     controller.liveUsersStates.firstWhereOrNull(
                                         (element) => element.userId == userId);
-                                if (userState == null) return const SizedBox();
-                                final isHostOrCoHost = userState.type ==
-                                        LivestreamUserType.host ||
-                                    userState.type == LivestreamUserType.coHost;
-                                if (!isHostOrCoHost) return const SizedBox();
+
+                                final isCoHost = userState?.type == LivestreamUserType.coHost;
+                                if (!isHost && !isCoHost) return const SizedBox();
+
                                 Livestream stream = controller.liveData.value;
                                 bool isBattleRunning =
                                     stream.battleType == BattleType.running;
 
-                                return Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  spacing: 10,
-                                  children: [
-                                    if (LivestreamUserType.coHost ==
-                                            userState.type &&
-                                        stream.type ==
-                                            LivestreamType.livestream)
+                                bool isAudioActive = userState != null
+                                    ? userState.audioStatus == VideoAudioStatus.on
+                                    : controller.isAudioOn.value;
+                                bool isVideoActive = userState != null
+                                    ? userState.videoStatus == VideoAudioStatus.on
+                                    : controller.isVideoOn.value;
+
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 8, bottom: 4),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    spacing: 12,
+                                    children: [
+                                      if (isCoHost &&
+                                          stream.type ==
+                                              LivestreamType.livestream)
+                                        LiveStreamCircleBorderButton(
+                                            onTap: () {
+                                              if (isBattleRunning) {
+                                                controller.showSnackBar(LKey
+                                                    .cannotLeaveDuringBattle.tr);
+                                              } else {
+                                                controller
+                                                    .closeCoHostStream(userId);
+                                              }
+                                            },
+                                            image: AssetRes.icClose,
+                                            iconColor: ColorRes.likeRed,
+                                            bgColor: ColorRes.likeRed,
+                                            borderColor: ColorRes.likeRed
+                                                .withValues(alpha: .2)),
+                                      // Switch / Flip Camera button
                                       LiveStreamCircleBorderButton(
-                                          onTap: () {
-                                            if (isBattleRunning) {
-                                              controller.showSnackBar(LKey
-                                                  .cannotLeaveDuringBattle.tr);
-                                            } else {
-                                              controller
-                                                  .closeCoHostStream(userId);
-                                            }
-                                          },
-                                          image: AssetRes.icClose,
-                                          iconColor: ColorRes.likeRed,
-                                          bgColor: ColorRes.likeRed,
-                                          borderColor: ColorRes.likeRed
-                                              .withValues(alpha: .2)),
-                                    LiveStreamCircleBorderButton(
-                                        image: AssetRes.icFlip,
-                                        onTap: controller.toggleFlipCamera),
-                                    LiveStreamCircleBorderButton(
-                                        image: userState.audioStatus ==
-                                                VideoAudioStatus.on
-                                            ? AssetRes.icMicrophone
-                                            : AssetRes.icMicOff,
-                                        onTap: () =>
-                                            controller.toggleMic(userState)),
-                                    LiveStreamCircleBorderButton(
-                                        image: userState.videoStatus ==
-                                                VideoAudioStatus.on
-                                            ? AssetRes.icVideoCamera
-                                            : AssetRes.icVideoOff,
-                                        onTap: () =>
-                                            controller.toggleVideo(userState)),
-                                  ],
+                                          image: AssetRes.icFlip,
+                                          onTap: controller.toggleFlipCamera),
+                                      // Mute / Unmute Mic button
+                                      LiveStreamCircleBorderButton(
+                                          image: isAudioActive
+                                              ? AssetRes.icMicrophone
+                                              : AssetRes.icMicOff,
+                                          iconColor: isAudioActive ? null : ColorRes.likeRed,
+                                          onTap: () =>
+                                              controller.toggleMic(userState)),
+                                      // Video Camera On / Off button
+                                      LiveStreamCircleBorderButton(
+                                          image: isVideoActive
+                                              ? AssetRes.icVideoCamera
+                                              : AssetRes.icVideoOff,
+                                          iconColor: isVideoActive ? null : ColorRes.likeRed,
+                                          onTap: () =>
+                                              controller.toggleVideo(userState)),
+                                    ],
+                                  ),
                                 );
                               },
                             )

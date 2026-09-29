@@ -11,8 +11,6 @@ import 'package:geoedu/screen/live_stream/livestream_screen/view/livestream_view
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/battle_start_countdown_overlay.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_stream_background_blur_image.dart';
 import 'package:geoedu/utilities/theme_res.dart';
-import '../../../../utilities/asset_res.dart';
-import '../host/widget/live_stream_host_top_view.dart';
 import '../widget/entry_effects_widget.dart';
 
 
@@ -73,10 +71,15 @@ class _LiveStreamAudienceScreenState extends State<LiveStreamAudienceScreen> {
                   );
                 case LivestreamType.dummy:
                   return LivestreamVideoPlayer(
-                      controller: controller.videoPlayerController);
+                    controller: controller.videoPlayerController,
+                    livestream: controller.liveData.value,
+                  );
               }
             }),
-            EntryEffectLayer(controller: controller),
+            IgnorePointer(
+              ignoring: true,
+              child: EntryEffectLayer(controller: controller),
+            ),
             GiftEffectWidget(activeGifts: controller.activeGifts),
             KeyboardAvoider(
               child: Column(
