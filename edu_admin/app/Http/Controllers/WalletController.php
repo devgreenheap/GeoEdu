@@ -1328,12 +1328,15 @@ class WalletController extends Controller
             $status = "<input type='checkbox' id='diamondPackageStatus-{$item->id}' rel='{$item->id}' class='onOffDiamondPackage' {$checked} data-switch='none'/>
                     <label for='diamondPackageStatus-{$item->id}'></label>";
 
+            $createdAt = !empty($item->created_at) ? Carbon::parse($item->created_at)->format('d M Y, h:i A') : '-';
+
             return [
                 $image,
                 $item->diamond_amount,
                 $settings->currency.$item->diamond_plan_price,
                 !is_null($item->discounted_price) ? $settings->currency.$item->discounted_price : '-',
                 !is_null($item->offer_entry_effect_id) ? ('#'.$item->offer_entry_effect_id) : '-',
+                $createdAt,
                 $status,
                 $item->playstore_product_id,
                 $item->appstore_product_id,

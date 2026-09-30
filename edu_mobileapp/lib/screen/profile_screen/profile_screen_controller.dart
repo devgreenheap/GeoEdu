@@ -34,6 +34,12 @@ import 'package:geoedu/common/service/api/common_service.dart';
 import 'package:geoedu/model/livestream/live_history_model.dart';
 import '../search_screen/search_screen_controller.dart';
 
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geoedu/model/livestream/livestream.dart';
+import 'package:geoedu/utilities/firebase_const.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/audience/live_stream_audience_screen.dart';
+
 class ProfileScreenController extends BlockUserController
     with GetTickerProviderStateMixin {
   static const tag = 'PROFILE';
@@ -43,9 +49,16 @@ class ProfileScreenController extends BlockUserController
   RxList<Post> reels = <Post>[].obs;
   RxList<Post> posts = <Post>[].obs;
   RxList<LiveHistory> myLives = <LiveHistory>[].obs;
+  RxList<User> similarHosts = <User>[].obs;
+  RxSet<int> liveHostUserIds = <int>{}.obs;
+  RxMap<int, Livestream> liveStreamsByUserId = <int, Livestream>{}.obs;
+  RxSet<int> similarHostFollowLoading = <int>{}.obs;
+  StreamSubscription? _liveStreamsSub;
+
   RxBool isReelLoading = false.obs;
   RxBool isPostLoading = false.obs;
   RxBool isMyLivesLoading = false.obs;
+  RxBool isSimilarHostsLoading = false.obs;
   final PageController pageController = PageController();
   RxBool isUserNotFound = false.obs;
   Setting? settingData = SessionManager.instance.getSettings();
@@ -69,6 +82,7 @@ class ProfileScreenController extends BlockUserController
     userData.listen((p0) {
       onUserUpdate?.call(p0);
     });
+    listenToRealTimeLiveHosts();
   }
 
   @override
@@ -79,8 +93,95 @@ class ProfileScreenController extends BlockUserController
 
   @override
   void onClose() {
+    _liveStreamsSub?.cancel();
     pageController.dispose();
     super.onClose();
+  }
+
+  void listenToRealTimeLiveHosts() {
+    try {
+      _liveStreamsSub = FirebaseFirestore.instance
+          .collection(FirebaseConst.liveStreams)
+          .withConverter(
+            fromFirestore: (snapshot, options) => Livestream.fromJson(snapshot.data()!),
+            toFirestore: (Livestream livestream, options) => livestream.toJson(),
+          )
+          .snapshots()
+          .listen((snapshot) {
+        final currentProfileId = userData.value?.id?.toInt();
+        final myId = SessionManager.instance.getUserID();
+        final Map<int, Livestream> map = {};
+        final Set<int> ids = {};
+
+        for (final doc in snapshot.docs) {
+          final stream = doc.data();
+          final hostId = stream.hostId?.toInt() ?? stream.hostUser?.userId?.toInt();
+          if (hostId != null && hostId != currentProfileId && hostId != myId) {
+            ids.add(hostId);
+            map[hostId] = stream;
+          }
+        }
+
+        liveHostUserIds.assignAll(ids);
+        liveStreamsByUserId.assignAll(map);
+      }, onError: (e) {
+        Loggers.error('Error listening to liveStreams: $e');
+      });
+    } catch (e) {
+      Loggers.error('listenToRealTimeLiveHosts error: $e');
+    }
+  }
+
+  Future<void> fetchSimilarHosts() async {
+    isSimilarHostsLoading.value = true;
+    try {
+      final currentProfileId = userData.value?.id?.toInt();
+      final myId = SessionManager.instance.getUserID();
+      final users = await UserService.instance.searchUsers(limit: 15, keyWord: '');
+      similarHosts.assignAll(
+        users.where((u) => u.id != currentProfileId && u.id != myId),
+      );
+    } catch (e) {
+      Loggers.error('fetchSimilarHosts error: $e');
+    } finally {
+      isSimilarHostsLoading.value = false;
+    }
+  }
+
+  Future<void> toggleFollowSimilarHost(User host) async {
+    final hostId = host.id;
+    if (hostId == null || similarHostFollowLoading.contains(hostId)) return;
+    similarHostFollowLoading.add(hostId);
+
+    FollowController followController;
+    if (Get.isRegistered<FollowController>(tag: hostId.toString())) {
+      followController = Get.find<FollowController>(tag: hostId.toString());
+      followController.updateUser(host);
+    } else {
+      followController = Get.put(FollowController(host.obs), tag: hostId.toString());
+    }
+
+    try {
+      final updated = await followController.followUnFollowUser();
+      if (updated != null) {
+        final idx = similarHosts.indexWhere((u) => u.id == hostId);
+        if (idx != -1) {
+          similarHosts[idx] = updated;
+          similarHosts.refresh();
+        }
+      }
+    } catch (e) {
+      Loggers.error('toggleFollowSimilarHost error: $e');
+    } finally {
+      similarHostFollowLoading.remove(hostId);
+    }
+  }
+
+  void openLiveStreamForHost(User host) {
+    final stream = liveStreamsByUserId[host.id];
+    if (stream != null) {
+      Get.to(() => LiveStreamAudienceScreen(livestream: stream, isHost: false));
+    }
   }
 
   iniData() {
@@ -89,6 +190,7 @@ class ProfileScreenController extends BlockUserController
       fetchReel(),
       fetchPost(),
       fetchMyLives(),
+      fetchSimilarHosts(),
     });
   }
 

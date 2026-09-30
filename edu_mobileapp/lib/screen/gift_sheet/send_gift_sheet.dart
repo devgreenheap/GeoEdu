@@ -118,7 +118,12 @@ class SendGiftSheet extends StatelessWidget {
             const SizedBox(height: 8),
             InkWell(
               onTap: () async {
-                await Get.to(() => const StarStoreDiamondScreen());
+                await Get.to(() => StarStoreDiamondScreen(
+                      onPurchaseCompleted: () {
+                        Get.back(); // return to live stream
+                        controller.refreshDiamondWallet();
+                      },
+                    ));
                 controller.refreshDiamondWallet();
               },
               borderRadius: BorderRadius.circular(16),

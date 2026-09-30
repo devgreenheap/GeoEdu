@@ -27,6 +27,7 @@
                         <th>{{ __('Price')}}</th>
                         <th>{{ __('Discounted Price')}}</th>
                         <th>{{ __('Offer (Entry Effect)')}}</th>
+                        <th>{{ __('Created At')}}</th>
                         <th>{{ __('Status')}}</th>
                         <th>{{ __('PlayStore Product Id')}}</th>
                         <th>{{ __('AppStore Product Id')}}</th>

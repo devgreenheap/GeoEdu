@@ -15,7 +15,9 @@ import 'package:geoedu/utilities/theme_res.dart';
 
 import '../widget/entry_effects_widget.dart';
 
-class LivestreamHostScreen extends StatelessWidget {
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_start_countdown_overlay.dart';
+
+class LivestreamHostScreen extends StatefulWidget {
   final Livestream livestream;
   final Widget? hostPreview;
   final bool isHost;
@@ -29,9 +31,30 @@ class LivestreamHostScreen extends StatelessWidget {
       this.apiLiveStreamId});
 
   @override
-  Widget build(BuildContext context) {
-    final controller = Get.put(LivestreamScreenController(livestream.obs, isHost, hostPreview: hostPreview, apiLiveStreamId: apiLiveStreamId));
+  State<LivestreamHostScreen> createState() => _LivestreamHostScreenState();
+}
 
+class _LivestreamHostScreenState extends State<LivestreamHostScreen> {
+  bool _showCountdown = true;
+  late final LivestreamScreenController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = Get.put(LivestreamScreenController(
+      widget.livestream.obs,
+      widget.isHost,
+      hostPreview: widget.hostPreview,
+      apiLiveStreamId: widget.apiLiveStreamId,
+    ));
+    // If not host, no startup countdown needed
+    if (!widget.isHost) {
+      _showCountdown = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: blackPure(context),
       resizeToAvoidBottomInset: false,
@@ -73,17 +96,17 @@ class LivestreamHostScreen extends StatelessWidget {
               ignoring: true,
               child: EntryEffectLayer(controller: controller),
             ),
-              GiftEffectWidget(activeGifts: controller.activeGifts),
-                KeyboardAvoider(
-                  child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    LiveStreamHostTopView(controller: controller),
-                    LiveStreamBottomView(controller: controller),
-                  ],
-                  ),
-                ),
-            if (isHost)
+            GiftEffectWidget(activeGifts: controller.activeGifts),
+            KeyboardAvoider(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  LiveStreamHostTopView(controller: controller),
+                  LiveStreamBottomView(controller: controller),
+                ],
+              ),
+            ),
+            if (widget.isHost)
               Positioned(
                 right: 10,
                 bottom: MediaQuery.of(context).size.height / 2.7 + 20,
@@ -95,11 +118,22 @@ class LivestreamHostScreen extends StatelessWidget {
                 bool isBattleWaiting = stream.battleType == BattleType.waiting;
                 if (isBattleWaiting) {
                   return BattleStartCountdownOverlay(
-                      isHost: isHost, stream: stream);
+                      isHost: widget.isHost, stream: stream);
                 }
                 return const SizedBox();
               },
-            )
+            ),
+            if (_showCountdown)
+              LiveStartCountdownOverlay(
+                isVideo: true,
+                onFinished: () {
+                  if (mounted) {
+                    setState(() {
+                      _showCountdown = false;
+                    });
+                  }
+                },
+              ),
           ],
         ),
       ),

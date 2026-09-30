@@ -38,6 +38,7 @@ class AuthStatusScreen extends StatelessWidget {
   final String title;
   final String message;
   final VoidCallback? onConfirm;
+  final String? buttonText;
 
   const AuthStatusScreen({
     super.key,
@@ -45,6 +46,7 @@ class AuthStatusScreen extends StatelessWidget {
     required this.title,
     required this.message,
     this.onConfirm,
+    this.buttonText,
   });
 
   static Future<void> show({
@@ -52,6 +54,7 @@ class AuthStatusScreen extends StatelessWidget {
     required String title,
     required String message,
     VoidCallback? onConfirm,
+    String? buttonText,
     bool autoDismiss = false,
     Duration autoDismissDuration = const Duration(milliseconds: 2200),
   }) async {
@@ -76,6 +79,7 @@ class AuthStatusScreen extends StatelessWidget {
           isSuccess: isSuccess,
           title: title,
           message: message,
+          buttonText: buttonText,
           onConfirm: () {
             if (Get.isRegistered<AuthStatusScreen>() || Get.currentRoute != '/') {
               Get.back();
@@ -100,6 +104,7 @@ class AuthStatusScreen extends StatelessWidget {
           isSuccess: isSuccess,
           title: title,
           message: message,
+          buttonText: buttonText,
           onConfirm: () {
             Get.back();
             onConfirm?.call();
@@ -188,7 +193,7 @@ class AuthStatusScreen extends StatelessWidget {
 
                 // Action button — full width
                 AuthPrimaryButton(
-                  text: isSuccess ? 'Continue' : 'Try Again',
+                  text: buttonText ?? (isSuccess ? 'Continue' : 'Try Again'),
                   gradientColors: isSuccess
                       ? AuthColors.greenGradient
                       : [AuthColors.error, const Color(0xFFD63031)],

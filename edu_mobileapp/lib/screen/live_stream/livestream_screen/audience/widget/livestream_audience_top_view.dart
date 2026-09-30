@@ -13,6 +13,7 @@ import 'package:geoedu/common/widget/gradient_text.dart';
 import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/model/livestream/app_user.dart';
 import 'package:geoedu/model/livestream/livestream.dart';
+import 'package:geoedu/model/livestream/livestream_user_state.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/audience/widget/live_stream_user_info_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/host/widget/live_stream_host_top_view.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
@@ -342,11 +343,20 @@ class _BuildCenterView extends StatelessWidget {
                       ),
                     ),
                     if (!isBattleOn && liveData.isRestrictToJoin == 0 && !isCoHost)
-                      LiveStreamCircleBorderButton(
-                        image: AssetRes.icVideoRequest,
-                        margin: EdgeInsets.zero,
-                        iconColor: whitePure(context),
-                        onTap: () => controller.onVideoRequestSend(liveData),
+                      Builder(
+                        builder: (context) {
+                          final myState = controller.liveUsersStates
+                              .firstWhereOrNull((u) => u.userId == controller.myUserId);
+                          final isRequested = myState?.type == LivestreamUserType.requested;
+
+                          return LiveStreamCircleBorderButton(
+                            image: isRequested ? AssetRes.icCheck : AssetRes.icVideoRequest,
+                            margin: EdgeInsets.zero,
+                            iconColor: isRequested ? Colors.greenAccent : whitePure(context),
+                            borderColor: isRequested ? Colors.greenAccent : null,
+                            onTap: () => controller.onVideoRequestSend(liveData),
+                          );
+                        },
                       ),
                     if (!isBattleOn)
                       LiveStreamCircleBorderButton(

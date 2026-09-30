@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:geoedu/common/extensions/string_extension.dart';
+import 'package:geoedu/common/manager/session_manager.dart';
 import 'package:geoedu/common/widget/custom_image.dart';
 import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
@@ -95,7 +96,28 @@ class LiveTopBar extends StatelessWidget {
                   Get.to(() => const SelectLanguageScreen(
                       languageNavigationType: LanguageNavigationType.fromSetting));
                 },
-                child: const Text('த', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                child: Obx(() {
+                  final lang = SessionManager.instance.currentLang.value.toLowerCase();
+                  String label = 'EN';
+                  if (lang == 'ta') {
+                    label = 'த';
+                  } else if (lang == 'hi') {
+                    label = 'हि';
+                  } else if (lang == 'te') {
+                    label = 'తె';
+                  } else if (lang == 'kn') {
+                    label = 'ಕ';
+                  } else if (lang == 'ml') {
+                    label = 'മ';
+                  } else {
+                    label = lang.toUpperCase();
+                  }
+                  return Text(
+                    label,
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w700),
+                  );
+                }),
               ),
               const SizedBox(width: 8),
               StatPill(

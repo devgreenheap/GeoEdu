@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:geoedu/common/widget/live_room/category_tile.dart';
-import 'package:geoedu/screen/live_stream/live_home_page_widget/all_rooms_screen.dart';
+import 'package:geoedu/screen/live_stream/live_home_page_widget/change_interest_sheet.dart';
 import 'package:geoedu/screen/live_stream/live_stream_search_screen/live_stream_search_screen_controller.dart';
 import 'package:geoedu/utilities/asset_res.dart';
-import 'package:geoedu/utilities/color_res.dart';
 
 class LiveCategoriesListWidget extends StatelessWidget {
   const LiveCategoriesListWidget({super.key});
@@ -32,13 +31,35 @@ class LiveCategoriesListWidget extends StatelessWidget {
                 ),
               ),
               GestureDetector(
-                onTap: () => Get.to(() => const AllRoomsScreen()),
-                child: const Text(
-                  'View All',
-                  style: TextStyle(
-                    color: ColorRes.primaryColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                onTap: () {
+                  Get.bottomSheet(
+                    const ChangeInterestSheet(),
+                    isScrollControlled: true,
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFC5246D).withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: const Color(0xFFC5246D).withValues(alpha: 0.5),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.tune_rounded, size: 13, color: Color(0xFFE04A8B)),
+                      SizedBox(width: 4),
+                      Text(
+                        'Change Interest',
+                        style: TextStyle(
+                          color: Color(0xFFE04A8B),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

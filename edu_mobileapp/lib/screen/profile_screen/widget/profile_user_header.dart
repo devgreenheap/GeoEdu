@@ -16,6 +16,7 @@ import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/screen/follow_following_screen/followers_screen.dart';
 import 'package:geoedu/screen/level_screen/level_screen_2/level_screen_new.dart';
 import 'package:geoedu/common/service/api/gift_wallet_service.dart';
+import 'package:geoedu/screen/profile_screen/profile_screen.dart';
 import 'package:geoedu/screen/profile_screen/profile_screen_controller.dart';
 import 'package:geoedu/screen/profile_screen/widget/profile_preview_interactive_screen.dart';
 import 'package:geoedu/screen/profile_screen/widget/user_link_sheet.dart';
@@ -65,144 +66,507 @@ class ProfileUserHeader extends StatelessWidget {
           );
         }
 
+        final bannerName = (user?.fullname ?? 'HOST').toUpperCase();
+
         return Container(
           color: Colors.black,
-          padding: const EdgeInsets.fromLTRB(14, 16, 14, 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            spacing: 12,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ProfileStatsRow(
-                    userNotFound: isUserNotFound,
-                    controller: controller,
-                    user: user,
-                    showEditBadge: isMe,
-                    stats: const [],
-                    onTap: (value) {},
+              // Top Orange Event Banner
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.only(top: 24, bottom: 44, left: 16, right: 16),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFFFF2200), Color(0xFFFF5500), Color(0xFFFF7A00)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      '★  $bannerName  ★',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.5,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black45,
+                            blurRadius: 8,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      '★ On GioEdu ★',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFCC00),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Text(
+                        'Live Sessions & Highlights',
+                        style: TextStyle(
+                          color: Colors.black87,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Overlapping Avatar and "Top Gifters" Pill
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Transform.translate(
+                  offset: const Offset(0, -38),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Circular Profile Avatar with Glowing Gold/White Ring
+                      Container(
+                        width: 92,
+                        height: 92,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: const Color(0xFFFFD700), width: 3.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFFF9900).withValues(alpha: 0.5),
+                              blurRadius: 10,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: ClipOval(
+                          child: CustomImage(
+                            size: const Size(86, 86),
+                            image: user?.isBlock == true ? '' : user?.profilePhoto?.addBaseURL(),
+                            fullName: user?.fullname,
+                          ),
+                        ),
+                      ),
+
+                      // "Top Gifters" Pill Button
+                      GestureDetector(
+                        onTap: () => Get.to(() => const TopGiftersScreen()),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2A1F18),
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(
+                              color: const Color(0xFFFF9500).withValues(alpha: 0.4),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Image.asset(AssetRes.medalIcon, height: 18),
+                              const SizedBox(width: 6),
+                              const Text(
+                                'Top Gifters',
+                                style: TextStyle(
+                                  color: Color(0xFFFF9F0A),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // User Info (Name + Verified Badge)
+              Transform.translate(
+                offset: const Offset(0, -26),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  user?.fullname ?? '',
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w800),
-                                ),
+                          Flexible(
+                            child: Text(
+                              user?.fullname ?? '',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.3,
                               ),
-                              if (isMe) ...[
-                                const SizedBox(width: 8),
-                                GestureDetector(
-                                  onTap: () => controller.handlePublishOrMessageBtn(true),
-                                  child: const Icon(Icons.edit, color: Colors.white70, size: 18),
-                                ),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              GestureDetector(
-                                onTap: () => Get.to(() => const TopGiftersScreen()),
-                                child: Container(
-                                  height: 32,
-                                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xff2A2318),
-                                    borderRadius: BorderRadius.circular(30),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Image.asset(AssetRes.medalIcon, height: 18),
-                                      const SizedBox(width: 6),
-                                      const Text('Top Gifter',
-                                          style: TextStyle(
-                                              color: ColorRes.primaryColor,
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w600)),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              if (user?.getLevel.id != null) ...[
-                                const SizedBox(width: 8),
-                                GradientBorder(
-                                  onPressed: () => Get.to(() => const LevelScreenNew()),
-                                  strokeWidth: 1.5,
-                                  radius: 30,
-                                  gradient: _kProfileAccentGradient,
-                                  child: Container(
-                                    height: 32,
-                                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                                    alignment: Alignment.center,
-                                    child: ShaderMask(
-                                      blendMode: BlendMode.srcIn,
-                                      shaderCallback: (bounds) => _kProfileAccentGradient
-                                          .createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
-                                      child: RichText(
-                                        text: TextSpan(
-                                          text: LKey.lvl.tr,
-                                          style: TextStyleCustom.outFitLight300(fontSize: 13),
-                                          children: [
-                                            TextSpan(
-                                                text: ' ${user?.getLevel.level ?? 0}',
-                                                style: TextStyleCustom.outFitBold700(fontSize: 13))
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          if ((user?.bio ?? '').isNotEmpty) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              user!.bio!,
-                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.white60, fontSize: 12),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          const Icon(
+                            Icons.verified,
+                            color: Color(0xFF2196F3),
+                            size: 22,
+                          ),
+                          if (isMe) ...[
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () => controller.handlePublishOrMessageBtn(true),
+                              child: const Icon(Icons.edit, color: Colors.white70, size: 18),
                             ),
                           ],
                         ],
                       ),
-                    ),
+                      if ((user?.bio ?? '').isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          user!.bio!,
+                          style: const TextStyle(color: Colors.white70, fontSize: 13),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+
+                      // Followers & Following Dark Box
+                      _StatsBox(
+                        user: user,
+                        onFollowers: () {
+                          user?.checkIsBlocked(() {
+                            Get.to(() => FollowersScreen(user: user));
+                          });
+                        },
+                        onFollowing: () {
+                          user?.checkIsBlocked(() {
+                            Get.to(() => FollowingsScreen(user: user));
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Primary Orange Follow Button
+                      _ProfileMainFollowButton(
+                        user: user,
+                        isMe: isMe,
+                        controller: controller,
+                      ),
+                      const SizedBox(height: 16),
+
+                      // "Similar Hosts To Follow" Section (Real Time Data)
+                      _SimilarHostsToFollowSection(controller: controller),
+
+                      UserLinkView(user: user),
+                    ],
                   ),
-                ],
+                ),
               ),
-              _StatsBox(
-                user: user,
-                onFollowers: () {
-                  user?.checkIsBlocked(() {
-                    Get.to(() => FollowersScreen(user: user));
-                  });
-                },
-                onFollowing: () {
-                  user?.checkIsBlocked(() {
-                    Get.to(() => FollowingsScreen(user: user));
-                  });
-                },
-              ),
-              UserLinkView(user: user),
-              UserButtonView(user: user, controller: controller),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+class _ProfileMainFollowButton extends StatelessWidget {
+  final User? user;
+  final bool isMe;
+  final ProfileScreenController controller;
+
+  const _ProfileMainFollowButton({
+    required this.user,
+    required this.isMe,
+    required this.controller,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isMe) {
+      return Row(
+        children: [
+          Expanded(
+            child: _OutlineActionButton(
+              icon: Icons.edit_outlined,
+              label: 'Edit Profile',
+              onTap: () => controller.handlePublishOrMessageBtn(true),
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(child: BecomeHostButton()),
+        ],
+      );
+    }
+
+    return Obx(() {
+      final isFollowing = user?.isFollowing == true;
+      final isProgress = controller.isFollowUnFollowInProcess.value;
+
+      return GestureDetector(
+        onTap: () {
+          if (!isProgress) controller.followUnFollowUser();
+        },
+        child: Container(
+          width: double.infinity,
+          height: 48,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(26),
+            gradient: isFollowing
+                ? null
+                : const LinearGradient(
+                    colors: [Color(0xFFFF4500), Color(0xFFFF6600)],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+            color: isFollowing ? const Color(0xFF2A2A2A) : null,
+            border: isFollowing ? Border.all(color: Colors.white24) : null,
+          ),
+          alignment: Alignment.center,
+          child: isProgress
+              ? const CupertinoActivityIndicator(color: Colors.white)
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (!isFollowing) ...[
+                      const Icon(Icons.add, color: Colors.white, size: 20),
+                      const SizedBox(width: 6),
+                    ],
+                    Text(
+                      isFollowing ? 'Following' : 'Follow',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      );
+    });
+  }
+}
+
+class _SimilarHostsToFollowSection extends StatelessWidget {
+  final ProfileScreenController controller;
+
+  const _SimilarHostsToFollowSection({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final hosts = controller.similarHosts;
+      final liveIds = controller.liveHostUserIds;
+
+      if (hosts.isEmpty && controller.isSimilarHostsLoading.value) {
+        return const Padding(
+          padding: EdgeInsets.symmetric(vertical: 16),
+          child: Center(
+            child: CupertinoActivityIndicator(color: Colors.white54),
+          ),
+        );
+      }
+
+      if (hosts.isEmpty) {
+        return const SizedBox.shrink();
+      }
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Similar Hosts To Follow',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.2,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 180,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: hosts.length,
+              itemBuilder: (context, index) {
+                final host = hosts[index];
+                final isLive = liveIds.contains(host.id);
+                return _SimilarHostCard(
+                  host: host,
+                  isLive: isLive,
+                  controller: controller,
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+      );
+    });
+  }
+}
+
+class _SimilarHostCard extends StatelessWidget {
+  final User host;
+  final bool isLive;
+  final ProfileScreenController controller;
+
+  const _SimilarHostCard({
+    required this.host,
+    required this.isLive,
+    required this.controller,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 140,
+      margin: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.08),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Avatar with Live badge
+          GestureDetector(
+            onTap: () {
+              if (isLive) {
+                controller.openLiveStreamForHost(host);
+              } else {
+                Get.to(() => ProfileScreen(user: host));
+              }
+            },
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 68,
+                  height: 68,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isLive ? const Color(0xFFFF2200) : const Color(0xFFFF7A00),
+                      width: 2.5,
+                    ),
+                  ),
+                  child: ClipOval(
+                    child: CustomImage(
+                      size: const Size(64, 64),
+                      image: host.profilePhoto?.addBaseURL(),
+                      fullName: host.fullname,
+                    ),
+                  ),
+                ),
+                if (isLive)
+                  Positioned(
+                    bottom: -4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF2200),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text(
+                        'LIVE',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          // Host Name
+          GestureDetector(
+            onTap: () => Get.to(() => ProfileScreen(user: host)),
+            child: Text(
+              host.fullname ?? '',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+
+          // Follow Pill Button
+          Obx(() {
+            final isFollowing = host.isFollowing == true;
+            final isLoading = controller.similarHostFollowLoading.contains(host.id);
+
+            return GestureDetector(
+              onTap: () => controller.toggleFollowSimilarHost(host),
+              child: Container(
+                width: double.infinity,
+                height: 32,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: isFollowing ? const Color(0xFF333333) : const Color(0xFFFF4500),
+                ),
+                child: isLoading
+                    ? const CupertinoActivityIndicator(color: Colors.white, radius: 8)
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (!isFollowing) ...[
+                            const Icon(Icons.add, color: Colors.white, size: 14),
+                            const SizedBox(width: 2),
+                          ],
+                          Text(
+                            isFollowing ? 'Following' : 'Follow',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 }
@@ -217,31 +581,65 @@ class _StatsBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
-        color: ColorRes.cardBackground,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        color: const Color(0xFF262626),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
       child: Row(
         children: [
           Expanded(
-            child: _StatCell(
-              icon: Icons.people_alt_rounded,
-              iconColor: ColorRes.gold,
-              value: user?.followerCount ?? 0,
-              label: 'Followers',
+            child: GestureDetector(
               onTap: onFollowers,
+              child: Column(
+                children: [
+                  Text(
+                    (user?.followerCount ?? 0).toInt().numberFormat,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Followers',
+                    style: TextStyle(
+                      color: Colors.white60,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          Container(width: 1, height: 30, color: Colors.white24),
+          Container(width: 1, height: 28, color: Colors.white12),
           Expanded(
-            child: _StatCell(
-              icon: Icons.person_rounded,
-              iconColor: ColorRes.green1,
-              value: user?.followingCount ?? 0,
-              label: 'Following',
+            child: GestureDetector(
               onTap: onFollowing,
+              child: Column(
+                children: [
+                  Text(
+                    (user?.followingCount ?? 0).toInt().numberFormat,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Following',
+                    style: TextStyle(
+                      color: Colors.white60,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

@@ -22,7 +22,7 @@ import 'package:geoedu/model/general/country_state_model.dart';
 import 'package:geoedu/model/general/settings_model.dart';
 import 'package:geoedu/model/user_model/user_model.dart' as user;
 import 'package:geoedu/screen/auth_screen/interest_category_screen.dart';
-import 'package:geoedu/screen/auth_screen/interest_topic_screen.dart';
+import 'package:geoedu/screen/auth_screen/login_screen.dart';
 import 'package:geoedu/screen/dashboard_screen/dashboard_screen.dart';
 import 'package:geoedu/screen/auth_screen/widget/auth_status_dialog.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
@@ -476,7 +476,27 @@ class AuthScreenController extends BaseController {
         isOtpSent = true;
         showSnackBar(result.message ?? 'OTP sent successfully');
       } else {
-        showSnackBar(result.message ?? 'Failed to send OTP');
+        if (result.alreadyRegistered ||
+            (result.message ?? '').toLowerCase().contains('already registered') ||
+            (result.message ?? '').toLowerCase().contains('already exists')) {
+          fieldErrors['mobile'] = 'Already registered. Please login.';
+          update();
+
+          AuthStatusDialog.show(
+            isSuccess: false,
+            title: 'Already Registered',
+            message: result.message ??
+                'This account is already registered. Please proceed to Login.',
+            buttonText: 'Go to Login',
+            onConfirm: () {
+              loginMobileController.text = mobile;
+              loginEmailController.text = email;
+              Get.off(() => const LoginScreen());
+            },
+          );
+        } else {
+          showSnackBar(result.message ?? 'Failed to send OTP');
+        }
       }
     } catch (e) {
       showSnackBar('Failed to send OTP');
@@ -756,20 +776,35 @@ class AuthScreenController extends BaseController {
         onConfirm: () => _navigateScreenWithInterest(data),
       );
     } else {
-      // API returned null — likely session was set internally, navigate to home
-      await AuthStatusDialog.show(
-        isSuccess: true,
-        title: 'Welcome Back! 👋',
-        message: 'You have been signed in successfully.',
-        autoDismiss: true,
-        autoDismissDuration: const Duration(milliseconds: 1800),
-        onConfirm: () {
-          DebounceAction.shared.call(() async {
-            SessionManager.instance.setLogin(true);
-            Get.offAll(() => const InterestCategoryScreen(userData: null));
-          }, milliseconds: 250);
-        },
-      );
+      final lastResp = UserService.instance.lastLoginResponse;
+      final errorMsg = lastResp?.message ?? '';
+      final isAlreadyRegistered = lastResp?.alreadyRegistered == true ||
+          errorMsg.toLowerCase().contains('already registered') ||
+          errorMsg.toLowerCase().contains('already exists');
+
+      if (isAlreadyRegistered) {
+        await AuthStatusDialog.show(
+          isSuccess: false,
+          title: 'Already Registered',
+          message: errorMsg.isNotEmpty
+              ? errorMsg
+              : 'This mobile number is already registered. Please login to continue.',
+          buttonText: 'Go to Login',
+          onConfirm: () {
+            loginMobileController.text = mobileController.text.trim();
+            loginEmailController.text = emailController.text.trim();
+            Get.off(() => const LoginScreen());
+          },
+        );
+      } else {
+        await AuthStatusDialog.show(
+          isSuccess: false,
+          title: 'Registration Failed',
+          message: errorMsg.isNotEmpty
+              ? errorMsg
+              : 'Failed to complete registration. Please try again.',
+        );
+      }
     }
   }
 

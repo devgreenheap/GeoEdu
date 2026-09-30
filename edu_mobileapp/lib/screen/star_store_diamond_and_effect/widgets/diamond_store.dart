@@ -9,7 +9,9 @@ import '../../../model/star_store/diamond_pack_model.dart';
 import '../../star_score/widgets/diamond_purchase_bottom.dart';
 
 class DiamondStore extends StatefulWidget {
-  const DiamondStore({super.key});
+  final VoidCallback? onPurchaseCompleted;
+
+  const DiamondStore({super.key, this.onPurchaseCompleted});
 
   @override
   State<DiamondStore> createState() => _DiamondStoreState();
@@ -462,7 +464,10 @@ class _DiamondStoreState extends State<DiamondStore> {
                   offerPrice: '${diamondPack.discountedPrice ?? 0}',
                   price: '${diamondPack.originalPrice ?? 0}',
                   diamondPackId: diamondPack.id,
-                  onPurchaseSuccess: fetchDiamondWallet,
+                  onPurchaseSuccess: () {
+                    fetchDiamondWallet();
+                    widget.onPurchaseCompleted?.call();
+                  },
                 ),
               );
             },

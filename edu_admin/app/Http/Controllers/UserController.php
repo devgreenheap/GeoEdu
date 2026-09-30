@@ -186,6 +186,16 @@ class UserController extends Controller
             return GlobalFunction::sendSimpleResponse(false, 'Invalid mobile number');
         }
 
+        // Prevent already-registered mobile numbers from registering again
+        $existingUser = $this->findUserByMobileFlexible($mobile);
+        if ($existingUser) {
+            return response()->json([
+                'status' => false,
+                'already_registered' => true,
+                'message' => 'This mobile number is already registered. Please login to continue.',
+            ]);
+        }
+
         $countryCode = trim((string) ($request->mobile_country_code ?? ''));
         if ($countryCode !== '' && strpos($countryCode, '+') !== 0) {
             $countryCode = '+' . ltrim($countryCode, '+');
@@ -251,6 +261,18 @@ class UserController extends Controller
         }
 
         $email = strtolower(trim((string) $request->email));
+
+        // Prevent already-registered email from registering again
+        $existingEmailUser = Users::whereRaw('LOWER(identity) = ?', [$email])
+            ->orWhereRaw('LOWER(user_email) = ?', [$email])
+            ->first();
+        if ($existingEmailUser) {
+            return response()->json([
+                'status' => false,
+                'already_registered' => true,
+                'message' => 'This email is already registered. Please login to continue.',
+            ]);
+        }
 
         $expireMinutes = intval(env('OTP_EXPIRE_MINUTES', 10));
         if ($expireMinutes <= 0) {

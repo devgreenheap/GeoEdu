@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:geoedu/common/service/api/user_service.dart';
@@ -14,8 +15,10 @@ class SessionManager {
   var conversationId = '';
   RxInt notifyCount = 0.obs;
   RxInt isModerator = 0.obs;
+  RxString currentLang = 'en'.obs;
 
   SessionManager() {
+    currentLang.value = storage.read(SessionKeys.lang) ?? 'en';
     listenNotifyCount();
     listenModerator();
     listenSubscription();
@@ -135,7 +138,11 @@ class SessionManager {
 
   void setLang(String langCode) {
     storage.write(SessionKeys.lang, langCode);
+    currentLang.value = langCode;
     UserService.instance.updateUserDetails(appLanguage: langCode);
+    try {
+      Get.updateLocale(Locale(langCode));
+    } catch (_) {}
   }
 
   String getLang() {

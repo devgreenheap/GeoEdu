@@ -10,6 +10,8 @@ import 'package:geoedu/screen/live_stream/livestream_screen/view/live_video_play
 import 'package:geoedu/screen/live_stream/livestream_screen/view/livestream_view.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/battle_start_countdown_overlay.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_stream_background_blur_image.dart';
+import 'package:geoedu/model/livestream/livestream_user_state.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requested_sheet.dart';
 import 'package:geoedu/utilities/theme_res.dart';
 import '../widget/entry_effects_widget.dart';
 
@@ -107,28 +109,70 @@ class _LiveStreamAudienceScreenState extends State<LiveStreamAudienceScreen> {
           ],
         ),
       ),
-      /// New
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 100),
+        padding: const EdgeInsets.only(bottom: 110, right: 4),
         child: Obx(() {
           final liveData = controller.liveData.value;
           final isBattleOn = liveData.type == LivestreamType.battle;
           final isCoHost =
-          (liveData.coHostIds ?? []).contains(controller.myUserId);
+              (liveData.coHostIds ?? []).contains(controller.myUserId);
 
-          return (!isBattleOn &&
-              liveData.isRestrictToJoin == 0 &&
-              !isCoHost)
-              ? Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
+          if (isBattleOn || liveData.isRestrictToJoin != 0 || isCoHost) {
+            return const SizedBox();
+          }
 
-                              padding: const EdgeInsets.symmetric(vertical: 12,horizontal: 12),
-                              decoration: BoxDecoration(
+          final myState = controller.liveUsersStates
+              .firstWhereOrNull((u) => u.userId == controller.myUserId);
+          final isRequested = myState?.type == LivestreamUserType.requested;
+
+          if (isRequested) {
+            return GestureDetector(
+              onTap: () {
+                CallRequestedSheet.show(context);
+              },
+              child: Container(
+                width: 90,
+                height: 110,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white60,
+                    width: 1.5,
+                  ),
+                ),
+                child: const Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.videocam_rounded,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Requested',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(14),
                   boxShadow: const [
                     BoxShadow(
                       color: Color(0x33000000),
@@ -136,29 +180,28 @@ class _LiveStreamAudienceScreenState extends State<LiveStreamAudienceScreen> {
                       offset: Offset(0, 4),
                     ),
                   ],
-                              ),
-                              child: InkWell(
+                ),
+                child: InkWell(
                   borderRadius: BorderRadius.circular(18),
                   onTap: () => controller.onVideoRequestSend(liveData),
                   child: Icon(
                     Icons.video_call,
                     color: blackPure(context),
-                    size: 24,
+                    size: 26,
                   ),
-                              ),
-                            ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "Join Call",
-                    style: TextStyle(
-                      color: whitePure(context),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              )
-              : const SizedBox();
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "Join Call",
+                style: TextStyle(
+                  color: whitePure(context),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          );
         }),
       ),
     );

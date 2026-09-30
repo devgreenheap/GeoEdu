@@ -12,6 +12,7 @@ import 'package:geoedu/common/service/api/common_service.dart';
 import 'package:geoedu/common/service/api/user_service.dart';
 import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/model/general/category_sub_category_topic_model.dart';
+import 'package:geoedu/model/general/interest_model.dart';
 import 'package:geoedu/model/general/settings_model.dart';
 import 'package:geoedu/model/livestream/app_user.dart';
 import 'package:geoedu/model/livestream/live_history_model.dart';
@@ -44,6 +45,10 @@ class LiveStreamSearchScreenController extends BaseController {
   // Category filter state
   RxList<Category> filterCategories = <Category>[].obs;
   RxInt selectedCategoryIndex = 0.obs;
+
+  // User interests (ids from tbl_interests) — used to auto-select category
+  RxList<Interest> myInterests = <Interest>[].obs;
+  RxList<Interest> interestCatalog = <Interest>[].obs;
 
   // Favorites
   RxSet<int> favoriteStreamIds = <int>{}.obs;
@@ -102,7 +107,8 @@ class LiveStreamSearchScreenController extends BaseController {
   }
 
   /// Merged grid feed for Home/AllRooms: live video + live audio + recorded
-  /// sessions, most recent first.
+  /// Merged grid feed for Home/AllRooms: live video + live audio + recorded
+  /// sessions, prioritized by user interests when under "All", then most recent first.
   List<LiveRoomItem> get mergedRoomItems {
     final items = _liveVideoAndAudioItems();
     for (final recording in recordedLives) {
@@ -112,7 +118,22 @@ class LiveStreamSearchScreenController extends BaseController {
         Get.to(() => RecordedVideoPlayerScreen(videoUrl: url));
       }));
     }
-    items.sort((a, b) => b.sortTimestamp.compareTo(a.sortTimestamp));
+    if (selectedCategoryIndex.value == 0 && myInterests.isNotEmpty) {
+      final interestNames = myInterests
+          .map((i) => i.name?.toLowerCase().trim() ?? '')
+          .where((n) => n.isNotEmpty)
+          .toSet();
+      items.sort((a, b) {
+        final aMatch = interestNames.contains(a.categoryName.toLowerCase().trim()) ? 1 : 0;
+        final bMatch = interestNames.contains(b.categoryName.toLowerCase().trim()) ? 1 : 0;
+        if (aMatch != bMatch) {
+          return bMatch.compareTo(aMatch);
+        }
+        return b.sortTimestamp.compareTo(a.sortTimestamp);
+      });
+    } else {
+      items.sort((a, b) => b.sortTimestamp.compareTo(a.sortTimestamp));
+    }
     return items;
   }
 
@@ -137,12 +158,26 @@ class LiveStreamSearchScreenController extends BaseController {
     }
   }
 
-  /// "Popular Hosts" row: currently-live video/audio rooms only, ranked by
-  /// viewer/listener count — a client-side sort of data already fetched
-  /// here, no new backend fields or calls.
+  /// "Popular Hosts" row: currently-live video/audio rooms, prioritized by
+  /// user's selected interests, then ranked by viewer/listener count.
   List<LiveRoomItem> get popularLiveHosts {
     final items = _liveVideoAndAudioItems();
-    items.sort((a, b) => b.subCount.compareTo(a.subCount));
+    if (myInterests.isNotEmpty) {
+      final interestNames = myInterests
+          .map((i) => i.name?.toLowerCase().trim() ?? '')
+          .where((n) => n.isNotEmpty)
+          .toSet();
+      items.sort((a, b) {
+        final aMatch = interestNames.contains(a.categoryName.toLowerCase().trim()) ? 1 : 0;
+        final bMatch = interestNames.contains(b.categoryName.toLowerCase().trim()) ? 1 : 0;
+        if (aMatch != bMatch) {
+          return bMatch.compareTo(aMatch);
+        }
+        return b.subCount.compareTo(a.subCount);
+      });
+    } else {
+      items.sort((a, b) => b.subCount.compareTo(a.subCount));
+    }
     return items.take(10).toList();
   }
 
@@ -158,6 +193,7 @@ class LiveStreamSearchScreenController extends BaseController {
     final favoritesFuture = fetchFavoriteUsers();
     final categoriesFuture = fetchFilterCategories();
     final followingFuture = fetchFollowingHostIds();
+    final interestsFuture = fetchMyInterestsForHome();
 
     await addDummyUsers();
     _dummyUsersReady = true;
@@ -167,7 +203,12 @@ class LiveStreamSearchScreenController extends BaseController {
       favoritesFuture,
       categoriesFuture,
       followingFuture,
+      interestsFuture,
     });
+
+    // Reorder categories to show user's interests first, then auto-select
+    _reorderCategoriesByInterests();
+    _autoSelectCategoryFromInterests();
 
     fetchRecordedLives();
   }
@@ -292,13 +333,16 @@ class LiveStreamSearchScreenController extends BaseController {
   /// Pull-to-refresh on the Home page. Live streams and audio rooms are
   /// already realtime via Firestore listeners (always current), so this
   /// only needs to re-pull the plain REST-backed pieces: categories,
-  /// favorites, and recorded sessions.
+  /// favorites, recorded sessions, and interests.
   Future<void> onHomeRefresh() async {
     await Future.wait([
       fetchFilterCategories(),
       fetchFavoriteUsers(),
       fetchRecordedLives(),
+      fetchMyInterestsForHome(),
     ]);
+    _reorderCategoriesByInterests();
+    _autoSelectCategoryFromInterests();
   }
 
   Future<void> fetchFavoriteUsers() async {
@@ -314,6 +358,62 @@ class LiveStreamSearchScreenController extends BaseController {
     } catch (e) {
       Loggers.error('fetchFavoriteUsers error: $e');
     }
+  }
+
+  Future<void> fetchMyInterestsForHome() async {
+    try {
+      final catalogResult = await CommonService.instance.fetchInterests();
+      interestCatalog.value = catalogResult.data ?? [];
+
+      final myResult = await UserService.instance.fetchMyInterests();
+      myInterests.value = myResult.data ?? [];
+    } catch (e) {
+      Loggers.error('fetchMyInterestsForHome error: $e');
+    }
+  }
+
+  /// Reorders [filterCategories] so that categories matching the user's
+  /// selected interests are placed at the front of the list, right after "All".
+  void _reorderCategoriesByInterests() {
+    if (myInterests.isEmpty || filterCategories.isEmpty) return;
+    final interestNames = myInterests
+        .map((i) => i.name?.toLowerCase().trim() ?? '')
+        .where((n) => n.isNotEmpty)
+        .toSet();
+    final matching = <Category>[];
+    final others = <Category>[];
+    for (final cat in filterCategories) {
+      final catName = cat.name?.toLowerCase().trim() ?? '';
+      if (interestNames.contains(catName)) {
+        matching.add(cat);
+      } else {
+        others.add(cat);
+      }
+    }
+    filterCategories.value = [...matching, ...others];
+  }
+
+  /// After categories load, auto-select the first category that matches
+  /// one of the user's interests (by name, case-insensitive).
+  void _autoSelectCategoryFromInterests() {
+    if (myInterests.isEmpty || filterCategories.isEmpty) return;
+    final interestNames = myInterests.map((i) => i.name?.toLowerCase().trim() ?? '').toSet();
+    for (int i = 0; i < filterCategories.length; i++) {
+      final catName = filterCategories[i].name?.toLowerCase().trim() ?? '';
+      if (interestNames.contains(catName)) {
+        selectedCategoryIndex.value = i + 1; // +1 because index 0 is "All"
+        _applyFilter();
+        return;
+      }
+    }
+  }
+
+  /// Called from the ChangeInterestSheet after the user saves their interests.
+  Future<void> onInterestsSaved(List<Interest> newInterests) async {
+    myInterests.value = newInterests;
+    _reorderCategoriesByInterests();
+    _autoSelectCategoryFromInterests();
+    fetchRecordedLives();
   }
 
   Future<void> fetchFilterCategories() async {
@@ -350,8 +450,24 @@ class LiveStreamSearchScreenController extends BaseController {
     }
 
     if (selectedCategoryIndex.value == 0) {
-      // "All" selected — show everything
+      // "All" selected — show everything, but prioritize user's interests first
       filtered = List.from(livestreamList);
+      if (myInterests.isNotEmpty) {
+        final interestNames = myInterests
+            .map((i) => i.name?.toLowerCase().trim() ?? '')
+            .where((name) => name.isNotEmpty)
+            .toSet();
+        filtered.sort((a, b) {
+          final aCat = a.categoryName?.toLowerCase().trim() ?? '';
+          final bCat = b.categoryName?.toLowerCase().trim() ?? '';
+          final aMatch = interestNames.contains(aCat) ? 1 : 0;
+          final bMatch = interestNames.contains(bCat) ? 1 : 0;
+          if (aMatch != bMatch) {
+            return bMatch.compareTo(aMatch); // matched first
+          }
+          return (b.createdAt ?? 0).compareTo(a.createdAt ?? 0);
+        });
+      }
     } else {
       final selectedCat = filterCategories[selectedCategoryIndex.value - 1];
       filtered = livestreamList.where((s) {

@@ -10,8 +10,13 @@ class StarStoreDiamondScreen extends StatefulWidget {
   // False when embedded as the "Premium" bottom-nav tab body — there's
   // nothing for a back arrow to pop back to in that context.
   final bool showBackButton;
+  final VoidCallback? onPurchaseCompleted;
 
-  const StarStoreDiamondScreen({super.key, this.showBackButton = true});
+  const StarStoreDiamondScreen({
+    super.key,
+    this.showBackButton = true,
+    this.onPurchaseCompleted,
+  });
 
   @override
   State<StarStoreDiamondScreen> createState() => _StarStoreDiamondScreenState();
@@ -188,7 +193,9 @@ class _StarStoreDiamondScreenState extends State<StarStoreDiamondScreen> {
                   child: currentTab == 0
                       ? Container(
                           margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                          child: const DiamondStore(),
+                          child: DiamondStore(
+                            onPurchaseCompleted: widget.onPurchaseCompleted,
+                          ),
                         )
                       : Container(
                           margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

@@ -20,6 +20,13 @@ import 'package:geoedu/screen/camera_screen/camera_screen.dart';
 import 'package:geoedu/screen/feed_screen/feed_screen_controller.dart';
 import 'package:geoedu/screen/gif_sheet/gif_sheet_controller.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/audience/live_stream_audience_screen.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/host/livestream_host_screen.dart';
+import 'package:geoedu/screen/audio_call/audio_room_screen.dart';
+import 'package:geoedu/model/audio_call/audio_room.dart';
+import 'package:geoedu/model/livestream/livestream.dart';
+import 'package:geoedu/common/manager/share_manager.dart';
+import 'package:geoedu/common/service/navigation/navigate_with_controller.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/firebase_const.dart';
 import 'package:just_audio/just_audio.dart';
@@ -113,6 +120,79 @@ class DashboardScreenController extends BaseController with GetSingleTickerProvi
     // Go online for audio call presence
     if (user != null) {
       OnlinePresenceService.instance.goOnline(user!);
+    }
+
+    _listenDeepLinks();
+
+    // Check if user came from a pending share link before/during registration
+    final pendingLink = SessionManager.instance.storage.read<String>('pending_share_link');
+    if (pendingLink != null && pendingLink.isNotEmpty) {
+      SessionManager.instance.storage.remove('pending_share_link');
+      final parts = pendingLink.split('_');
+      if (parts.length >= 2) {
+        final key = parts.first;
+        final value = int.tryParse(parts.last) ?? -1;
+        if (value != -1) {
+          Future.delayed(const Duration(milliseconds: 1000), () {
+            _handleDeepLinkTarget(key, value);
+          });
+        }
+      }
+    }
+  }
+
+  void _listenDeepLinks() {
+    ShareManager.shared.listen((key, value) async {
+      await Future.delayed(const Duration(milliseconds: 600));
+      _handleDeepLinkTarget(key, value);
+    });
+  }
+
+  Future<void> _handleDeepLinkTarget(String key, int value) async {
+    if (key == ShareKeys.user.value) {
+      // Value is hostUserId — check if this host is currently in an audio room or live stream!
+      final hostUserId = value;
+      try {
+        // 1. Check if host has an active audio room
+        final audioDoc = await db
+            .collection(FirebaseConst.audioRooms)
+            .doc('$hostUserId')
+            .get();
+        if (audioDoc.exists && audioDoc.data() != null) {
+          final room = AudioRoom.fromJson(audioDoc.data()!);
+          if (room.isActive == true) {
+            if (Get.isRegistered<AudioCallListController>()) {
+              Get.find<AudioCallListController>().joinAudioRoom(room);
+            } else {
+              Get.to(() => AudioRoomScreen(room: room, isHost: false));
+            }
+            return;
+          }
+        }
+
+        // 2. Check if host has an active livestream
+        final liveDoc = await db
+            .collection(FirebaseConst.liveStreams)
+            .doc('$hostUserId')
+            .get();
+        if (liveDoc.exists && liveDoc.data() != null) {
+          final stream = Livestream.fromJson(liveDoc.data()!);
+          if (stream.hostId == user?.id) {
+            Get.to(() => LivestreamHostScreen(isHost: true, livestream: stream));
+          } else {
+            Get.to(() => LiveStreamAudienceScreen(isHost: false, livestream: stream));
+          }
+          return;
+        }
+
+        // 3. Fallback: navigate to Host's user profile
+        final hostUser = await UserService.instance.fetchUserDetails(userId: hostUserId);
+        if (hostUser != null) {
+          NavigationService.shared.openProfileScreen(hostUser);
+        }
+      } catch (e) {
+        Loggers.error('Deep link live navigation error: $e');
+      }
     }
   }
 

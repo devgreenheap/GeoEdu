@@ -1,6 +1,4 @@
 import 'dart:math';
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:geoedu/common/manager/session_manager.dart';
@@ -8,7 +6,6 @@ import 'package:geoedu/model/livestream/livestream.dart';
 import 'package:geoedu/screen/level_screen/level_screen_2/level_screen_new.dart';
 import 'package:geoedu/screen/live_stream/live_stream_search_screen/live_stream_search_screen_controller.dart';
 import 'package:geoedu/utilities/asset_res.dart';
-import 'package:geoedu/utilities/color_res.dart';
 
 class DirectCallLevelWidget extends StatelessWidget {
   const DirectCallLevelWidget({super.key});
@@ -16,62 +13,52 @@ class DirectCallLevelWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = SessionManager.instance.getUser();
-    final userLevel = user?.getLevel.level ?? 0;
+    final userLevel = user?.getLevel.level ?? 1;
     final controller = Get.find<LiveStreamSearchScreenController>();
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Row(
         children: [
-          Expanded(child: Obx(() {
-            // Find real (non-dummy) live streams
-            final realLives = controller.livestreamFilterList
-                .where((s) => s.isDummyLive != 1)
-                .toList();
-            final hasRealLive = realLives.isNotEmpty;
+          // DIRECT CALL CARD
+          Expanded(
+            child: Obx(() {
+              final realLives = controller.livestreamFilterList
+                  .where((s) => s.isDummyLive != 1)
+                  .toList();
+              final dummyLives = controller.livestreamFilterList
+                  .where((s) => s.isDummyLive == 1)
+                  .toList();
 
-            // Count total watching across real lives
-            final totalMembers = realLives.fold<int>(
-                0, (sum, s) => sum + (s.watchingCount ?? 0));
+              // Top 3 host avatars for overlapping stack
+              final avatarList = <String>[];
+              for (final live in [...realLives, ...dummyLives]) {
+                final p = live.hostUser?.profile;
+                if (p != null && p.isNotEmpty && !avatarList.contains(p)) {
+                  avatarList.add(p);
+                  if (avatarList.length == 3) break;
+                }
+              }
 
-            return _buildCard(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF4FACFE), Color(0xFF00C6FF)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF00C6FF).withValues(alpha: 0.35),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-              leftIcon: AssetRes.videoIcon,
-              title: hasRealLive ? "Join Call" : "Direct Call",
-              value: hasRealLive ? "$totalMembers watching" : "",
-              valueColor: Colors.white,
-              rightIcon: AssetRes.personGirlIcon,
-              onTap: () => _onDirectCallTap(controller, realLives, context),
-            );
-          })),
+              return _buildDirectCallCard(
+                avatarUrls: avatarList,
+                onTap: () => _onDirectCallTap(controller, realLives, context),
+              );
+            }),
+          ),
 
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
 
-          Expanded(child: _buildCard(
-            gradient: const LinearGradient(
-              colors: [ColorRes.green1, ColorRes.green],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+          // MY LEVEL CARD
+          Expanded(
+            child: _buildMyLevelCard(
+              level: userLevel,
+              onTap: () {
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (context) => const LevelScreenNew()));
+              },
             ),
-            leftIcon: AssetRes.levelIcon,
-            title: "My Level",
-            value: "$userLevel",
-            valueColor: ColorRes.gold,
-            rightIcon: AssetRes.levelDioIcon, onTap: () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (context) => const LevelScreenNew()));
-          },
-          )),
+          ),
         ],
       ),
     );
@@ -82,11 +69,9 @@ class DirectCallLevelWidget extends StatelessWidget {
       List<Livestream> realLives,
       BuildContext context) {
     if (realLives.isNotEmpty) {
-      // Join the first real live stream
       final stream = realLives.first;
       controller.onLiveUserTap(stream);
     } else {
-      // No real live — show waiting screen then connect to random dummy
       _showWaitingAndConnectDummy(controller, context);
     }
   }
@@ -100,7 +85,7 @@ class DirectCallLevelWidget extends StatelessWidget {
 
     Get.to(() => _FindingLiveScreen(
       onComplete: () {
-        Get.back(); // Close waiting screen
+        Get.back();
         if (dummyLives.isNotEmpty) {
           final random = dummyLives[Random().nextInt(dummyLives.length)];
           controller.onLiveUserTap(random);
@@ -109,87 +94,293 @@ class DirectCallLevelWidget extends StatelessWidget {
     ));
   }
 
-  Widget _buildCard({
-    required LinearGradient gradient,
-    required String leftIcon,
-    required String title,
-    required String value,
-    required String rightIcon,
+  Widget _buildDirectCallCard({
+    required List<String> avatarUrls,
     required VoidCallback onTap,
-    Color valueColor = ColorRes.primaryColor,
-    bool isBlur = false,
-    Border? border,
-    List<BoxShadow>? boxShadow,
   }) {
-    Widget cardContent = Container(
-      height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(
-        gradient: gradient,
-        borderRadius: BorderRadius.circular(18),
-        border: border,
-        boxShadow: boxShadow,
-      ),
-      child: Row(
-        children: [
-          /// LEFT ICON
-          FittedBox(
-            child: Image.asset(leftIcon, height: 16),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        height: 82,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          gradient: const LinearGradient(
+            colors: [
+              Color(0xFFFF8533),
+              Color(0xFFFF5E62),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFFF5E62).withValues(alpha: 0.35),
+              blurRadius: 14,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // White rounded video camera icon
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.videocam_rounded,
+                color: Color(0xFFFF6B4A),
+                size: 24,
+              ),
+            ),
 
-          const SizedBox(width: 10),
+            const SizedBox(width: 10),
 
-          /// TEXT AREA
-          Expanded(
-            child: FittedBox(
-              alignment: Alignment.centerLeft,
-              fit: BoxFit.scaleDown,
+            // Title & Subtitle
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'Direct Call',
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Connect with hosts',
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 4),
+
+            // Right side: overlapping avatars + arrow button
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Overlapping avatar stack
+                SizedBox(
+                  width: 44,
+                  height: 24,
+                  child: Stack(
+                    children: [
+                      for (int i = 0; i < (avatarUrls.isEmpty ? 3 : avatarUrls.length); i++)
+                        Positioned(
+                          left: i * 11.0,
+                          child: Container(
+                            width: 22,
+                            height: 22,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 1.5),
+                              color: const Color(0xFF333333),
+                            ),
+                            child: ClipOval(
+                              child: (avatarUrls.length > i && avatarUrls[i].isNotEmpty)
+                                  ? Image.network(
+                                      avatarUrls[i],
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Image.asset(
+                                        AssetRes.personGirlIcon,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    )
+                                  : Image.asset(
+                                      AssetRes.personGirlIcon,
+                                      fit: BoxFit.cover,
+                                    ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 5),
+                // Circular white pill with arrow
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.arrow_forward_rounded,
+                      color: Color(0xFFFF5E62),
+                      size: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMyLevelCard({
+    required int level,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        height: 82,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          gradient: const LinearGradient(
+            colors: [
+              Color(0xFF0F5A38),
+              Color(0xFF07331E),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF0F5A38).withValues(alpha: 0.35),
+              blurRadius: 14,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Signal/Bar chart icon in mint green
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Container(
+                  width: 4.5,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF55E7A2),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 2.5),
+                Container(
+                  width: 4.5,
+                  height: 18,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF55E7A2),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 2.5),
+                Container(
+                  width: 4.5,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF55E7A2),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(width: 10),
+
+            // Title & Level value
+            Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
+                  const Text(
+                    'My Level',
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
                       color: Colors.white,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w800,
                       fontSize: 14,
+                      letterSpacing: -0.2,
                     ),
                   ),
-                  if (value.isNotEmpty)
-                    Text(
-                      value,
-                      style: TextStyle(
-                        color: valueColor,
-                        fontSize: 12,
-                      ),
+                  const SizedBox(height: 2),
+                  RichText(
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    text: TextSpan(
+                      children: [
+                        const TextSpan(
+                          text: 'Level ',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        TextSpan(
+                          text: '$level',
+                          style: const TextStyle(
+                            color: Color(0xFFFFD233),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
                 ],
               ),
             ),
-          ),
 
-          /// RIGHT ICON
-          FittedBox(
-            child: Image.asset(rightIcon, height: 35),
-          ),
-        ],
-      ),
-    );
+            const SizedBox(width: 4),
 
-    if (isBlur) {
-      cardContent = ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: cardContent,
+            // Golden crown inside dashed circular border
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: const Color(0xFFFFD233).withValues(alpha: 0.6),
+                  width: 1.5,
+                  style: BorderStyle.solid,
+                ),
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.military_tech_rounded,
+                  color: Color(0xFFFFD233),
+                  size: 26,
+                ),
+              ),
+            ),
+          ],
         ),
-      );
-    }
-
-    return GestureDetector(
-      onTap: onTap,
-      child: cardContent,
+      ),
     );
   }
 }

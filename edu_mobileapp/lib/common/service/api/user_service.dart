@@ -97,6 +97,8 @@ class UserService {
         },
         fromJson: UserModel.fromJson);
 
+    lastLoginResponse = model;
+
     if (model.status == true) {
       Future.delayed(const Duration(milliseconds: 100), () {
         SessionManager.instance.setUser(model.data);
@@ -105,6 +107,8 @@ class UserService {
     }
     return model.data;
   }
+
+  UserModel? lastLoginResponse;
 
   Future<User?> logInFakeUser({
     required String identity,

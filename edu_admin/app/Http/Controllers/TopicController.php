@@ -8,6 +8,7 @@ use App\Models\GlobalFunction;
 use App\Models\SubCategories;
 use App\Models\Topics;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class TopicController extends Controller
 {
@@ -94,11 +95,14 @@ class TopicController extends Controller
             $status = "<input type='checkbox' id='topicStatus-{$item->id}' rel='{$item->id}' class='onOffTopic' {$checked} data-switch='none'/>
                     <label for='topicStatus-{$item->id}'></label>";
 
+            $createdAt = !empty($item->created_at) ? Carbon::parse($item->created_at)->format('d M Y, h:i A') : '-';
+
             return [
                 $item->category?->name ?? '-',
                 $item->subCategory?->name ?? '-',
                 $item->division?->name ?? '-',
                 $item->name,
+                $createdAt,
                 $status,
                 $action,
             ];

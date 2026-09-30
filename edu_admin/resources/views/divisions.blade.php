@@ -22,6 +22,7 @@
                         <th>{{ __('Category') }}</th>
                         <th>{{ __('Sub Category') }}</th>
                         <th>{{ __('Division') }}</th>
+                        <th>{{ __('Created At') }}</th>
                         <th>{{ __('Status') }}</th>
                         <th style="width: 200px;" class="text-end">{{ __('Action') }}</th>
                     </tr>

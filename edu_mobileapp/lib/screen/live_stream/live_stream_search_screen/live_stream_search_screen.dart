@@ -9,6 +9,7 @@ import 'package:geoedu/screen/star_score/widgets/diamond_purchase_bottom.dart';
 import 'package:geoedu/screen/star_store_diamond_and_effect/star_store_diamond _screen.dart';
 import 'package:get/get.dart';
 import 'package:geoedu/common/widget/live_room/live_top_bar.dart';
+import 'package:geoedu/screen/live_stream/live_home_page_widget/change_interest_sheet.dart';
 import 'package:geoedu/screen/live_stream/live_home_page_widget/direct_call_level_widget.dart';
 import 'package:geoedu/screen/live_stream/live_home_page_widget/geo_premium_banner_widget.dart';
 import 'package:geoedu/screen/live_stream/live_home_page_widget/live_categories_list_widget.dart';
@@ -145,31 +146,85 @@ class _PopularHostsRow extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 14),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
             child: Row(
               children: [
-                Text('⭐', style: TextStyle(fontSize: 16)),
-                SizedBox(width: 8),
-                Text('Popular Hosts',
-                    style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
+                const Icon(
+                  Icons.star_rounded,
+                  color: Color(0xFFFFD233),
+                  size: 26,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Popular Hosts',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () {
+                    Get.bottomSheet(
+                      const ChangeInterestSheet(),
+                      isScrollControlled: true,
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF7A00).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: const Color(0xFFFF7A00).withValues(alpha: 0.5),
+                        width: 1,
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.tune_rounded,
+                          size: 13,
+                          color: Color(0xFFFF7A00),
+                        ),
+                        SizedBox(width: 4),
+                        Text(
+                          'Change Interest',
+                          style: TextStyle(
+                            color: Color(0xFFFF7A00),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           SizedBox(
-            height: 96,
+            height: 126,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 14),
               itemCount: hosts.length,
               itemBuilder: (context, index) {
                 final host = hosts[index];
                 return Padding(
-                  padding: const EdgeInsets.only(right: 12),
+                  padding: const EdgeInsets.only(right: 14),
                   child: PopularHostAvatar(
                     photoUrl: host.hostPhotoUrl,
                     name: host.hostName.isNotEmpty ? host.hostName : host.title,
+                    count: host.subCount,
                     onTap: host.onTap,
                   ),
                 );

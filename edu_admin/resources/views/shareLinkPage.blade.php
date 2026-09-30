@@ -185,10 +185,22 @@
     <script>
         document.addEventListener("DOMContentLoaded", function() {
             var appUrl = "{{ $setting->uri_scheme }}://s/{{ $encryptedId }}";
-            var fallbackUrl = window.location.href;
+            var playStoreUrl = "{{ $setting->play_store_download_link ?: 'https://play.google.com/store/apps/details?id=com.geoedu.app' }}";
+            var appStoreUrl = "{{ $setting->app_store_download_link ?: '' }}";
 
+            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            var storeUrl = isIOS && appStoreUrl ? appStoreUrl : playStoreUrl;
+
+            // Try opening the installed app
             window.location.href = appUrl;
 
+            // If the app is not installed or didn't launch within 1.2s, forward directly to the Play Store
+            setTimeout(function() {
+                // If user hasn't switched away to the app, redirect to Play Store
+                if (!document.hidden) {
+                    window.location.href = storeUrl;
+                }
+            }, 1200);
         });
     </script>
 

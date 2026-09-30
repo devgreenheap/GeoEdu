@@ -1499,8 +1499,13 @@ class AudioRoomController extends BaseController {
                         elevation: 4,
                       ),
                       onPressed: () async {
-                        Get.back();
-                        await Get.to(() => const StarStoreDiamondScreen());
+                        Get.back(); // close dialog
+                        await Get.to(() => StarStoreDiamondScreen(
+                              onPurchaseCompleted: () {
+                                Get.back(); // return to audio room
+                                fetchDiamondBalance();
+                              },
+                            ));
                         fetchDiamondBalance();
                       },
                       child: const Row(

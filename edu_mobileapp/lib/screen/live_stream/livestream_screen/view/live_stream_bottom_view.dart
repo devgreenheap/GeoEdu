@@ -11,6 +11,8 @@ import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_stream_l
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/members_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_stream_text_field.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/livestream_exist_message_bar.dart';
+import 'package:geoedu/common/manager/share_manager.dart';
+import 'package:geoedu/common/widget/live_room/live_share_sheet.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
 
@@ -86,7 +88,34 @@ class LiveStreamBottomView extends StatelessWidget {
                                       },
                                       onTap: controller.onLikeButtonTap),
                                 ),
-                              )
+                              ),
+                              AnimatedOpacity(
+                                duration: animationDuration,
+                                opacity: animationOpacity,
+                                child: IgnorePointer(
+                                  ignoring: !isVisible,
+                                  child: LiveStreamCircleBorderButton(
+                                    size: const Size(40, 40),
+                                    image: AssetRes.icShare,
+                                    iconColor: Colors.white,
+                                    onTap: () {
+                                      final myUser = controller.myUser.value;
+                                      final hostUser = controller.liveData.value.hostUser;
+                                      final hostId = controller.liveData.value.hostId ?? -1;
+                                      final shareLink = ShareManager.shared.getLink(key: ShareKeys.user, value: hostId);
+                                      LiveShareSheet.show(
+                                        context: context,
+                                        hostName: hostUser?.fullname ?? hostUser?.username ?? 'Host',
+                                        hostPhotoUrl: hostUser?.profile,
+                                        currentUserName: myUser?.fullname ?? myUser?.username ?? 'You',
+                                        currentUserPhotoUrl: myUser?.profilePhoto,
+                                        shareLink: shareLink,
+                                        isAudio: false,
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
                             ]),
                             Obx(() {
                               int? userId = controller.myUser.value?.id;

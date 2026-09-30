@@ -240,8 +240,13 @@ class SendGiftSheetController extends BaseController {
                         elevation: 4,
                       ),
                       onPressed: () async {
-                        Get.back();
-                        await Get.to(() => const StarStoreDiamondScreen());
+                        Get.back(); // close dialog
+                        await Get.to(() => StarStoreDiamondScreen(
+                              onPurchaseCompleted: () {
+                                Get.back(); // return to video live room
+                                refreshDiamondWallet();
+                              },
+                            ));
                         refreshDiamondWallet();
                       },
                       child: const Row(

@@ -48,6 +48,7 @@ import 'package:geoedu/utilities/firebase_const.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:zego_express_engine/zego_express_engine.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requested_sheet.dart';
 
 import '../../../common/extensions/string_extension.dart';
 import '../../../model/livestream/entry_effects_model.dart';
@@ -1693,16 +1694,23 @@ class LivestreamScreenController extends BaseController {
         .firstWhereOrNull((element) => element.userId == myUserId);
     switch (state?.type) {
       case null:
-        break;
       case LivestreamUserType.audience:
         updateUserStateToFirestore(myUserId,
             type: LivestreamUserType.requested);
         _sendCommentToFirestore(
             type: LivestreamCommentType.request, receiverId: liveData.hostId);
-        showSnackBar(LKey.requestJoinToHost.tr);
+        if (Get.context != null) {
+          CallRequestedSheet.show(Get.context!);
+        } else {
+          showSnackBar(LKey.requestJoinToHost.tr);
+        }
         break;
       case LivestreamUserType.requested:
-        showSnackBar(LKey.joinRequestSentDescription.tr);
+        if (Get.context != null) {
+          CallRequestedSheet.show(Get.context!);
+        } else {
+          showSnackBar(LKey.joinRequestSentDescription.tr);
+        }
         break;
       case LivestreamUserType.host:
       case LivestreamUserType.coHost:

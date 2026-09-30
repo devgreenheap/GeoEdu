@@ -38,6 +38,7 @@
                                 <thead class="table-light">
                                     <tr>
                                         <th>{{ __('Category Name') }}</th>
+                                        <th>{{ __('Created At') }}</th>
                                         <th>{{ __('Status') }}</th>
                                         <th style="width: 200px;" class="text-end">{{ __('Action') }}</th>
                                     </tr>
@@ -57,6 +58,7 @@
                                     <tr>
                                         <th>{{ __('Category') }}</th>
                                         <th>{{ __('Sub Category') }}</th>
+                                        <th>{{ __('Created At') }}</th>
                                         <th>{{ __('Status') }}</th>
                                         <th style="width: 200px;" class="text-end">{{ __('Action') }}</th>
                                     </tr>

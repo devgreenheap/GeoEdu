@@ -10,6 +10,8 @@ import 'package:geoedu/common/service/api/common_service.dart';
 import 'package:geoedu/common/service/api/user_service.dart';
 import 'package:geoedu/common/widget/custom_image.dart';
 import 'package:geoedu/common/widget/level_badge.dart';
+import 'package:geoedu/common/manager/share_manager.dart';
+import 'package:geoedu/common/widget/live_room/live_share_sheet.dart';
 import 'package:geoedu/model/audio_call/audio_comment.dart';
 import 'package:geoedu/model/audio_call/audio_room.dart';
 
@@ -25,7 +27,10 @@ import 'package:geoedu/utilities/audio_theme_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/utilities/firebase_const.dart';
 
-class AudioRoomScreen extends StatelessWidget {
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_start_countdown_overlay.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/other_lives_side_panel.dart';
+
+class AudioRoomScreen extends StatefulWidget {
   final AudioRoom room;
   final bool isHost;
 
@@ -40,6 +45,32 @@ class AudioRoomScreen extends StatelessWidget {
   // with the Go-Live setup screen's theme-card gallery.
   static const List<List<Color>> themePresets = AudioThemeRes.presets;
 
+  @override
+  State<AudioRoomScreen> createState() => _AudioRoomScreenState();
+}
+
+class _AudioRoomScreenState extends State<AudioRoomScreen> {
+  bool _showCountdown = true;
+  bool _showOtherLives = false;
+  late final AudioRoomController controller;
+
+  AudioRoom get room => widget.room;
+  bool get isHost => widget.isHost;
+  List<List<Color>> get themePresets => AudioRoomScreen.themePresets;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = Get.put(
+      AudioRoomController(room: widget.room, isHost: widget.isHost),
+    );
+    controller.onPkInviteReceived = (inviterHostId) =>
+        _showPkInviteDialog(controller, inviterHostId);
+    if (!widget.isHost) {
+      _showCountdown = false;
+    }
+  }
+
   void showSnackBar(String message) {
     Get.rawSnackbar(
       message: message,
@@ -53,11 +84,6 @@ class AudioRoomScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.put(
-      AudioRoomController(room: room, isHost: isHost),
-    );
-    controller.onPkInviteReceived = (inviterHostId) =>
-        _showPkInviteDialog(controller, inviterHostId);
 
     return PopScope(
       canPop: false,
@@ -189,6 +215,41 @@ class AudioRoomScreen extends StatelessWidget {
           );
             }),
             GiftEffectWidget(activeGifts: controller.activeGifts),
+            if (_showOtherLives) ...[
+              // Barrier dismiss on tap outside
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    setState(() {
+                      _showOtherLives = false;
+                    });
+                  },
+                  child: Container(
+                    color: Colors.black.withValues(alpha: 0.3),
+                  ),
+                ),
+              ),
+              OtherLivesSidePanel(
+                currentAudioHostId: room.hostId,
+                onClose: () {
+                  setState(() {
+                    _showOtherLives = false;
+                  });
+                },
+              ),
+            ],
+            if (_showCountdown && widget.isHost)
+              LiveStartCountdownOverlay(
+                isVideo: false,
+                onFinished: () {
+                  if (mounted) {
+                    setState(() {
+                      _showCountdown = false;
+                    });
+                  }
+                },
+              ),
           ],
         ),
       ),
@@ -256,7 +317,11 @@ class AudioRoomScreen extends StatelessWidget {
             ),
           const SizedBox(width: 4),
           GestureDetector(
-            onTap: () => _showTopGiftersSheet(controller),
+            onTap: () {
+              setState(() {
+                _showOtherLives = true;
+              });
+            },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
               decoration: BoxDecoration(
@@ -2337,7 +2402,12 @@ class AudioRoomScreen extends StatelessWidget {
                 const SizedBox(width: 8),
                 InkWell(
                   onTap: () async {
-                    await Get.to(() => const StarStoreDiamondScreen());
+                    await Get.to(() => StarStoreDiamondScreen(
+                          onPurchaseCompleted: () {
+                            Get.back(); // return to audio room
+                            controller.fetchDiamondBalance();
+                          },
+                        ));
                     controller.fetchDiamondBalance();
                   },
                   borderRadius: BorderRadius.circular(16),
@@ -2692,9 +2762,16 @@ class AudioRoomScreen extends StatelessWidget {
   }
 
   void _shareRoom(AudioRoomController controller) {
-    Share.share(
-      'Join ${room.hostName ?? "my"} audio room "${controller.roomName.value}" live on GeoEdu now!',
-      subject: 'Join this audio room',
+    final myUser = SessionManager.instance.getUser();
+    final shareLink = ShareManager.shared.getLink(key: ShareKeys.user, value: room.hostId ?? -1);
+    LiveShareSheet.show(
+      context: Get.context!,
+      hostName: room.hostName ?? 'Host',
+      hostPhotoUrl: room.hostPhoto,
+      currentUserName: myUser?.fullname ?? myUser?.username ?? 'You',
+      currentUserPhotoUrl: myUser?.profilePhoto,
+      shareLink: shareLink,
+      isAudio: true,
     );
   }
 
@@ -3815,7 +3892,12 @@ class _AudioRoomGiftCategorySheetState
                     // Recharge > button
                     InkWell(
                       onTap: () async {
-                        await Get.to(() => const StarStoreDiamondScreen());
+                        await Get.to(() => StarStoreDiamondScreen(
+                              onPurchaseCompleted: () {
+                                Get.back(); // return directly back to audio room
+                                widget.controller.fetchDiamondBalance();
+                              },
+                            ));
                         widget.controller.fetchDiamondBalance();
                       },
                       borderRadius: BorderRadius.circular(20),

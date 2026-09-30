@@ -3,8 +3,16 @@ import 'package:geoedu/languages/languages_keys.dart';
 
 class AppRes {
   static String appName = 'Greenheap Gio edu';
+  static const String gifBrandName = 'GIPHY';
 
-  static String gifBrandName = 'GIPHY';
+  static String playStoreLink =
+      'https://play.google.com/store/apps/details?id=com.geoedu.app';
+
+  static String getLiveShareMessage({required String hostName, required String smartLink}) {
+    return 'Join Me & ${hostName.toUpperCase()} live on ${AppRes.appName}!\n'
+        '📲 Open/Install App: $smartLink\n'
+        '👉 Or Download directly from Play Store: $playStoreLink';
+  }
 
   static String languageAdd =
       'Please add the languages in the admin panel to continue.\nFor guidance, refer to the backend documentation.';

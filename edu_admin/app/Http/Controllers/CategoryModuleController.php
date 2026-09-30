@@ -9,6 +9,7 @@ use App\Models\GlobalFunction;
 use App\Models\StateMaster;
 use App\Models\SubCategories;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class CategoryModuleController extends Controller
 {
@@ -70,8 +71,11 @@ class CategoryModuleController extends Controller
             $status = "<input type='checkbox' id='categoryStatus-{$item->id}' rel='{$item->id}' class='onOffCategory' {$checked} data-switch='none'/>
                     <label for='categoryStatus-{$item->id}'></label>";
 
+            $createdAt = !empty($item->created_at) ? Carbon::parse($item->created_at)->format('d M Y, h:i A') : '-';
+
             return [
                 $item->name,
+                $createdAt,
                 $status,
                 $action,
             ];
@@ -176,9 +180,12 @@ class CategoryModuleController extends Controller
             $status = "<input type='checkbox' id='subCategoryStatus-{$item->id}' rel='{$item->id}' class='onOffSubCategory' {$checked} data-switch='none'/>
                     <label for='subCategoryStatus-{$item->id}'></label>";
 
+            $createdAt = !empty($item->created_at) ? Carbon::parse($item->created_at)->format('d M Y, h:i A') : '-';
+
             return [
                 $item->category?->name ?? '-',
                 $item->name,
+                $createdAt,
                 $status,
                 $action,
             ];
@@ -301,10 +308,13 @@ class CategoryModuleController extends Controller
             $status = "<input type='checkbox' id='divisionStatus-{$item->id}' rel='{$item->id}' class='onOffDivision' {$checked} data-switch='none'/>
                     <label for='divisionStatus-{$item->id}'></label>";
 
+            $createdAt = !empty($item->created_at) ? Carbon::parse($item->created_at)->format('d M Y, h:i A') : '-';
+
             return [
                 $item->category?->name ?? '-',
                 $item->subCategory?->name ?? '-',
                 $item->name,
+                $createdAt,
                 $status,
                 $action,
             ];

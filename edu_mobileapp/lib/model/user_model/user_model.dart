@@ -1,4 +1,3 @@
-import 'package:geoedu/common/extensions/common_extension.dart';
 import 'package:geoedu/common/manager/session_manager.dart';
 import 'package:geoedu/model/general/settings_model.dart';
 import 'package:geoedu/model/post_story/story/story_model.dart';
@@ -17,16 +16,21 @@ class UserModel {
   UserModel.fromJson(dynamic json) {
     _status = json['status'];
     _message = json['message'];
+    _alreadyRegistered = json['already_registered'] == true ||
+        json['alreadyRegistered'] == true;
     _data = json['data'] != null ? User.fromJson(json['data']) : null;
   }
 
   bool? _status;
   String? _message;
+  bool? _alreadyRegistered;
   User? _data;
 
   bool? get status => _status;
 
   String? get message => _message;
+
+  bool get alreadyRegistered => _alreadyRegistered ?? false;
 
   User? get data => _data;
 
@@ -34,6 +38,7 @@ class UserModel {
     final map = <String, dynamic>{};
     map['status'] = _status;
     map['message'] = _message;
+    map['already_registered'] = _alreadyRegistered;
     if (_data != null) {
       map['data'] = _data?.toJson();
     }

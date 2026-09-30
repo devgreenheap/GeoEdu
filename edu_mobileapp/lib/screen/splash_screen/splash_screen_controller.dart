@@ -8,6 +8,7 @@ import 'package:geoedu/common/controller/base_controller.dart';
 import 'package:geoedu/common/extensions/string_extension.dart';
 import 'package:geoedu/common/manager/logger.dart';
 import 'package:geoedu/common/manager/session_manager.dart';
+import 'package:geoedu/common/manager/share_manager.dart';
 import 'package:geoedu/common/service/api/common_service.dart';
 import 'package:geoedu/common/service/api/user_service.dart';
 import 'package:geoedu/common/service/network_helper/network_helper.dart';
@@ -36,6 +37,11 @@ class SplashScreenController extends BaseController {
   @override
   void onReady() {
     super.onReady();
+
+    // Cache incoming deep link if user opens via share link while app is starting
+    ShareManager.shared.listen((key, value) {
+      SessionManager.instance.storage.write('pending_share_link', '${key}_$value');
+    });
 
     Future.wait([fetchSettings()]);
 
