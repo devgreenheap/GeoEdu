@@ -1328,7 +1328,7 @@ class WalletController extends Controller
             $status = "<input type='checkbox' id='diamondPackageStatus-{$item->id}' rel='{$item->id}' class='onOffDiamondPackage' {$checked} data-switch='none'/>
                     <label for='diamondPackageStatus-{$item->id}'></label>";
 
-            $createdAt = !empty($item->created_at) ? Carbon::parse($item->created_at)->format('d M Y, h:i A') : '-';
+            $createdAt = GlobalFunction::formatDateTime($item->created_at);
 
             return [
                 $image,

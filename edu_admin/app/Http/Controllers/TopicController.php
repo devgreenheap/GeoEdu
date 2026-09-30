@@ -95,7 +95,7 @@ class TopicController extends Controller
             $status = "<input type='checkbox' id='topicStatus-{$item->id}' rel='{$item->id}' class='onOffTopic' {$checked} data-switch='none'/>
                     <label for='topicStatus-{$item->id}'></label>";
 
-            $createdAt = !empty($item->created_at) ? Carbon::parse($item->created_at)->format('d M Y, h:i A') : '-';
+            $createdAt = GlobalFunction::formatDateTime($item->created_at);
 
             return [
                 $item->category?->name ?? '-',

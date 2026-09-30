@@ -1316,18 +1316,29 @@ class GlobalFunction extends Model
         return response()->json(['status' => $status, 'message' => $msg, 'data' => $data]);
     }
 
+    public static function formatDateTime($time, $format = 'd M Y, h:i A')
+    {
+        if (empty($time)) {
+            return '-';
+        }
+
+        try {
+            $tz = config('app.timezone', 'Asia/Kolkata') ?: 'Asia/Kolkata';
+            return Carbon::parse($time)->setTimezone($tz)->format($format);
+        } catch (\Throwable $e) {
+            return '-';
+        }
+    }
+
     public static function formateDatabaseTime($time)
     {
         if (empty($time)) {
             return '-';
         }
 
-        if ($time instanceof \DateTimeInterface) {
-            return $time->format('d M Y');
-        }
-
         try {
-            return Carbon::parse($time)->format('d M Y');
+            $tz = config('app.timezone', 'Asia/Kolkata') ?: 'Asia/Kolkata';
+            return Carbon::parse($time)->setTimezone($tz)->format('d M Y');
         } catch (\Throwable $e) {
             return '-';
         }

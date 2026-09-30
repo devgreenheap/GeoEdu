@@ -71,7 +71,7 @@ class CategoryModuleController extends Controller
             $status = "<input type='checkbox' id='categoryStatus-{$item->id}' rel='{$item->id}' class='onOffCategory' {$checked} data-switch='none'/>
                     <label for='categoryStatus-{$item->id}'></label>";
 
-            $createdAt = !empty($item->created_at) ? Carbon::parse($item->created_at)->format('d M Y, h:i A') : '-';
+            $createdAt = GlobalFunction::formatDateTime($item->created_at);
 
             return [
                 $item->name,
@@ -180,7 +180,7 @@ class CategoryModuleController extends Controller
             $status = "<input type='checkbox' id='subCategoryStatus-{$item->id}' rel='{$item->id}' class='onOffSubCategory' {$checked} data-switch='none'/>
                     <label for='subCategoryStatus-{$item->id}'></label>";
 
-            $createdAt = !empty($item->created_at) ? Carbon::parse($item->created_at)->format('d M Y, h:i A') : '-';
+            $createdAt = GlobalFunction::formatDateTime($item->created_at);
 
             return [
                 $item->category?->name ?? '-',
@@ -308,7 +308,7 @@ class CategoryModuleController extends Controller
             $status = "<input type='checkbox' id='divisionStatus-{$item->id}' rel='{$item->id}' class='onOffDivision' {$checked} data-switch='none'/>
                     <label for='divisionStatus-{$item->id}'></label>";
 
-            $createdAt = !empty($item->created_at) ? Carbon::parse($item->created_at)->format('d M Y, h:i A') : '-';
+            $createdAt = GlobalFunction::formatDateTime($item->created_at);
 
             return [
                 $item->category?->name ?? '-',
