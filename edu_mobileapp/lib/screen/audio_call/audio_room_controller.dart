@@ -39,7 +39,11 @@ class AudioRoomController extends BaseController {
 
   AudioRoomController({required this.room, required this.isHost});
 
-  static const int maxSpeakerSeats = 8;
+  int get maxSpeakerSeats =>
+      (room.maxParticipants != null && room.maxParticipants! > 0)
+          ? room.maxParticipants!
+          : 8;
+  static const int defaultMaxSpeakerSeats = 8;
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final User? myUser = SessionManager.instance.getUser();
@@ -930,6 +934,10 @@ class AudioRoomController extends BaseController {
       showSnackBar('Join Call request is pending host approval');
       return;
     }
+    if (speakerIds.length >= maxSpeakerSeats) {
+      showSnackBar('Join Call seats are full ($maxSpeakerSeats seats max)');
+      return;
+    }
     final micStatus = await Permission.microphone.request();
     if (!micStatus.isGranted) {
       showSnackBar('Microphone permission is required to join call');
@@ -962,6 +970,10 @@ class AudioRoomController extends BaseController {
   /// Host accepts a speaker request
   void acceptSpeaker(int userId) async {
     if (!isHost) return;
+    if (speakerIds.length >= maxSpeakerSeats) {
+      showSnackBar('Speaker seats are full ($maxSpeakerSeats seats max)');
+      return;
+    }
     connectedCallsCount.value++;
     final speakerStreamId = '${room.roomId}_$userId';
     // Immediately subscribe so host hears the user as soon as they speak

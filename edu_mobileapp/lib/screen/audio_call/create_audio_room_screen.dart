@@ -60,7 +60,9 @@ class CreateAudioRoomController extends BaseController {
     {'value': 'audio_room', 'label': 'Audio Room'},
   ];
 
-  static const int maxParticipants = 8;
+  // Join Call seats selection for host (audience view is unlimited)
+  RxInt maxParticipants = 8.obs;
+  final List<int> seatOptions = [2, 4, 6, 8];
   Rx<int?> selectedThemeIndex = Rx(0);
 
   @override
@@ -161,7 +163,7 @@ class CreateAudioRoomController extends BaseController {
         hostName: user.fullname ?? '',
         hostPhoto: hostPhotoUrl,
         roomName: roomTitle,
-        maxParticipants: maxParticipants,
+        maxParticipants: maxParticipants.value,
         participantIds: [user.id!],
         speakerIds: [user.id!],
         requestIds: [],
@@ -230,43 +232,67 @@ class CreateAudioRoomScreen extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            // Top back button
+            // Top App Bar: Back button + "Host Live Show" + Language selector pill
             Padding(
-              padding: const EdgeInsets.only(left: 6, top: 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new,
-                      color: Colors.white, size: 20),
-                  onPressed: () => Get.back(),
-                ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Get.back(),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.arrow_back_ios_new,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Host Live Show',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const Spacer(),
+                  Obx(() => _CompactDarkPill(
+                        icon: null,
+                        label: controller.selectedLanguage.value?.title ?? 'Language',
+                        onTap: () => _showLanguagePicker(context, controller),
+                      )),
+                ],
               ),
             ),
 
             // Top section: Left thumbnail card + glowing pink circular avatar + right settings stack
             Expanded(
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Left: Host cover photo thumbnail card
-                  Positioned(
-                    left: 18,
-                    top: 6,
-                    child: _buildThumbnailCard(context, controller),
-                  ),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Left: Host cover photo thumbnail card
+                    _buildThumbnailCard(context, controller),
 
-                  // Right: Language, Edit Interest, Video OFF, Auto Call
-                  Positioned(
-                    right: 18,
-                    top: 0,
-                    child: _buildTopRightSettings(context, controller),
-                  ),
+                    // Center: Glowing Neon Pink Circular Avatar
+                    Expanded(
+                      child: Center(
+                        child: _buildGlowingAvatar(controller),
+                      ),
+                    ),
 
-                  // Center: Glowing Neon Pink Circular Avatar
-                  Positioned(
-                    child: _buildGlowingAvatar(controller),
-                  ),
-                ],
+                    // Right: Edit Interest, Video OFF, Auto Call
+                    _buildTopRightSettings(context, controller),
+                  ],
+                ),
               ),
             ),
 
@@ -388,14 +414,6 @@ class CreateAudioRoomScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Language selector
-        Obx(() => _CompactDarkPill(
-              icon: null,
-              label: controller.selectedLanguage.value?.title ?? 'Language',
-              onTap: () => _showLanguagePicker(context, controller),
-            )),
-        const SizedBox(height: 8),
-
         // Edit Interest
         Obx(() {
           final parts = [
@@ -413,7 +431,7 @@ class CreateAudioRoomScreen extends StatelessWidget {
             ),
           );
         }),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
 
         // Video OFF / ON
         Obx(() => _ToggleRow(
@@ -421,7 +439,7 @@ class CreateAudioRoomScreen extends StatelessWidget {
               value: controller.isVideoOn.value,
               onChanged: controller.toggleVideoOn,
             )),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
 
         // Auto Call
         Obx(() => _ToggleRow(
@@ -437,29 +455,34 @@ class CreateAudioRoomScreen extends StatelessWidget {
       BuildContext context, CreateAudioRoomController controller) {
     return Container(
       width: double.infinity,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.62,
+      ),
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
       decoration: BoxDecoration(
         color: const Color(0xFF161922).withValues(alpha: 0.95),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Title: Host Live Show + Soundwave Equalizer
-          Row(
-            children: [
-              Text(
-                'Host Live Show',
-                style: TextStyleCustom.unboundedMedium500(
-                  color: Colors.white,
-                  fontSize: 17,
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Title: Host Live Show + Soundwave Equalizer
+            Row(
+              children: [
+                Text(
+                  'Host Live Show',
+                  style: TextStyleCustom.unboundedMedium500(
+                    color: Colors.white,
+                    fontSize: 17,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              const _AudioSoundwaveIcon(),
-            ],
-          ),
+                const SizedBox(width: 12),
+                const _AudioSoundwaveIcon(),
+              ],
+            ),
           const SizedBox(height: 12),
 
           // Room Type
@@ -500,6 +523,82 @@ class CreateAudioRoomScreen extends StatelessWidget {
                               ? ColorRes.primaryColor
                               : Colors.white,
                         ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              )),
+          const SizedBox(height: 14),
+
+          // Join Call Seats
+          Row(
+            children: [
+              Text(
+                'Join Call Seats',
+                style: TextStyleCustom.outFitLight300(
+                  fontSize: 12.5,
+                  color: Colors.white.withValues(alpha: 0.7),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '(Audience views unlimited)',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.white.withValues(alpha: 0.45),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          Obx(() => Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: controller.seatOptions.map((seats) {
+                  final isSelected =
+                      controller.maxParticipants.value == seats;
+                  return GestureDetector(
+                    onTap: () =>
+                        controller.maxParticipants.value = seats,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 7),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        color: isSelected
+                            ? ColorRes.primaryColor.withValues(alpha: 0.15)
+                            : Colors.transparent,
+                        border: Border.all(
+                          color: isSelected
+                              ? ColorRes.primaryColor
+                              : Colors.white.withValues(alpha: 0.25),
+                          width: isSelected ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.mic_none_rounded,
+                            size: 14,
+                            color: isSelected
+                                ? ColorRes.primaryColor
+                                : Colors.white70,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$seats Seats',
+                            style: isSelected
+                                ? TextStyleCustom.outFitSemiBold600(
+                                    fontSize: 13,
+                                    color: ColorRes.primaryColor,
+                                  )
+                                : TextStyleCustom.outFitRegular400(
+                                    fontSize: 13,
+                                    color: Colors.white,
+                                  ),
+                          ),
+                        ],
                       ),
                     ),
                   );
@@ -631,8 +730,9 @@ class CreateAudioRoomScreen extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   void _showHashtagPickerSheet(
       BuildContext context, CreateAudioRoomController controller) {

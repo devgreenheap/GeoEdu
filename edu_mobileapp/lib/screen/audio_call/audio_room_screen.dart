@@ -713,30 +713,40 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.4),
-                              borderRadius: BorderRadius.circular(10),
+                          _headerPill(children: [
+                            const Text('🎁', style: TextStyle(fontSize: 10)),
+                            Obx(() => Text(' ${controller.hostGiftCount.value}',
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600))),
+                            const SizedBox(width: 5),
+                            const Text('⭐', style: TextStyle(fontSize: 10)),
+                            Obx(() => Text(' ${controller.hostStarTotal.value}',
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600))),
+                          ]),
+                          const SizedBox(width: 5),
+                          if (isHost)
+                            GestureDetector(
+                              onTap: () => _showSetTargetDialog(controller),
+                              child: Obx(() => _headerPill(children: [
+                                    const Text('💎', style: TextStyle(fontSize: 10)),
+                                    Text(
+                                        controller.targetDiamonds.value > 0
+                                            ? ' ${controller.hostStarTotal.value}/${controller.targetDiamonds.value}'
+                                            : ' Target',
+                                        style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w600)),
+                                    const SizedBox(width: 3),
+                                    const Icon(Icons.edit,
+                                        color: Colors.white70, size: 10),
+                                  ])),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.bar_chart_rounded,
-                                    color: Color(0xFFFF7A19), size: 12),
-                                const SizedBox(width: 3),
-                                Obx(() => Text(
-                                      '${controller.hostStarTotal.value > 0 ? controller.hostStarTotal.value : 6}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    )),
-                              ],
-                            ),
-                          ),
                           if (!isHost) ...[
                             const SizedBox(width: 6),
                             _AudioFollowButton(hostId: room.hostId),
@@ -1029,7 +1039,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
         } else {
           items.add(_buildAudienceJoinSlot(controller, isSpeaker: isSpeaker, hasRequested: hasRequested));
         }
-      } else if (!isHost && !isSpeaker && guestSpeakerIds.length < AudioRoomController.maxSpeakerSeats && activeTilesCount < 2) {
+      } else if (!isHost && !isSpeaker && guestSpeakerIds.length < controller.maxSpeakerSeats && activeTilesCount < 2) {
         // Audience can still see a compact slot to request join if only 1 guest is active
         items.add(_buildAudienceJoinSlot(controller, isSpeaker: isSpeaker, hasRequested: hasRequested, compact: true));
       }
@@ -2503,9 +2513,9 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
         child: GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: AudioRoomController.maxSpeakerSeats,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
+          itemCount: controller.maxSpeakerSeats,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: controller.maxSpeakerSeats <= 4 ? controller.maxSpeakerSeats : 4,
             mainAxisSpacing: 16,
             crossAxisSpacing: 16,
             childAspectRatio: 0.8,
