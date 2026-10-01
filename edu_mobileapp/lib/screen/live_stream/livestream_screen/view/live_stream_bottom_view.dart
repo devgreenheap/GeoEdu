@@ -83,6 +83,8 @@ class LiveStreamBottomView extends StatelessWidget {
                                 child: IgnorePointer(
                                   ignoring: !isVisible,
                                   child: LiveStreamLikeButton(
+                                      likeCount: stream.likeCount ?? 0,
+                                      size: 40,
                                       onLikeTap: (p0) {
                                         controller.onLikeTap = p0;
                                       },

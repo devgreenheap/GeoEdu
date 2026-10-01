@@ -106,8 +106,10 @@ class AudioRoomController extends BaseController {
   // off the counter's delta, not just the tapper's own.
   int _lastSeenLikeCount = 0;
   void Function()? onLikeTap;
+  RxInt likeCount = 0.obs;
 
   void onLikeButtonTap() {
+    likeCount.value++;
     _db
         .collection(FirebaseConst.audioRooms)
         .doc(room.hostId.toString())
@@ -215,6 +217,7 @@ class AudioRoomController extends BaseController {
     room.createdAt ??= DateTime.now().millisecondsSinceEpoch;
     roomName.value = room.roomName ?? 'Audio Room';
     _lastSeenLikeCount = room.likeCount ?? 0;
+    likeCount.value = room.likeCount ?? 0;
     participantIds.value = List<int>.from(room.participantIds ?? []);
     backgroundImage.value = room.backgroundImage ?? '';
     musicUrls.value = List<String>.from(room.musicUrls ?? []);
@@ -695,6 +698,7 @@ class AudioRoomController extends BaseController {
       lockedSeatIndices.value = List<int>.from(updatedRoom.lockedSeatIndices ?? []);
       pinnedComment.value = updatedRoom.pinnedComment ?? '';
       final newLikeCount = updatedRoom.likeCount ?? 0;
+      likeCount.value = newLikeCount;
       if (newLikeCount != _lastSeenLikeCount) {
         onLikeTap?.call();
         _lastSeenLikeCount = newLikeCount;

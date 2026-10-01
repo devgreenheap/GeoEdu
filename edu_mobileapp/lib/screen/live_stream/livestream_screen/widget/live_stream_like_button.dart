@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:geoedu/common/extensions/common_extension.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/utilities/theme_res.dart';
@@ -8,9 +9,16 @@ import 'package:geoedu/utilities/theme_res.dart';
 class LiveStreamLikeButton extends StatefulWidget {
   final Function(Function())? onLikeTap;
   final VoidCallback onTap;
+  final int? likeCount;
+  final double size;
 
-  const LiveStreamLikeButton(
-      {super.key, required this.onLikeTap, required this.onTap});
+  const LiveStreamLikeButton({
+    super.key,
+    required this.onLikeTap,
+    required this.onTap,
+    this.likeCount,
+    this.size = 40,
+  });
 
   @override
   State<LiveStreamLikeButton> createState() => _LiveStreamLikeButtonState();
@@ -24,6 +32,14 @@ class _LiveStreamLikeButtonState extends State<LiveStreamLikeButton>
   void initState() {
     widget.onLikeTap?.call(_addReaction);
     super.initState();
+  }
+
+  @override
+  void didUpdateWidget(covariant LiveStreamLikeButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.onLikeTap != widget.onLikeTap) {
+      widget.onLikeTap?.call(_addReaction);
+    }
   }
 
   void _addReaction() {
@@ -73,7 +89,9 @@ class _LiveStreamLikeButtonState extends State<LiveStreamLikeButton>
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    final heartStack = Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.center,
       children: [
         ..._reactions.map((reaction) {
           final double rotationAngle =
@@ -94,26 +112,66 @@ class _LiveStreamLikeButtonState extends State<LiveStreamLikeButton>
                 ),
               );
             },
-            child: _likeWidget,
+            child: _likeCircleWidget,
           );
         }),
-        InkWell(onTap: widget.onTap, child: _likeWidget),
+        InkWell(
+          onTap: widget.onTap,
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          child: _likeCircleWidget,
+        ),
       ],
+    );
+
+    if (widget.likeCount == null) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 10),
+        child: heartStack,
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          heartStack,
+          const SizedBox(height: 2),
+          Text(
+            widget.likeCount!.numberFormat,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 9.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.1,
+              shadows: [
+                Shadow(
+                  color: Colors.black87,
+                  blurRadius: 3,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget get _likeWidget {
+  Widget get _likeCircleWidget {
+    final double iconSize = widget.size * (24 / 40);
     return Container(
-      height: 43,
-      width: 43,
+      height: widget.size,
+      width: widget.size,
       decoration:
           const BoxDecoration(shape: BoxShape.circle, color: ColorRes.likeRed),
-      alignment: const Alignment(0, 0.2),
-      margin: const EdgeInsets.symmetric(vertical: 10),
+      alignment: const Alignment(0, 0.15),
       child: Image.asset(
         AssetRes.icFillHeart,
-        width: 25,
-        height: 25,
+        width: iconSize,
+        height: iconSize,
         color: whitePure(context),
       ),
     );

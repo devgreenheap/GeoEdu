@@ -2116,10 +2116,12 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
             ),
             const SizedBox(width: 8),
             // Heart like button
-            LiveStreamLikeButton(
+            Obx(() => LiveStreamLikeButton(
+              likeCount: controller.likeCount.value,
+              size: 38,
               onLikeTap: (fn) => controller.onLikeTap = fn,
               onTap: controller.onLikeButtonTap,
-            ),
+            )),
           ] else ...[
             // Speaker Mute/Unmute if approved speaker
             Obx(() {
@@ -2183,10 +2185,12 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
             ),
             const SizedBox(width: 8),
             // Heart like button
-            LiveStreamLikeButton(
+            Obx(() => LiveStreamLikeButton(
+              likeCount: controller.likeCount.value,
+              size: 38,
               onLikeTap: (fn) => controller.onLikeTap = fn,
               onTap: controller.onLikeButtonTap,
-            ),
+            )),
           ],
         ],
       ),
@@ -3439,13 +3443,14 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
             ],
           );
         }),
-        Transform.scale(
+        Obx(() => Transform.scale(
           scale: 0.72,
           child: LiveStreamLikeButton(
+            likeCount: controller.likeCount.value,
             onLikeTap: (fn) => controller.onLikeTap = fn,
             onTap: controller.onLikeButtonTap,
           ),
-        ),
+        )),
         const SizedBox(height: 10),
         if (isHost)
           _sideIcon(

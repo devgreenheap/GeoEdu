@@ -1435,10 +1435,12 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
             const SizedBox(width: 8),
 
             // Heart like button
-            LiveStreamLikeButton(
+            Obx(() => LiveStreamLikeButton(
+              likeCount: controller.liveData.value.likeCount ?? 0,
+              size: 38,
               onLikeTap: (fn) => controller.onLikeTap = fn,
               onTap: controller.onLikeButtonTap,
-            ),
+            )),
           ] else ...[
             // Co-Host mic toggle if in call
             Obx(() {
@@ -1512,10 +1514,12 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
             const SizedBox(width: 8),
 
             // Heart like button
-            LiveStreamLikeButton(
+            Obx(() => LiveStreamLikeButton(
+              likeCount: controller.liveData.value.likeCount ?? 0,
+              size: 38,
               onLikeTap: (fn) => controller.onLikeTap = fn,
               onTap: controller.onLikeButtonTap,
-            ),
+            )),
           ],
         ],
       ),
