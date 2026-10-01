@@ -337,9 +337,27 @@ class CategoryModuleController extends Controller
             return GlobalFunction::sendSimpleResponse(false, 'Division name is required');
         }
 
+        $categoryId = $request->category_id;
+        $subCategoryId = $request->sub_category_id;
+
+        if (empty($categoryId) && !empty($subCategoryId)) {
+            $subCategory = SubCategories::find($subCategoryId);
+            if ($subCategory) {
+                $categoryId = $subCategory->category_id;
+            }
+        }
+
+        if (empty($categoryId)) {
+            return GlobalFunction::sendSimpleResponse(false, 'Category is required');
+        }
+
+        if (empty($subCategoryId)) {
+            return GlobalFunction::sendSimpleResponse(false, 'Sub category is required');
+        }
+
         $item = new Divisions();
-        $item->category_id = $request->category_id;
-        $item->sub_category_id = $request->sub_category_id;
+        $item->category_id = $categoryId;
+        $item->sub_category_id = $subCategoryId;
         $item->name = $name;
         $item->status = 1;
         $item->save();
@@ -355,8 +373,37 @@ class CategoryModuleController extends Controller
         }
 
         $item = Divisions::find($request->id);
-        $item->category_id = $request->category_id;
-        $item->sub_category_id = $request->sub_category_id;
+        if (!$item) {
+            return GlobalFunction::sendSimpleResponse(false, 'Division not found');
+        }
+
+        $categoryId = $request->category_id;
+        $subCategoryId = $request->sub_category_id;
+
+        if (empty($categoryId) && !empty($subCategoryId)) {
+            $subCategory = SubCategories::find($subCategoryId);
+            if ($subCategory) {
+                $categoryId = $subCategory->category_id;
+            }
+        }
+
+        if (empty($categoryId)) {
+            $categoryId = $item->category_id;
+        }
+        if (empty($subCategoryId)) {
+            $subCategoryId = $item->sub_category_id;
+        }
+
+        if (empty($categoryId)) {
+            return GlobalFunction::sendSimpleResponse(false, 'Category is required');
+        }
+
+        if (empty($subCategoryId)) {
+            return GlobalFunction::sendSimpleResponse(false, 'Sub category is required');
+        }
+
+        $item->category_id = $categoryId;
+        $item->sub_category_id = $subCategoryId;
         $item->name = $name;
         $item->save();
 

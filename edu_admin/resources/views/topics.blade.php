@@ -42,7 +42,7 @@
                     <div class="my-2">
                         <label for="topic_category_id" class="form-label">{{ __('Category') }}</label>
                         <select name="category_id" id="topic_category_id" class="form-control select2 remove-searchbar" data-toggle="select2" required>
-                            <option selected disabled>{{ __('Select Category') }}</option>
+                            <option selected disabled value="">{{ __('Select Category') }}</option>
                             @foreach($categories as $category)
                             <option value="{{ $category->id }}">{{ $category->name }}</option>
                             @endforeach
@@ -51,7 +51,7 @@
                     <div class="my-2">
                         <label for="topic_sub_category_id" class="form-label">{{ __('Sub Category') }}</label>
                         <select name="sub_category_id" id="topic_sub_category_id" class="form-control select2 remove-searchbar" data-toggle="select2" required>
-                            <option selected disabled>{{ __('Select Sub Category') }}</option>
+                            <option selected disabled value="">{{ __('Select Sub Category') }}</option>
                         </select>
                     </div>
                     <div class="my-2">
@@ -90,7 +90,7 @@
                     <div class="my-2">
                         <label for="edit_topic_category_id" class="form-label">{{ __('Category') }}</label>
                         <select name="category_id" id="edit_topic_category_id" class="form-control select2 remove-searchbar" data-toggle="select2" required>
-                            <option selected disabled>{{ __('Select Category') }}</option>
+                            <option selected disabled value="">{{ __('Select Category') }}</option>
                             @foreach($categories as $category)
                             <option value="{{ $category->id }}">{{ $category->name }}</option>
                             @endforeach
@@ -99,7 +99,7 @@
                     <div class="my-2">
                         <label for="edit_topic_sub_category_id" class="form-label">{{ __('Sub Category') }}</label>
                         <select name="sub_category_id" id="edit_topic_sub_category_id" class="form-control select2 remove-searchbar" data-toggle="select2" required>
-                            <option selected disabled>{{ __('Select Sub Category') }}</option>
+                            <option selected disabled value="">{{ __('Select Sub Category') }}</option>
                         </select>
                     </div>
                     <div class="my-2">

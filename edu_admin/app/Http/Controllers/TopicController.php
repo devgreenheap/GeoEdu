@@ -120,11 +120,49 @@ class TopicController extends Controller
 
     public function addTopic(Request $request)
     {
+        $name = trim((string) ($request->name ?? ''));
+        if ($name === '') {
+            return GlobalFunction::sendSimpleResponse(false, 'Topic name is required');
+        }
+
+        $categoryId = $request->category_id;
+        $subCategoryId = $request->sub_category_id;
+        $divisionId = $request->division_id ?: null;
+
+        // Auto-derive category_id and sub_category_id from division if division_id is provided
+        if (!empty($divisionId)) {
+            $division = Divisions::find($divisionId);
+            if ($division) {
+                if (empty($subCategoryId)) {
+                    $subCategoryId = $division->sub_category_id;
+                }
+                if (empty($categoryId)) {
+                    $categoryId = $division->category_id ?? SubCategories::find($division->sub_category_id)?->category_id;
+                }
+            }
+        }
+
+        // Auto-derive category_id from sub_category if still missing
+        if (empty($categoryId) && !empty($subCategoryId)) {
+            $subCategory = SubCategories::find($subCategoryId);
+            if ($subCategory) {
+                $categoryId = $subCategory->category_id;
+            }
+        }
+
+        if (empty($categoryId)) {
+            return GlobalFunction::sendSimpleResponse(false, 'Category is required');
+        }
+
+        if (empty($subCategoryId)) {
+            return GlobalFunction::sendSimpleResponse(false, 'Sub category is required');
+        }
+
         $item = new Topics();
-        $item->category_id = $request->category_id;
-        $item->sub_category_id = $request->sub_category_id;
-        $item->division_id = $request->division_id ?: null;
-        $item->name = $request->name;
+        $item->category_id = $categoryId;
+        $item->sub_category_id = $subCategoryId;
+        $item->division_id = $divisionId;
+        $item->name = $name;
         $item->status = 1;
         $item->save();
 
@@ -133,11 +171,61 @@ class TopicController extends Controller
 
     public function editTopic(Request $request)
     {
+        $name = trim((string) ($request->name ?? ''));
+        if ($name === '') {
+            return GlobalFunction::sendSimpleResponse(false, 'Topic name is required');
+        }
+
         $item = Topics::find($request->id);
-        $item->category_id = $request->category_id;
-        $item->sub_category_id = $request->sub_category_id;
-        $item->division_id = $request->division_id ?: null;
-        $item->name = $request->name;
+        if (!$item) {
+            return GlobalFunction::sendSimpleResponse(false, 'Topic not found');
+        }
+
+        $categoryId = $request->category_id;
+        $subCategoryId = $request->sub_category_id;
+        $divisionId = $request->division_id ?: null;
+
+        // Auto-derive category_id and sub_category_id from division if division_id is provided
+        if (!empty($divisionId)) {
+            $division = Divisions::find($divisionId);
+            if ($division) {
+                if (empty($subCategoryId)) {
+                    $subCategoryId = $division->sub_category_id;
+                }
+                if (empty($categoryId)) {
+                    $categoryId = $division->category_id ?? SubCategories::find($division->sub_category_id)?->category_id;
+                }
+            }
+        }
+
+        // Auto-derive category_id from sub_category if still missing
+        if (empty($categoryId) && !empty($subCategoryId)) {
+            $subCategory = SubCategories::find($subCategoryId);
+            if ($subCategory) {
+                $categoryId = $subCategory->category_id;
+            }
+        }
+
+        // Fallback to existing item's category/sub_category if still empty
+        if (empty($categoryId)) {
+            $categoryId = $item->category_id;
+        }
+        if (empty($subCategoryId)) {
+            $subCategoryId = $item->sub_category_id;
+        }
+
+        if (empty($categoryId)) {
+            return GlobalFunction::sendSimpleResponse(false, 'Category is required');
+        }
+
+        if (empty($subCategoryId)) {
+            return GlobalFunction::sendSimpleResponse(false, 'Sub category is required');
+        }
+
+        $item->category_id = $categoryId;
+        $item->sub_category_id = $subCategoryId;
+        $item->division_id = $divisionId;
+        $item->name = $name;
         $item->save();
 
         return GlobalFunction::sendSimpleResponse(true, 'Topic updated successfully');

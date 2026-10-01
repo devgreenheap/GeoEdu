@@ -3,7 +3,7 @@ $(document).ready(function () {
     $(".topics").addClass("menuitem-active");
 
     function setSubCategoryOptions(selector, options, selectedId = null) {
-        let html = `<option ${selectedId ? "" : "selected"} disabled>Select Sub Category</option>`;
+        let html = `<option ${selectedId ? "" : "selected"} disabled value="">Select Sub Category</option>`;
 
         options.forEach((item) => {
             const selected = selectedId && Number(selectedId) === Number(item.id) ? "selected" : "";
@@ -111,6 +111,18 @@ $(document).ready(function () {
             var url = `${domainUrl}addTopic`;
             var formId = "#addTopicForm";
             var formdata = collectFormData(formId);
+            if (!formdata.get("category_id")) {
+                const catVal = $("#topic_category_id").val();
+                if (catVal) formdata.set("category_id", catVal);
+            }
+            if (!formdata.get("sub_category_id")) {
+                const subVal = $("#topic_sub_category_id").val();
+                if (subVal) formdata.set("sub_category_id", subVal);
+            }
+            if (!formdata.get("division_id")) {
+                const divVal = $("#topic_division_id").val();
+                if (divVal) formdata.set("division_id", divVal);
+            }
             showFormSpinner(formId);
             try {
                 doAjax(url, formdata).then(function (response) {
@@ -119,7 +131,9 @@ $(document).ready(function () {
                         reloadDataTables(["topicsTable"]);
                         modalHide("#addTopicModal");
                         resetForm(formId);
+                        $("#topic_category_id").val("").trigger("change.select2");
                         setSubCategoryOptions("#topic_sub_category_id", []);
+                        setDivisionOptions("#topic_division_id", []);
                         showSuccessToast(response.message);
                     } else {
                         showErrorToast(response.message);
@@ -138,6 +152,18 @@ $(document).ready(function () {
             var url = `${domainUrl}editTopic`;
             var formId = "#editTopicForm";
             var formdata = collectFormData(formId);
+            if (!formdata.get("category_id")) {
+                const catVal = $("#edit_topic_category_id").val();
+                if (catVal) formdata.set("category_id", catVal);
+            }
+            if (!formdata.get("sub_category_id")) {
+                const subVal = $("#edit_topic_sub_category_id").val();
+                if (subVal) formdata.set("sub_category_id", subVal);
+            }
+            if (!formdata.get("division_id")) {
+                const divVal = $("#edit_topic_division_id").val();
+                if (divVal) formdata.set("division_id", divVal);
+            }
             showFormSpinner(formId);
             try {
                 doAjax(url, formdata).then(function (response) {
@@ -146,7 +172,9 @@ $(document).ready(function () {
                         reloadDataTables(["topicsTable"]);
                         modalHide("#editTopicModal");
                         resetForm(formId);
+                        $("#edit_topic_category_id").val("").trigger("change.select2");
                         setSubCategoryOptions("#edit_topic_sub_category_id", []);
+                        setDivisionOptions("#edit_topic_division_id", []);
                         showSuccessToast(response.message);
                     } else {
                         showErrorToast(response.message);
@@ -242,12 +270,14 @@ $(document).ready(function () {
 
     $("#addTopicModal").on("hidden.bs.modal", function () {
         resetForm("#addTopicForm");
+        $("#topic_category_id").val("").trigger("change.select2");
         setSubCategoryOptions("#topic_sub_category_id", []);
         setDivisionOptions("#topic_division_id", []);
     });
 
     $("#editTopicModal").on("hidden.bs.modal", function () {
         resetForm("#editTopicForm");
+        $("#edit_topic_category_id").val("").trigger("change.select2");
         setSubCategoryOptions("#edit_topic_sub_category_id", []);
         setDivisionOptions("#edit_topic_division_id", []);
     });
