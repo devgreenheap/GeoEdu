@@ -11,6 +11,7 @@ import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/model/general/settings_model.dart';
 import 'package:geoedu/model/livestream/app_user.dart';
 import 'package:geoedu/screen/gift_sheet/send_gift_sheet_controller.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
 import 'package:geoedu/screen/star_store_diamond_and_effect/star_store_diamond _screen.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
