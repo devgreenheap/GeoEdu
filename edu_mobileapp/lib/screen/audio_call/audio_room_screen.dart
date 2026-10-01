@@ -2076,30 +2076,6 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
               );
             }),
             const SizedBox(width: 8),
-            // Host Switch Audio Route (Speaker / Earpiece)
-            Obx(() {
-              final isSpeakerOn = controller.isSpeakerOn.value;
-              return GestureDetector(
-                onTap: controller.toggleSpeaker,
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.14),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white24, width: 1),
-                  ),
-                  child: Icon(
-                    isSpeakerOn
-                        ? Icons.volume_up_rounded
-                        : Icons.phone_in_talk_rounded,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                ),
-              );
-            }),
-            const SizedBox(width: 8),
             // Share button
             GestureDetector(
               onTap: () => _shareRoom(controller),
@@ -2115,7 +2091,37 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            // Heart like button
+            // 1st: Three dots menu button
+            GestureDetector(
+              onTap: () => _showMoreSheet(controller),
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.more_vert_rounded,
+                    color: Colors.white, size: 20),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // 2nd: Gift button (Host sets favourite gift for room)
+            GestureDetector(
+              onTap: () => _showFavouriteGiftSheet(controller),
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.card_giftcard_rounded,
+                    color: Color(0xFFFF7A19), size: 20),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // 3rd: Heart like button in the right corner
             Obx(() => LiveStreamLikeButton(
               likeCount: controller.likeCount.value,
               size: 38,
@@ -2169,7 +2175,22 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            // Gift button (Listeners send to host)
+            // 1st: Three dots menu button
+            GestureDetector(
+              onTap: () => _showMoreSheet(controller),
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.more_vert_rounded,
+                    color: Colors.white, size: 20),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // 2nd: Gift button (Listeners send to host)
             GestureDetector(
               onTap: () => _showCategoryGiftsSheet(controller),
               child: Container(
@@ -2184,7 +2205,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            // Heart like button
+            // 3rd: Heart like button in the right corner
             Obx(() => LiveStreamLikeButton(
               likeCount: controller.likeCount.value,
               size: 38,
@@ -3719,6 +3740,75 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
               ),
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 18),
+                child: Divider(
+                  color: Colors.white24,
+                  thickness: 0.8,
+                  height: 1,
+                ),
+              ),
+
+              // Set Favourite Gift Option for Host
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF7A19).withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.card_giftcard_rounded,
+                      color: Color(0xFFFF7A19), size: 22),
+                ),
+                title: const Text('Set Favourite Gift',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600)),
+                subtitle: const Text('Highlight a gift for your audience to send',
+                    style: TextStyle(color: Colors.white54, fontSize: 12)),
+                trailing: const Icon(Icons.chevron_right_rounded,
+                    color: Colors.white38),
+                onTap: () {
+                  Get.back();
+                  _showFavouriteGiftSheet(controller);
+                },
+              ),
+
+              // Switch Audio Route (Speaker / Earpiece)
+              Obx(() => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    controller.isSpeakerOn.value
+                        ? Icons.volume_up_rounded
+                        : Icons.phone_in_talk_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+                title: Text(
+                    controller.isSpeakerOn.value
+                        ? 'Speaker Active'
+                        : 'Earpiece Active',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600)),
+                subtitle: Text(
+                    controller.isSpeakerOn.value
+                        ? 'Tap to switch to earpiece'
+                        : 'Tap to switch to loudspeaker',
+                    style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: controller.toggleSpeaker,
+              )),
+
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
                 child: Divider(
                   color: Colors.white24,
                   thickness: 0.8,
