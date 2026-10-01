@@ -92,6 +92,16 @@ class LivestreamScreenController extends BaseController {
 
   TextEditingController textCommentController = TextEditingController();
 
+  RxString pinnedComment = ''.obs;
+  TextEditingController pinCommentController = TextEditingController();
+  RxBool isPinInputOpen = false.obs;
+
+  RxString topGifterName = ''.obs;
+  RxInt topGifterCoins = 0.obs;
+
+  List<Gift> get availableGifts =>
+      setting?.availableGifts ?? setting?.gifts ?? [];
+
   DocumentReference get liveStreamDocRef =>
       db.collection(FirebaseConst.liveStreams).doc(liveData.value.roomID);
 
@@ -202,7 +212,12 @@ class LivestreamScreenController extends BaseController {
   /// Highest-priced real gift from the catalog, used as the promo card.
   /// "New" is only shown when it was genuinely added recently — never a
   /// fabricated label.
+  /// Featured gift: host's favourite gift if set, else highest-priced catalog gift.
   Gift? get featuredGift {
+    if (liveData.value.favouriteGiftId != null && gifts.isNotEmpty) {
+      final fav = gifts.firstWhereOrNull((g) => g.id == liveData.value.favouriteGiftId);
+      if (fav != null) return fav;
+    }
     if (gifts.isEmpty) return null;
     final sorted = List<Gift>.from(gifts)
       ..sort((a, b) => (b.coinPrice ?? 0).compareTo(a.coinPrice ?? 0));
@@ -245,6 +260,7 @@ class LivestreamScreenController extends BaseController {
     }
 
     // Common listeners for all users
+    pinnedComment.value = liveData.value.pinnedComment ?? '';
     listenLiveStreamData();
     listenUserState();
     fetchLiveStreamComments();
@@ -1257,6 +1273,9 @@ class LivestreamScreenController extends BaseController {
 
         // Update LiveData
         liveData.value = stream;
+        if (stream.pinnedComment != null) {
+          pinnedComment.value = stream.pinnedComment!;
+        }
 
         // Trigger like animation if changed
         final newLikeCount = stream.likeCount ?? 0;
@@ -1439,6 +1458,7 @@ class LivestreamScreenController extends BaseController {
       }
 
       comments.sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0));
+      _updateTopGifter();
     });
   }
 
@@ -1547,6 +1567,68 @@ class LivestreamScreenController extends BaseController {
     _sendCommentToFirestore(
         type: LivestreamCommentType.text,
         comment: '👋 waved at ${user!.username}');
+  }
+
+  void sendWaveTo(String username) {
+    if (username.trim().isEmpty) return;
+    _sendCommentToFirestore(
+        type: LivestreamCommentType.text,
+        comment: '👋 waved at $username');
+  }
+
+  Future<void> submitPinnedComment() async {
+    final text = pinCommentController.text.trim();
+    if (text.isEmpty) return;
+    try {
+      await liveStreamDocRef.update({'pinned_comment': text});
+      pinnedComment.value = text;
+      liveData.value.pinnedComment = text;
+      liveData.refresh();
+      pinCommentController.clear();
+      isPinInputOpen.value = false;
+    } catch (e) {
+      Loggers.error('submitPinnedComment error: $e');
+    }
+  }
+
+  Future<void> clearPinnedComment() async {
+    try {
+      await liveStreamDocRef.update({'pinned_comment': ''});
+      pinnedComment.value = '';
+      liveData.value.pinnedComment = '';
+      liveData.refresh();
+    } catch (e) {
+      Loggers.error('clearPinnedComment error: $e');
+    }
+  }
+
+  void _updateTopGifter() {
+    final giftComments = comments.where((c) => c.commentType == LivestreamCommentType.gift);
+    if (giftComments.isEmpty) return;
+    final Map<String, int> userTotals = {};
+    for (var c in giftComments) {
+      final name = c.senderUser?.username ?? c.senderUser?.fullname ?? 'User';
+      final coins = c.gift?.coinPrice?.toInt() ?? 0;
+      userTotals[name] = (userTotals[name] ?? 0) + coins;
+    }
+    if (userTotals.isNotEmpty) {
+      var topEntry = userTotals.entries.reduce((a, b) => a.value > b.value ? a : b);
+      topGifterName.value = topEntry.key;
+      topGifterCoins.value = topEntry.value;
+    }
+  }
+
+  Future<void> sendGiftDirect(Gift gift) async {
+    if (isHost) {
+      showSnackBar('Hosts cannot send gifts to themselves');
+      return;
+    }
+    final hostUser = liveData.value.hostUser;
+    if (hostUser == null) {
+      showSnackBar('Host details not found');
+      return;
+    }
+    await sendBattleGiftDirect(gift, hostUser);
   }
 
   void onGiftTap(GiftType type,

@@ -47,6 +47,12 @@ class LivestreamComment {
   }
 
 
+  AppUser? get senderUser {
+    final controller = Get.find<FirebaseFirestoreController>();
+    return controller.users
+        .firstWhereOrNull((element) => element.userId == senderId);
+  }
+
   set senderUser(AppUser? user) {
     if (user == null) return;
     final controller = Get.find<FirebaseFirestoreController>();

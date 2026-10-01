@@ -35,6 +35,7 @@ class Livestream {
   int? favouriteGiftId;
   bool? isAutoMode;
   String? thumbnailUrl;
+  String? pinnedComment;
 
   Livestream(
       {this.watchingCount,
@@ -65,6 +66,7 @@ class Livestream {
       this.favouriteGiftId,
       this.isAutoMode,
       this.thumbnailUrl,
+      this.pinnedComment,
       this.battleDuration = AppRes.battleDurationInMinutes});
 
   Livestream.fromJson(Map<String, dynamic> json) {
@@ -97,6 +99,7 @@ class Livestream {
     favouriteGiftId = json['favourite_gift_id'];
     isAutoMode = json['is_auto_mode'];
     thumbnailUrl = json['thumbnail_url'];
+    pinnedComment = json['pinned_comment'];
   }
 
   Map<String, dynamic> toJson() {
@@ -130,6 +133,7 @@ class Livestream {
     data['favourite_gift_id'] = favouriteGiftId;
     data['is_auto_mode'] = isAutoMode;
     data['thumbnail_url'] = thumbnailUrl;
+    data['pinned_comment'] = pinnedComment;
     return data;
   }
 

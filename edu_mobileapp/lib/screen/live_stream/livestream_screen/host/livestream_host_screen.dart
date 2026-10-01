@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:keyboard_avoider/keyboard_avoider.dart';
-import 'package:geoedu/common/widget/live_room/side_action_column.dart';
+import 'package:geoedu/common/widget/live_summary_dialog.dart';
 import 'package:geoedu/model/livestream/livestream.dart';
-import 'package:geoedu/screen/live_stream/livestream_screen/host/widget/live_stream_host_top_view.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/view/battle_view.dart';
-import 'package:geoedu/screen/live_stream/livestream_screen/view/live_stream_bottom_view.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/view/live_video_player.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/view/live_video_room_overlay.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/view/livestream_view.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/battle_start_countdown_overlay.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_stream_background_blur_image.dart';
@@ -62,7 +60,16 @@ class _LivestreamHostScreenState extends State<LivestreamHostScreen> {
         canPop: false,
         onPopInvokedWithResult: (didPop, result) {
           if (!didPop) {
-            controller.onStopButtonTap();
+            showEndLiveConfirmation(
+              context: context,
+              title: widget.isHost ? 'End Live' : 'Leave Live',
+              message: widget.isHost
+                  ? 'Are you sure you want to end this live?'
+                  : 'Are you sure you want to leave this live?',
+              confirmText: widget.isHost ? 'End Live' : 'Leave',
+              cancelText: 'Cancel',
+              onConfirm: controller.onStopButtonTap,
+            );
           }
         },
         child: Stack(
@@ -97,21 +104,11 @@ class _LivestreamHostScreenState extends State<LivestreamHostScreen> {
               child: EntryEffectLayer(controller: controller),
             ),
             GiftEffectWidget(activeGifts: controller.activeGifts),
-            KeyboardAvoider(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  LiveStreamHostTopView(controller: controller),
-                  LiveStreamBottomView(controller: controller),
-                ],
-              ),
+            LiveVideoRoomOverlay(
+              controller: controller,
+              isHost: widget.isHost,
+              onBackOrClose: controller.onStopButtonTap,
             ),
-            if (widget.isHost)
-              Positioned(
-                right: 10,
-                bottom: MediaQuery.of(context).size.height / 2.7 + 20,
-                child: SafeArea(child: SideActionColumn(controller: controller)),
-              ),
             Obx(
               () {
                 Livestream stream = controller.liveData.value;

@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:geoedu/common/manager/share_manager.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/members_sheet.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_beauty_filter_sheet.dart';
 import 'package:geoedu/screen/settings_screen/settings_screen.dart';
 import 'package:geoedu/utilities/color_res.dart';
 
@@ -35,9 +36,8 @@ class SideActionColumn extends StatelessWidget {
           const SizedBox(height: 16),
           _ActionIcon(
             icon: Icons.face_retouching_natural_rounded,
-            label: 'Themes',
-            onTap: () => Get.snackbar('Themes', 'Beauty filters are not available yet.',
-                snackPosition: SnackPosition.TOP, colorText: Colors.white, backgroundColor: Colors.black87),
+            label: 'Beauty',
+            onTap: () => LiveBeautyFilterSheet.show(context),
           ),
           const SizedBox(height: 16),
           _ActionIcon(
@@ -68,6 +68,15 @@ class SideActionColumn extends StatelessWidget {
               onTap: () {
                 Get.back();
                 controller.showFavouriteGiftSheet(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.face_retouching_natural_rounded, color: Color(0xFFFFB300)),
+              title: const Text('Beauty & Filters', style: TextStyle(color: Colors.white)),
+              subtitle: const Text('Smooth, Whiten, Blush, Sharpen', style: TextStyle(color: Colors.white38, fontSize: 12)),
+              onTap: () {
+                Get.back();
+                LiveBeautyFilterSheet.show(context);
               },
             ),
             ListTile(
