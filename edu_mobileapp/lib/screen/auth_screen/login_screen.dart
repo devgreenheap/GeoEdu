@@ -34,17 +34,19 @@ class _LoginScreenState extends State<LoginScreen> {
     controller.stopSnackBar();
 
     // Reset registration error states so Login page opens clean without previous errors
-    controller.clearRegistrationErrors();
-    controller.clearErrors();
+    // Use notify: false during initState to prevent setState-during-build assertion errors
+    controller.clearRegistrationErrors(notify: false);
+    controller.clearErrors(notify: false);
     controller.loginError = null;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;  
       if (Get.isSnackbarOpen) {
         Get.closeAllSnackbars();
       }
       controller.stopSnackBar();
-      controller.clearRegistrationErrors();
-      controller.clearErrors();
+      controller.clearRegistrationErrors(notify: false);
+      controller.clearErrors(notify: false);
       controller.loginError = null;
       controller.update();
     });
@@ -67,7 +69,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
       backgroundColor: AuthColors.background,
       body: Container(
@@ -82,6 +83,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         child: SafeArea(
           child: GetBuilder<AuthScreenController>(
+            init: controller,
             builder: (c) {
               final canContinue = c.isLoginOtpSent && !c.isLoginOtpVerified;
 

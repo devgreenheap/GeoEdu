@@ -34,6 +34,8 @@ import 'package:geoedu/model/livestream/livestream.dart';
 import 'package:geoedu/model/livestream/livestream_comment.dart';
 import 'package:geoedu/model/livestream/livestream_user_state.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
+import 'package:geoedu/common/widget/live_summary_dialog.dart';
+import 'package:geoedu/screen/live_stream/live_stream_search_screen/live_stream_search_screen_controller.dart';
 import 'package:geoedu/screen/gift_sheet/send_gift_sheet.dart';
 import 'package:geoedu/screen/gift_sheet/send_gift_sheet_controller.dart';
 import 'package:geoedu/screen/live_stream/live_stream_end_screen/live_stream_end_screen.dart';
@@ -895,6 +897,9 @@ class LivestreamScreenController extends BaseController {
       switch (updateType) {
         case ZegoUpdateType.Add:
           for (final stream in streamList) {
+            if (stream.streamID == liveData.value.roomID || stream.streamID == myUserId.toString()) {
+              continue;
+            }
             startPlayStream(stream.streamID);
           }
           break;
@@ -1041,10 +1046,17 @@ class LivestreamScreenController extends BaseController {
           ..resourceMode = ZegoStreamResourceMode.Default;
          Loggers.info('StartPlayStream playback: StreamID: $streamID, ViewMode: ${canvas.viewMode}, ResourceMode: ${config.resourceMode}');
         ZegoExpressEngine.instance.startPlayingStream(streamID, canvas: canvas, config: config);
-      }).then((canvasViewWidget) {
+      }).then((canvasViewWidget) async {
         if (canvasViewWidget != null) {
           streamViews.add(StreamView(streamID, streamViewId, canvasViewWidget, false));
         }
+        try {
+          await ZegoExpressEngine.instance.muteAllPlayStreamAudio(false);
+          await ZegoExpressEngine.instance.mutePlayStreamAudio(streamID, false);
+          await ZegoExpressEngine.instance.setPlayVolume(streamID, 100);
+          await ZegoExpressEngine.instance.setAllPlayStreamVolume(100);
+          await ZegoExpressEngine.instance.setAudioRouteToSpeaker(true);
+        } catch (_) {}
         Loggers.success('Stream playback started successfully for: $streamID');
       });
     } catch (e, stackTrace) {
@@ -1363,6 +1375,12 @@ class LivestreamScreenController extends BaseController {
 
         switch (change.type) {
           case DocumentChangeType.added:
+            if (comment.id != null && liveData.value.createdAt != null) {
+              final liveCreated = int.tryParse(liveData.value.createdAt ?? '') ?? 0;
+              if (liveCreated > 0 && comment.id! < liveCreated - 3000) {
+                continue;
+              }
+            }
             firestoreController.fetchUserIfNeeded(comment.senderId ?? -1);
             if (comment.commentType == LivestreamCommentType.request &&
                 !isHost) {
@@ -1824,9 +1842,11 @@ class LivestreamScreenController extends BaseController {
       int canvasViewID = -1;
 
       // ✅ Enable camera and microphone
+      await ZegoExpressEngine.instance.enableAudioCaptureDevice(true);
       await ZegoExpressEngine.instance.enableCamera(true);
       await ZegoExpressEngine.instance.mutePublishStreamAudio(false);
       ZegoExpressEngine.instance.muteMicrophone(false);
+      await ZegoExpressEngine.instance.setCaptureVolume(100);
 
       // ✅ Create preview canvas and start preview
       await ZegoExpressEngine.instance.createCanvasView((viewID) async {
@@ -1989,9 +2009,9 @@ class LivestreamScreenController extends BaseController {
   void onStopButtonTap() {
     bool isBattleOn = liveData.value.type == LivestreamType.battle;
     String title =
-        !isBattleOn ? LKey.endStreamTitle.tr : LKey.stopBattleTitle.tr;
+        !isBattleOn ? 'End Call' : LKey.stopBattleTitle.tr;
     String description =
-        !isBattleOn ? LKey.endStreamMessage.tr : LKey.stopBattleDescription.tr;
+        !isBattleOn ? 'Are you sure you want to end the call?' : LKey.stopBattleDescription.tr;
 
     Get.bottomSheet(
         StopLiveStreamSheet(
@@ -2007,27 +2027,70 @@ class LivestreamScreenController extends BaseController {
             },
             title: title,
             description: description,
-            positiveText: LKey.stop.tr),
+            positiveText: !isBattleOn ? 'End Live' : LKey.stop.tr),
         isScrollControlled: true);
   }
 
   Future<void> hostEndStream() async {
-    // Snapshot the host's own gift/follower totals right now, before any
-    // awaited work below runs. liveUsersStates is rebuilt from fresh
-    // LivestreamUserState.fromJson() objects on every Firestore snapshot —
-    // capturing this reference now means later snapshot churn (e.g. the
-    // brief window while the recording uploads) can't null out or reset
-    // the numbers the summary screen ends up showing.
     LivestreamUserState? endedUserState = liveUsersStates
         .firstWhereOrNull((element) => element.userId == myUserId);
     int endedViewers = liveUsersStates.length;
 
     _endLiveStreamApi();
-    // Must finish before logoutRoom() stops the camera/mic capture that the
-    // local recording is reading from, or the recorded file gets truncated.
     await _stopLocalRecordingAndUpload();
-    streamEnded(capturedUserState: endedUserState, capturedViewers: endedViewers);
+
+    // Clean up Firestore documents immediately
+    await deleteStreamOnFirebase();
+    try {
+      final streamDoc = db.collection(FirebaseConst.liveStreams).doc('$myUserId');
+      final oldComments = await streamDoc.collection(FirebaseConst.comments).limit(300).get();
+      for (final doc in oldComments.docs) {
+        doc.reference.delete();
+      }
+      await streamDoc.delete();
+    } catch (_) {}
+
+    if (Get.isRegistered<LiveStreamSearchScreenController>()) {
+      Get.find<LiveStreamSearchScreenController>()
+          .removeStreamLocally(liveData.value.roomID, myUserId);
+    }
+
     logoutRoom();
+
+    final startTime = DateTime.fromMillisecondsSinceEpoch(
+        endedUserState?.joinStreamTime ?? DateTime.now().millisecondsSinceEpoch);
+    final durationMinutes = max(
+        1,
+        ((DateTime.now().millisecondsSinceEpoch -
+                (endedUserState?.joinStreamTime ??
+                    DateTime.now().millisecondsSinceEpoch)) /
+            60000).ceil());
+    final followersCount = endedUserState?.followersGained.length ?? 0;
+    final viewersCount = (endedViewers - 1).clamp(0, endedViewers);
+    final callsCount = liveData.value.coHostIds?.length ?? 0;
+    final commentsCount = comments.length;
+    final starsEarned = endedUserState?.totalCoin ?? 0;
+    final giftsCount = hostGiftCount;
+
+    Get.dialog(
+      LiveSummaryDialog(
+        title: 'Live Stream',
+        startTime: startTime,
+        durationMinutes: durationMinutes,
+        followersCount: followersCount,
+        viewersCount: viewersCount,
+        callsCount: callsCount,
+        commentsCount: commentsCount,
+        premiumGiftsCount: giftsCount,
+        starsEarned: starsEarned,
+        endedBy: 'Host',
+        onClose: () {
+          Get.back(); // close dialog
+          Get.back(); // exit host screen to home
+        },
+      ),
+      barrierDismissible: false,
+    );
   }
 
   Future<void> _endLiveStreamApi() async {

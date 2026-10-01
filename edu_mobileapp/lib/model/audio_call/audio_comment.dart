@@ -15,6 +15,7 @@ class AudioComment {
   final String? giftImage;
   final int? giftCoinPrice;
   final int timestamp;
+  final String? roomId;
 
   AudioComment({
     required this.senderId,
@@ -27,6 +28,7 @@ class AudioComment {
     this.giftImage,
     this.giftCoinPrice,
     required this.timestamp,
+    this.roomId,
   });
 
   factory AudioComment.fromJson(Map<String, dynamic> json) => AudioComment(
@@ -42,6 +44,7 @@ class AudioComment {
         giftImage: json['gift_image'],
         giftCoinPrice: json['gift_coin_price'],
         timestamp: json['timestamp'] ?? 0,
+        roomId: json['room_id'],
       );
 
   Map<String, dynamic> toJson() => {
@@ -55,5 +58,6 @@ class AudioComment {
         'gift_image': giftImage,
         'gift_coin_price': giftCoinPrice,
         'timestamp': timestamp,
+        if (roomId != null) 'room_id': roomId,
       };
 }

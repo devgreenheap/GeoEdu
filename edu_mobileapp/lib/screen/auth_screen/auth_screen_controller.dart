@@ -24,6 +24,7 @@ import 'package:geoedu/model/general/settings_model.dart';
 import 'package:geoedu/model/user_model/user_model.dart' as user;
 import 'package:geoedu/screen/auth_screen/interest_category_screen.dart';
 import 'package:geoedu/screen/auth_screen/login_screen.dart';
+import 'package:geoedu/screen/auth_screen/photo_verification_screen.dart';
 import 'package:geoedu/screen/dashboard_screen/dashboard_screen.dart';
 import 'package:geoedu/screen/auth_screen/widget/auth_status_dialog.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
@@ -432,7 +433,7 @@ class AuthScreenController extends BaseController {
   String? registrationError;
   String? loginError;
 
-  void clearRegistrationErrors() {
+  void clearRegistrationErrors({bool notify = true}) {
     registrationError = null;
     isMobileAlreadyRegistered = false;
     isEmailAlreadyRegistered = false;
@@ -449,10 +450,10 @@ class AuthScreenController extends BaseController {
       Get.closeAllSnackbars();
     }
     stopSnackBar();
-    update();
+    if (notify) update();
   }
 
-  void resetLoginState({bool keepCredentials = true}) {
+  void resetLoginState({bool keepCredentials = true, bool notify = true}) {
     registrationError = null;
     isMobileAlreadyRegistered = false;
     isEmailAlreadyRegistered = false;
@@ -477,10 +478,10 @@ class AuthScreenController extends BaseController {
       loginMobileController.clear();
       loginEmailController.clear();
     }
-    update();
+    if (notify) update();
   }
 
-  void clearErrors() {
+  void clearErrors({bool notify = true}) {
     registrationError = null;
     isMobileAlreadyRegistered = false;
     isEmailAlreadyRegistered = false;
@@ -492,7 +493,7 @@ class AuthScreenController extends BaseController {
       Get.closeAllSnackbars();
     }
     stopSnackBar();
-    update();
+    if (notify) update();
   }
 
   bool validateForm() {
@@ -1246,26 +1247,23 @@ class AuthScreenController extends BaseController {
     DebounceAction.shared.call(() async {
       SessionManager.instance.setLogin(true);
       SessionManager.instance.setUser(data);
-      // Show interest success animation then go to dashboard
-      Get.to(
-        () => _LoginSuccessScreen(userData: data),
-        transition: Transition.fadeIn,
-        duration: const Duration(milliseconds: 400),
-        fullscreenDialog: true,
-      );
+      if (data?.verificationPhoto == null || (data?.verificationPhoto ?? '').isEmpty) {
+        Get.offAll(() => PhotoVerificationScreen(userData: data));
+      } else {
+        Get.offAll(() => InterestCategoryScreen(userData: data));
+      }
     }, milliseconds: 250);
   }
 
-  /// For new registrations — route through Interest selection first.
+  /// For registrations and logins — route through Photo Verification first if needed, then Interest selection.
   void _navigateScreenWithInterest(user.User? data) {
     DebounceAction.shared.call(() async {
       SessionManager.instance.setLogin(true);
       SessionManager.instance.setUser(data);
-      if (data?.newRegister == true) {
-        // New user: show interest selection screens before dashboard
-        Get.offAll(() => InterestCategoryScreen(userData: data));
+      if (data?.verificationPhoto == null || (data?.verificationPhoto ?? '').isEmpty) {
+        Get.offAll(() => PhotoVerificationScreen(userData: data));
       } else {
-        Get.offAll(() => DashboardScreen(myUser: data));
+        Get.offAll(() => InterestCategoryScreen(userData: data));
       }
     }, milliseconds: 250);
   }

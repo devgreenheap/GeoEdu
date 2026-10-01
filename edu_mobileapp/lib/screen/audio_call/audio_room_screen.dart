@@ -2,7 +2,6 @@ import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:geoedu/common/controller/follow_controller.dart';
 import 'package:geoedu/common/extensions/string_extension.dart';
 import 'package:geoedu/common/manager/session_manager.dart';
@@ -10,6 +9,7 @@ import 'package:geoedu/common/service/api/common_service.dart';
 import 'package:geoedu/common/service/api/user_service.dart';
 import 'package:geoedu/common/widget/custom_image.dart';
 import 'package:geoedu/common/widget/level_badge.dart';
+import 'package:geoedu/common/widget/live_summary_dialog.dart';
 import 'package:geoedu/common/manager/share_manager.dart';
 import 'package:geoedu/common/widget/live_room/live_share_sheet.dart';
 import 'package:geoedu/model/audio_call/audio_comment.dart';
@@ -23,12 +23,16 @@ import 'package:geoedu/screen/live_stream/livestream_screen/widget/entry_effects
     show GiftEffectWidget;
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_stream_like_button.dart';
 import 'package:geoedu/screen/star_store_diamond_and_effect/star_store_diamond _screen.dart';
+import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/audio_theme_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/utilities/firebase_const.dart';
 
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_start_countdown_overlay.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/other_lives_side_panel.dart';
+import 'package:geoedu/screen/audio_call/audio_call_list_controller.dart';
+import 'package:geoedu/screen/live_stream/live_stream_search_screen/live_stream_search_screen_controller.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/audience/live_stream_audience_screen.dart';
 
 class AudioRoomScreen extends StatefulWidget {
   final AudioRoom room;
@@ -52,6 +56,8 @@ class AudioRoomScreen extends StatefulWidget {
 class _AudioRoomScreenState extends State<AudioRoomScreen> {
   bool _showCountdown = true;
   bool _showOtherLives = false;
+  bool _isSwitchingLive = false;
+  bool _showSwipeHint = true;
   late final AudioRoomController controller;
 
   AudioRoom get room => widget.room;
@@ -68,6 +74,91 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
         _showPkInviteDialog(controller, inviterHostId);
     if (!widget.isHost) {
       _showCountdown = false;
+      if (!Get.isRegistered<AudioCallListController>()) {
+        Get.put(AudioCallListController());
+      }
+      if (!Get.isRegistered<LiveStreamSearchScreenController>()) {
+        Get.put(LiveStreamSearchScreenController());
+      }
+      Future.delayed(const Duration(seconds: 4), () {
+        if (mounted) {
+          setState(() {
+            _showSwipeHint = false;
+          });
+        }
+      });
+    }
+  }
+
+  Future<void> _switchToNextLive({required bool isNext}) async {
+    if (isHost || _isSwitchingLive) return;
+
+    final audioListController = Get.isRegistered<AudioCallListController>()
+        ? Get.find<AudioCallListController>()
+        : Get.put(AudioCallListController());
+
+    final searchController = Get.isRegistered<LiveStreamSearchScreenController>()
+        ? Get.find<LiveStreamSearchScreenController>()
+        : Get.put(LiveStreamSearchScreenController());
+
+    // All active audio rooms from real-time snapshot
+    final allAudioRooms = audioListController.audioRooms
+        .where((r) => (r.isActive ?? true) && (r.hostId != null))
+        .toList();
+
+    // All active video livestreams
+    final allVideoStreams = searchController.livestreamList;
+
+    // Filter out current audio room
+    final otherAudioRooms = allAudioRooms
+        .where((r) => r.hostId != room.hostId && r.roomId != room.roomId)
+        .toList();
+
+    final totalOtherLives = otherAudioRooms.length + allVideoStreams.length;
+
+    if (totalOtherLives == 0) {
+      showSnackBar('No other live classrooms right now');
+      return;
+    }
+
+    _isSwitchingLive = true;
+
+    // Find current index in full list if possible
+    final currentIdx = allAudioRooms.indexWhere(
+      (r) => r.hostId == room.hostId || r.roomId == room.roomId,
+    );
+
+    if (allAudioRooms.length > 1) {
+      int nextIdx;
+      if (currentIdx == -1) {
+        nextIdx = 0;
+      } else if (isNext) {
+        nextIdx = (currentIdx + 1) % allAudioRooms.length;
+      } else {
+        nextIdx = (currentIdx - 1 + allAudioRooms.length) % allAudioRooms.length;
+      }
+      final nextRoom = allAudioRooms[nextIdx];
+
+      showSnackBar('Connecting to ${nextRoom.hostName ?? nextRoom.roomName ?? 'Classroom'}...');
+
+      await controller.leaveRoom(shouldPop: false);
+
+      Get.off(() => AudioRoomScreen(
+            room: nextRoom,
+            isHost: false,
+          ));
+    } else if (allVideoStreams.isNotEmpty) {
+      final nextStream = allVideoStreams.first;
+      showSnackBar('Connecting to ${nextStream.hostUser?.fullname ?? 'Classroom'}...');
+
+      await controller.leaveRoom(shouldPop: false);
+
+      Get.off(() => LiveStreamAudienceScreen(
+            livestream: nextStream,
+            isHost: false,
+          ));
+    } else {
+      _isSwitchingLive = false;
     }
   }
 
@@ -82,6 +173,32 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
     );
   }
 
+  void _handleBackOrClose(BuildContext context, AudioRoomController controller) {
+    if (Get.isDialogOpen ?? false) {
+      Get.back();
+      return;
+    }
+    if (Get.isBottomSheetOpen ?? false) {
+      Get.back();
+      return;
+    }
+
+    showEndLiveConfirmation(
+      context: context,
+      title: isHost ? 'End Live' : 'End Call',
+      message: 'Are you sure you want to end the call?',
+      confirmText: isHost ? 'End Live' : 'End Call',
+      cancelText: 'Cancel',
+      onConfirm: () {
+        if (isHost) {
+          controller.endRoom();
+        } else {
+          controller.leaveRoom();
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
 
@@ -89,16 +206,31 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        if (isHost) {
-          controller.endRoom();
-        } else {
-          controller.leaveRoom();
-        }
+        _handleBackOrClose(context, controller);
       },
       child: Scaffold(
         backgroundColor: ColorRes.blackPure,
-        body: Stack(
-          children: [
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onVerticalDragEnd: (details) {
+            if (isHost) return;
+            final velocity = details.primaryVelocity ?? 0;
+            if (velocity < -250) {
+              _switchToNextLive(isNext: true);
+            } else if (velocity > 250) {
+              _switchToNextLive(isNext: false);
+            }
+          },
+          onHorizontalDragEnd: (details) {
+            final velocity = details.primaryVelocity ?? 0;
+            if (velocity < -250 && !_showOtherLives) {
+              setState(() {
+                _showOtherLives = true;
+              });
+            }
+          },
+          child: Stack(
+            children: [
             Obx(() {
           final bgUrl = controller.backgroundImage.value.isNotEmpty
               ? controller.backgroundImage.value.addBaseURL()
@@ -144,7 +276,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildFloatingGiftCard(controller),
-                        _buildDashedJoinCallCard(controller),
+                        const SizedBox(width: 96),
                       ],
                     ),
                   ),
@@ -164,21 +296,21 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                   // Extra speakers mini row (if multiple participants are speaking)
                   _buildSpeakersMiniRow(controller),
 
-                  Obx(() => controller.pinnedComment.value.isNotEmpty
-                      ? _buildPinnedCommentBanner(controller)
-                      : const SizedBox.shrink()),
-
-                  if (isHost) _buildPinCommentInput(controller),
-
                   const Spacer(),
 
-                  // 3. Middle-lower area: Top gifter badge + Chat & Event list + Floating Join Call
+                  // 3. Middle-lower area: Pin comment + Top gifter badge + Chat & Event list + Floating Join Call
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        Obx(() => controller.pinnedComment.value.isNotEmpty
+                            ? _buildPinnedCommentBanner(controller)
+                            : const SizedBox.shrink()),
+
+                        if (isHost) _buildPinCommentInput(controller),
+
                         _buildTopGifterPill(controller),
                         const SizedBox(height: 2),
                         SizedBox(
@@ -215,6 +347,52 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
           );
             }),
             GiftEffectWidget(activeGifts: controller.activeGifts),
+            // Right-side Co-Host / Guest video & audio tiles (stacked vertically, matching reference image 2)
+            Obx(() {
+              final isPk = controller.pkStatus.value == 'running';
+              return Positioned(
+                right: 14,
+                top: MediaQuery.of(context).padding.top + (isPk ? 104 : 54),
+                child: _buildRightGuestColumn(controller),
+              );
+            }),
+            if (_showSwipeHint && !widget.isHost)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 54,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: AnimatedOpacity(
+                    opacity: _showSwipeHint ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 500),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.75),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            blurRadius: 8,
+                          )
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.swap_vert_rounded, color: Color(0xFF00ADB5), size: 14),
+                          SizedBox(width: 4),
+                          Text(
+                            'Swipe ↕ for other live classrooms',
+                            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             if (_showOtherLives) ...[
               // Barrier dismiss on tap outside
               Positioned.fill(
@@ -252,6 +430,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
               ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -480,10 +659,23 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Left: Host avatar + name + star count + Follow button
+          // Left: Back button + Host avatar + name + star count + Follow button
           Expanded(
             child: Row(
               children: [
+                GestureDetector(
+                  onTap: () => _handleBackOrClose(context, controller),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    margin: const EdgeInsets.only(right: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.arrow_back_ios_new_rounded,
+                        color: Colors.white, size: 14),
+                  ),
+                ),
                 CustomImage(
                   size: const Size(36, 36),
                   image: room.hostPhoto,
@@ -603,20 +795,14 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                   const SizedBox(width: 6),
                   // Settings gear
                   GestureDetector(
-                    onTap: () => _showThemesSheet(controller),
+                    onTap: () => _showMoreSheet(controller),
                     child: const Icon(Icons.settings_outlined,
                         color: Colors.white, size: 18),
                   ),
                   const SizedBox(width: 6),
                   // Close
                   GestureDetector(
-                    onTap: () {
-                      if (isHost) {
-                        controller.endRoom();
-                      } else {
-                        controller.leaveRoom();
-                      }
-                    },
+                    onTap: () => _handleBackOrClose(context, controller),
                     child: const Icon(Icons.close_rounded,
                         color: Colors.white, size: 20),
                   ),
@@ -803,95 +989,666 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
     });
   }
 
-  Widget _buildDashedJoinCallCard(AudioRoomController controller) {
-    // The host is already in the room and hosting, so they must never see a Join Call card
-    if (isHost) return const SizedBox.shrink();
-
+  Widget _buildRightGuestColumn(AudioRoomController controller) {
     return Obx(() {
+      final guestSpeakerIds = controller.speakerIds
+          .where((id) => id != room.hostId)
+          .toList();
+      final pendingRequests = controller.requestIds;
       final isSpeaker = controller.isSpeaker.value;
       final hasRequested = controller.hasRequested.value;
 
-      String label = 'Join Call';
-      IconData icon = Icons.video_call_rounded;
-      Color iconColor = Colors.white;
+      List<Widget> items = [];
 
-      if (isSpeaker) {
-        label = 'In Call';
-        icon = Icons.mic;
-        iconColor = const Color(0xFFFFB300);
-      } else if (hasRequested) {
-        label = 'Requested';
-        icon = Icons.hourglass_top_rounded;
-        iconColor = const Color(0xFFFF9500);
+      // Host Gallery Image / Theme Button: direct 1-tap button to open Themes & Background (matching user screenshot)
+      if (isHost) {
+        items.add(_buildGalleryThemeButton(controller));
       }
 
-      return GestureDetector(
-        onTap: () {
-          if (isSpeaker) {
-            controller.toggleMute();
-          } else if (hasRequested) {
-            controller.showSnackBar('Join Call request is pending host approval');
-          } else {
-            controller.requestToSpeak();
-          }
-        },
-        child: CustomPaint(
-          painter: _DashedBorderPainter(
-            color: hasRequested
-                ? const Color(0xFFFF9500)
-                : Colors.white.withValues(alpha: 0.7),
-            dashWidth: 4,
-            dashSpace: 3,
-            strokeWidth: 1.2,
-            radius: 16,
+      // 1. All active guest speaker tiles (stacked vertically on right, matching reference image 2)
+      for (int i = 0; i < guestSpeakerIds.length && i < 2; i++) {
+        items.add(_buildGuestTile(controller, guestSpeakerIds[i], i));
+      }
+
+      // If more than 2 speakers joined, show a compact counter pill
+      if (guestSpeakerIds.length > 2) {
+        items.add(_buildMoreSpeakersBadge(controller, guestSpeakerIds.length - 2));
+      }
+
+      // 2. If host and there are pending requests, and we have space for a card
+      final activeTilesCount = guestSpeakerIds.length.clamp(0, 2);
+      if (isHost && pendingRequests.isNotEmpty && activeTilesCount < 2) {
+        items.add(_buildPendingRequestCard(controller, pendingRequests.first, pendingRequests.length));
+      }
+
+      // 3. If no active guests and no pending request cards:
+      final hasGuestOrRequest = guestSpeakerIds.isNotEmpty || (isHost && pendingRequests.isNotEmpty);
+      if (!hasGuestOrRequest) {
+        if (isHost) {
+          items.add(_buildHostEmptySlot(controller));
+        } else {
+          items.add(_buildAudienceJoinSlot(controller, isSpeaker: isSpeaker, hasRequested: hasRequested));
+        }
+      } else if (!isHost && !isSpeaker && guestSpeakerIds.length < AudioRoomController.maxSpeakerSeats && activeTilesCount < 2) {
+        // Audience can still see a compact slot to request join if only 1 guest is active
+        items.add(_buildAudienceJoinSlot(controller, isSpeaker: isSpeaker, hasRequested: hasRequested, compact: true));
+      }
+
+      return SizedBox(
+        width: 96,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: items,
+        ),
+      );
+    });
+  }
+
+  /// Host Gallery Image / Theme Button:
+  /// Direct 1-tap circular button with gallery image icon (matching user screenshot)
+  /// that opens the background Themes & Gallery image selector sheet.
+  Widget _buildGalleryThemeButton(AudioRoomController controller) {
+    return GestureDetector(
+      onTap: () => _showThemesSheet(controller),
+      child: Container(
+        width: 38,
+        height: 38,
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.45),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.25),
+            width: 1.2,
           ),
-          child: Container(
-            width: 66,
-            height: 104,
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-            decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
               color: Colors.black.withValues(alpha: 0.35),
-              borderRadius: BorderRadius.circular(16),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Stack(
-                  clipBehavior: Clip.none,
+          ],
+        ),
+        child: const Icon(
+          Icons.image_outlined,
+          color: Colors.white,
+          size: 20,
+        ),
+      ),
+    );
+  }
+
+  /// Guest tile matching the 2nd reference image:
+  /// Rounded rectangle (aspect ~3:4), rich sunset amber gradient for guest 1,
+  /// dark twilight/plum gradient for guest 2, centered circular avatar with
+  /// glowing ring, dark mic icon pill at bottom-left, user name at bottom.
+  Widget _buildGuestTile(AudioRoomController controller, int userId, int index) {
+    return Obx(() {
+      final participant = controller.participants
+          .firstWhereOrNull((p) => p.userId == userId);
+      final isMuted = controller.mutedSpeakerIds.contains(userId);
+      final isSelf = controller.myUser?.id == userId;
+      final name = participant?.fullname ?? participant?.username ?? (isSelf ? 'You' : 'User $userId');
+      final photo = participant?.profilePhoto;
+
+      // Tile gradients: First tile is sunset amber/orange (exact replica of image 2 top tile)
+      final List<List<Color>> tileGradients = [
+        [const Color(0xFFE58E26), const Color(0xFFD35400), const Color(0xFF78281F)], // sunset amber/gold
+        [const Color(0xFF2C3E50), const Color(0xFF1A1A2E), const Color(0xFF16213E)], // midnight navy
+        [const Color(0xFF8E44AD), const Color(0xFF512E5F), const Color(0xFF1B0A2A)], // royal purple
+      ];
+      final gradientColors = tileGradients[index % tileGradients.length];
+
+      return Container(
+        width: 96,
+        height: 126,
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: gradientColors,
+          ),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.25),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.4),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Center Stage: Circular Avatar with glowing golden ring
+              Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      width: 38,
-                      height: 38,
+                      padding: const EdgeInsets.all(2),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
                         shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFFFFD700).withValues(alpha: 0.8),
+                          width: 2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFFFD700).withValues(alpha: 0.35),
+                            blurRadius: 8,
+                            spreadRadius: 1,
+                          ),
+                        ],
                       ),
-                      child: Icon(
-                        icon,
-                        color: iconColor,
-                        size: 24,
+                      child: CustomImage(
+                        size: const Size(48, 48),
+                        image: photo,
+                        radius: 24,
+                        fullName: name,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: hasRequested
-                        ? const Color(0xFFFF9500)
-                        : (isSpeaker ? const Color(0xFFFFB300) : Colors.white),
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
+              ),
+
+              // Top-right host quick action button
+              if (isHost)
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: GestureDetector(
+                    onTap: () => _showSpeakerManageSheet(controller, userId, name, photo, isMuted),
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.more_horiz_rounded,
+                        color: Colors.white,
+                        size: 14,
+                      ),
+                    ),
                   ),
                 ),
-              ],
-            ),
+
+              // Bottom-left dark circular pill with mic status (like reference image 2)
+              Positioned(
+                left: 6,
+                bottom: 6,
+                child: Container(
+                  padding: const EdgeInsets.all(4.5),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.65),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Icon(
+                    isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                    color: isMuted ? const Color(0xFFFF5252) : Colors.white,
+                    size: 13,
+                  ),
+                ),
+              ),
+
+              // Bottom Name banner with dark gradient scrim
+              Positioned(
+                left: 26,
+                right: 4,
+                bottom: 4,
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w700,
+                    shadows: [
+                      Shadow(color: Colors.black, blurRadius: 4),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Tap gesture on the whole tile
+              Positioned.fill(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () {
+                      if (isHost) {
+                        _showSpeakerManageSheet(controller, userId, name, photo, isMuted);
+                      } else if (isSelf) {
+                        controller.toggleMute();
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       );
     });
+  }
+
+  /// Pending join-call request card shown to the host:
+  /// Shows requester avatar, name, and 1-tap "Allow" green button
+  Widget _buildPendingRequestCard(AudioRoomController controller, int requesterId, int totalRequests) {
+    return Obx(() {
+      final requester = controller.participants
+          .firstWhereOrNull((p) => p.userId == requesterId);
+      final name = requester?.fullname ?? requester?.username ?? 'User $requesterId';
+      final photo = requester?.profilePhoto;
+
+      return Container(
+        width: 96,
+        height: 126,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.75),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: const Color(0xFFFF9500),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFFF9500).withValues(alpha: 0.3),
+              blurRadius: 10,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            // Top badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF9500),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                totalRequests > 1 ? '$totalRequests Requests' : 'Wants to Join',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 8,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+
+            // Requester Avatar
+            CustomImage(
+              size: const Size(38, 38),
+              image: photo,
+              radius: 19,
+              strokeWidth: 1.5,
+              strokeColor: const Color(0xFFFF9500),
+              fullName: name,
+            ),
+
+            // Requester Name
+            Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            // 1-Tap Allow Button
+            GestureDetector(
+              onTap: () => controller.acceptSpeaker(requesterId),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00E676),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check, size: 12, color: Colors.black),
+                    SizedBox(width: 2),
+                    Text(
+                      'Allow',
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Decline / view all
+            GestureDetector(
+              onTap: () {
+                if (totalRequests > 1) {
+                  _showRequestsSheet(controller);
+                } else {
+                  controller.rejectSpeaker(requesterId);
+                }
+              },
+              child: Text(
+                totalRequests > 1 ? 'View all' : 'Decline',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  fontSize: 8.5,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  /// Host empty co-host slot (never says "Join Call")
+  Widget _buildHostEmptySlot(AudioRoomController controller) {
+    return GestureDetector(
+      onTap: () => _showRequestsSheet(controller),
+      child: CustomPaint(
+        painter: _DashedBorderPainter(
+          color: Colors.white.withValues(alpha: 0.35),
+          dashWidth: 4,
+          dashSpace: 3,
+          strokeWidth: 1.2,
+          radius: 16,
+        ),
+        child: Container(
+          width: 96,
+          height: 126,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.25),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.person_add_alt_1_rounded,
+                  color: Colors.white70,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                '+ Co-host',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Waiting...',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.4),
+                  fontSize: 8.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Audience Join Call slot (Join Call / Requested)
+  Widget _buildAudienceJoinSlot(
+    AudioRoomController controller, {
+    required bool isSpeaker,
+    required bool hasRequested,
+    bool compact = false,
+  }) {
+    String label = 'Join Call';
+    IconData icon = Icons.video_call_rounded;
+    Color iconColor = Colors.white;
+
+    if (isSpeaker) {
+      label = 'In Call';
+      icon = Icons.mic;
+      iconColor = const Color(0xFFFFB300);
+    } else if (hasRequested) {
+      label = 'Requested';
+      icon = Icons.hourglass_top_rounded;
+      iconColor = const Color(0xFFFF9500);
+    }
+
+    final double height = compact ? 80 : 126;
+
+    return GestureDetector(
+      onTap: () {
+        if (isSpeaker) {
+          controller.toggleMute();
+        } else if (hasRequested) {
+          controller.showSnackBar('Join Call request is pending host approval');
+        } else {
+          controller.requestToSpeak();
+        }
+      },
+      child: CustomPaint(
+        painter: _DashedBorderPainter(
+          color: hasRequested
+              ? const Color(0xFFFF9500)
+              : Colors.white.withValues(alpha: 0.7),
+          dashWidth: 4,
+          dashSpace: 3,
+          strokeWidth: 1.2,
+          radius: 16,
+        ),
+        child: Container(
+          width: 96,
+          height: height,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  icon,
+                  color: iconColor,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: hasRequested
+                      ? const Color(0xFFFF9500)
+                      : (isSpeaker ? const Color(0xFFFFB300) : Colors.white),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (!compact) ...[
+                const SizedBox(height: 2),
+                Text(
+                  hasRequested ? 'Pending host' : 'Tap to request',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5),
+                    fontSize: 8,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMoreSpeakersBadge(AudioRoomController controller, int count) {
+    return GestureDetector(
+      onTap: () => _showRequestsSheet(controller),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white30, width: 0.8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.people_alt, color: Color(0xFFFFB300), size: 12),
+            const SizedBox(width: 4),
+            Text(
+              '+$count more',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSpeakerManageSheet(
+    AudioRoomController controller,
+    int userId,
+    String name,
+    String? photo,
+    bool isMuted,
+  ) {
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: const BoxDecoration(
+          color: ColorRes.cardBackground,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white38,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              CustomImage(
+                size: const Size(60, 60),
+                image: photo,
+                radius: 30,
+                fullName: name,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                name,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFB300).withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'Co-Host Speaker',
+                  style: TextStyle(
+                    color: Color(0xFFFFB300),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: Icon(
+                  isMuted ? Icons.mic : Icons.mic_off,
+                  color: isMuted ? Colors.greenAccent : Colors.orangeAccent,
+                ),
+                title: Text(
+                  isMuted ? 'Unmute Participant' : 'Mute Participant',
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                ),
+                onTap: () {
+                  Get.back();
+                  controller.toggleMuteParticipant(userId);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.person_remove, color: Colors.redAccent),
+                title: const Text(
+                  'Remove from Call',
+                  style: TextStyle(color: Colors.redAccent, fontSize: 14),
+                ),
+                onTap: () {
+                  Get.back();
+                  controller.revokeSpeaker(userId);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+    );
   }
 
   Widget _buildHostAvatar(AudioRoomController controller) {
@@ -950,6 +1707,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
     return Obx(() {
       final speakerIds = controller.speakerIds
           .where((id) => id != room.hostId)
+          .skip(2)
           .toList();
       if (speakerIds.isEmpty) return const SizedBox.shrink();
       return Container(
@@ -1437,7 +2195,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
 
   Widget _buildPinnedCommentBanner(AudioRoomController controller) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.45),
@@ -1467,7 +2225,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
 
   Widget _buildPinCommentInput(AudioRoomController controller) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.only(bottom: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2826,113 +3584,258 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
   }
 
   void _showMoreSheet(AudioRoomController controller) {
+    if (!isHost) {
+      Get.bottomSheet(
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: const BoxDecoration(
+            color: ColorRes.cardBackground,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Obx(() {
+                  if (!controller.isSpeaker.value) return const SizedBox.shrink();
+                  return ListTile(
+                    leading: Icon(
+                        controller.isMuted.value ? Icons.mic_off : Icons.mic,
+                        color: ColorRes.primaryColor),
+                    title: Text(controller.isMuted.value ? 'Unmute' : 'Mute',
+                        style: const TextStyle(color: Colors.white)),
+                    onTap: () {
+                      Get.back();
+                      controller.toggleMute();
+                    },
+                  );
+                }),
+                Obx(() => ListTile(
+                      leading: Icon(
+                          controller.isSpeakerOn.value
+                              ? Icons.volume_up
+                              : Icons.volume_off,
+                          color: ColorRes.primaryColor),
+                      title: Text(
+                          controller.isSpeakerOn.value ? 'Speaker On' : 'Speaker Off',
+                          style: const TextStyle(color: Colors.white)),
+                      onTap: () {
+                        Get.back();
+                        controller.toggleSpeaker();
+                      },
+                    )),
+                ListTile(
+                  leading: const Icon(Icons.call_end, color: ColorRes.liveRed),
+                  title: const Text('Leave Room',
+                      style: TextStyle(color: ColorRes.liveRed)),
+                  onTap: () {
+                    Get.back();
+                    _handleBackOrClose(context, controller);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Host Settings sheet matching reference design
     Get.bottomSheet(
       Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
         decoration: const BoxDecoration(
-          color: ColorRes.cardBackground,
+          color: Color(0xFF1B1E28),
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: SafeArea(
           top: false,
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Obx(() {
-                final canSpeak = isHost || controller.isSpeaker.value;
-                if (!canSpeak) return const SizedBox.shrink();
-                return ListTile(
-                  leading: Icon(
-                      controller.isMuted.value ? Icons.mic_off : Icons.mic,
-                      color: ColorRes.primaryColor),
-                  title: Text(controller.isMuted.value ? 'Unmute' : 'Mute',
-                      style: const TextStyle(color: Colors.white)),
-                  onTap: () {
-                    Get.back();
-                    controller.toggleMute();
-                  },
-                );
-              }),
-              Obx(() => ListTile(
-                    leading: Icon(
-                        controller.isSpeakerOn.value
-                            ? Icons.volume_up
-                            : Icons.volume_off,
-                        color: ColorRes.primaryColor),
-                    title: Text(
-                        controller.isSpeakerOn.value ? 'Speaker On' : 'Speaker Off',
-                        style: const TextStyle(color: Colors.white)),
+              // Auto Call Row
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Auto Call',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFFF3B30),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 5),
+                        const Text(
+                          'Call request will be auto accepted',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Obx(() => Transform.scale(
+                        scale: 0.9,
+                        child: Switch(
+                          value: controller.isAutoMode.value,
+                          onChanged: (val) => controller.toggleAutoMode(val),
+                          activeThumbColor: Colors.white,
+                          activeTrackColor: ColorRes.primaryColor,
+                          inactiveThumbColor: Colors.white,
+                          inactiveTrackColor: Colors.white24,
+                        ),
+                      )),
+                ],
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 18),
+                child: Divider(
+                  color: Colors.white24,
+                  thickness: 0.8,
+                  height: 1,
+                ),
+              ),
+              const Text(
+                'Fun Centre',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  _buildFunCentreButton(
+                    label: 'My Music',
+                    iconWidget: const Icon(
+                      Icons.music_note_rounded,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFF9500), Color(0xFFFF3B30)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
                     onTap: () {
                       Get.back();
-                      controller.toggleSpeaker();
+                      controller.changeMusic();
                     },
-                  )),
-              Obx(() => controller.musicUrls.isNotEmpty
-                  ? ListTile(
-                      leading: Icon(
-                          controller.isMusicPlaying.value
-                              ? Icons.music_note
-                              : Icons.music_off,
-                          color: ColorRes.primaryColor),
-                      title: Text(
-                          controller.isMusicPlaying.value ? 'Pause Music' : 'Play Music',
-                          style: const TextStyle(color: Colors.white)),
-                      subtitle: Text('${controller.musicUrls.length} tracks',
-                          style: const TextStyle(
-                              color: Colors.white38, fontSize: 12)),
-                      trailing: controller.musicUrls.length > 1
-                          ? IconButton(
-                              icon: const Icon(Icons.skip_next,
-                                  color: Colors.white70),
-                              onPressed: controller.skipToNextTrack,
-                            )
-                          : null,
+                  ),
+                  const SizedBox(width: 24),
+                  Obx(() {
+                    final bool isRoyal = controller.isRoyalMode.value;
+                    return _buildFunCentreButton(
+                      label: 'Royal\nMode',
+                      isActive: isRoyal,
+                      iconWidget: Image.asset(
+                        AssetRes.icCrown,
+                        width: 24,
+                        height: 24,
+                        color: Colors.white,
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.workspace_premium_rounded,
+                          color: Colors.white,
+                          size: 26,
+                        ),
+                      ),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF9C27B0), Color(0xFF673AB7)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                       onTap: () {
-                        Get.back();
-                        controller.toggleMusic();
+                        controller.toggleRoyalMode();
                       },
-                      onLongPress: isHost
-                          ? () {
-                              Get.back();
-                              _showRemoveMusicDialog(controller);
-                            }
-                          : null,
-                    )
-                  : const SizedBox.shrink()),
-              if (isHost)
-                ListTile(
-                  leading: const Icon(Icons.celebration, color: ColorRes.primaryColor),
-                  title: const Text('Fun Centre', style: TextStyle(color: Colors.white)),
-                  onTap: () {
-                    Get.back();
-                    _showFunCentreSheet(controller);
-                  },
-                ),
-              if (isHost)
-                ListTile(
-                  leading: const Icon(Icons.palette, color: ColorRes.primaryColor),
-                  title: const Text('Background', style: TextStyle(color: Colors.white)),
-                  onTap: () {
-                    Get.back();
-                    _showThemesSheet(controller);
-                  },
-                ),
-              ListTile(
-                leading: const Icon(Icons.call_end, color: ColorRes.liveRed),
-                title: Text(isHost ? 'End Room' : 'Leave Room',
-                    style: const TextStyle(color: ColorRes.liveRed)),
-                onTap: () {
-                  Get.back();
-                  if (isHost) {
-                    controller.endRoom();
-                  } else {
-                    controller.leaveRoom();
-                  }
-                },
+                    );
+                  }),
+                ],
               ),
+              const SizedBox(height: 10),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildFunCentreButton({
+    required String label,
+    required Widget iconWidget,
+    required Gradient gradient,
+    required VoidCallback onTap,
+    bool isActive = false,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: gradient,
+              border: isActive
+                  ? Border.all(color: const Color(0xFFFFD700), width: 2)
+                  : null,
+              boxShadow: [
+                if (isActive)
+                  BoxShadow(
+                    color: const Color(0xFFFFD700).withValues(alpha: 0.4),
+                    blurRadius: 10,
+                    spreadRadius: 1,
+                  )
+                else
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 6,
+                    offset: const Offset(0, 3),
+                  ),
+              ],
+            ),
+            child: Center(child: iconWidget),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              height: 1.2,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -3698,96 +4601,273 @@ class _AudioRoomGiftCategorySheetState
     extends State<_AudioRoomGiftCategorySheet> {
   String _selectedCategory = 'All';
 
+  @override
+  void initState() {
+    super.initState();
+    _selectedCategory = 'All';
+  }
+
   List<String> _extractCategories(List<Gift> gifts) {
-    final categories = <String>['All'];
+    final List<String> categories = ['All'];
+
+    void addCategory(String? raw) {
+      if (raw == null) return;
+      final trimmed = raw.trim();
+      if (trimmed.isEmpty) return;
+      final formatted = trimmed[0].toUpperCase() + trimmed.substring(1);
+      final alreadyExists =
+          categories.any((c) => c.toLowerCase() == formatted.toLowerCase());
+      if (!alreadyExists) {
+        categories.add(formatted);
+      }
+    }
 
     // 1. From settings.giftCategories
     final adminCats =
         SessionManager.instance.getSettings()?.giftCategories ?? [];
     for (final c in adminCats) {
-      final name = c.name?.trim();
-      if (name != null && name.isNotEmpty && !categories.contains(name)) {
-        categories.add(name);
-      }
+      addCategory(c.name);
     }
 
-    // 2. From gift objects (categoryName from tbl_gift_categories join)
+    // 2. From gift objects (categoryName)
     for (final g in gifts) {
-      final name = g.categoryName?.trim();
-      if (name != null && name.isNotEmpty && !categories.contains(name)) {
-        categories.add(name);
-      }
+      addCategory(g.categoryName);
     }
 
-    // 3. Guarantee the admin categories requested: Food, Gold, Farms
+    // 3. Guarantee default categories requested: Food, Gold, Farms
     for (final fallback in ['Food', 'Gold', 'Farms']) {
-      if (!categories.contains(fallback)) {
-        categories.add(fallback);
-      }
+      addCategory(fallback);
     }
 
     return categories;
   }
 
   bool _giftMatchesCategory(Gift gift, String category) {
-    if (category == 'All') return true;
+    if (category.toLowerCase().trim() == 'all') return true;
 
     final target = category.toLowerCase().trim();
+
+    // 1. Direct match on gift.categoryName
     final catName = (gift.categoryName ?? '').toLowerCase().trim();
-    if (catName.isNotEmpty && catName == target) return true;
+    if (catName.isNotEmpty &&
+        (catName == target ||
+            catName.contains(target) ||
+            target.contains(catName))) {
+      return true;
+    }
 
-    final title = (gift.title ?? gift.displayName).toLowerCase().trim();
-    if (title.contains(target)) return true;
+    // 2. Admin giftCategories matching by ID
+    final adminCats =
+        SessionManager.instance.getSettings()?.giftCategories ?? [];
+    for (final c in adminCats) {
+      final name = (c.name ?? '').toLowerCase().trim();
+      final isMatch = name == target ||
+          (target == 'farms' && name == 'farm') ||
+          (target == 'farm' && name == 'farms') ||
+          name.contains(target) ||
+          target.contains(name);
+      if (isMatch) {
+        if (gift.giftCategoryId != null && gift.giftCategoryId == c.id) return true;
+        if (gift.categoryId != null && gift.categoryId == c.id) return true;
+      }
+    }
 
-    if (target == 'food') {
-      return title.contains('food') ||
-          title.contains('samosa') ||
-          title.contains('chai') ||
-          title.contains('tea') ||
-          title.contains('coffee') ||
-          title.contains('burger') ||
-          title.contains('pizza') ||
-          title.contains('cake') ||
-          title.contains('chocolate') ||
-          title.contains('meal') ||
-          title.contains('drink') ||
-          title.contains('candy') ||
-          title.contains('fruit') ||
-          title.contains('apple') ||
-          title.contains('ice cream');
-    } else if (target == 'gold') {
-      return title.contains('gold') ||
-          title.contains('coin') ||
-          title.contains('crown') ||
-          title.contains('ferrari') ||
-          title.contains('car') ||
-          title.contains('diamond') ||
-          title.contains('luxury') ||
-          title.contains('palace') ||
-          title.contains('castle') ||
-          title.contains('ring') ||
-          title.contains('watch') ||
-          title.contains('trophy');
-    } else if (target == 'farms') {
-      return title.contains('farm') ||
-          title.contains('rose') ||
-          title.contains('flower') ||
-          title.contains('tree') ||
-          title.contains('plant') ||
-          title.contains('horse') ||
-          title.contains('cow') ||
-          title.contains('sheep') ||
-          title.contains('hen') ||
-          title.contains('bird') ||
-          title.contains('grass') ||
-          title.contains('animal');
+    // 3. Full text search combining title, displayName, image, animationUrl
+    final String searchStr = [
+      gift.title ?? '',
+      gift.displayName,
+      gift.image ?? '',
+      gift.animationUrl ?? '',
+    ].join(' ').toLowerCase();
+
+    if (searchStr.contains(target)) return true;
+
+    if (target == 'food' || target.contains('food')) {
+      const foodKeywords = [
+        'food',
+        'tikka',
+        'tofu',
+        'paneer',
+        'pizza',
+        'samosa',
+        'fries',
+        'french',
+        'noodle',
+        'noodles',
+        'chowmein',
+        'ramen',
+        'burger',
+        'sandwich',
+        'hotdog',
+        'hot dog',
+        'pasta',
+        'momo',
+        'momos',
+        'dumpling',
+        'biryani',
+        'roti',
+        'naan',
+        'curry',
+        'dosa',
+        'idli',
+        'rice',
+        'dal',
+        'chai',
+        'tea',
+        'coffee',
+        'drink',
+        'juice',
+        'shake',
+        'beverage',
+        'soda',
+        'cola',
+        'pepsi',
+        'boba',
+        'water',
+        'cake',
+        'pastry',
+        'chocolate',
+        'choco',
+        'candy',
+        'sweet',
+        'cookie',
+        'donut',
+        'doughnut',
+        'muffin',
+        'cupcake',
+        'biscuit',
+        'ice cream',
+        'icecream',
+        'gelato',
+        'popsicle',
+        'cone',
+        'fruit',
+        'apple',
+        'banana',
+        'mango',
+        'orange',
+        'strawberry',
+        'grape',
+        'berry',
+        'cherry',
+        'watermelon',
+        'pineapple',
+        'popcorn',
+        'snack',
+        'meal',
+        'dish',
+        'soup',
+        'salad',
+        'taco',
+        'burrito',
+        'sushi',
+        'bread',
+        'waffle',
+        'pancake'
+      ];
+      return foodKeywords.any((k) => searchStr.contains(k));
+    } else if (target == 'gold' || target.contains('gold')) {
+      const goldKeywords = [
+        'gold',
+        'golden',
+        'jewel',
+        'jewelry',
+        'jewellery',
+        'ring',
+        'amber',
+        'ruby',
+        'emerald',
+        'sapphire',
+        'necklace',
+        'chain',
+        'jhumka',
+        'jhumkha',
+        'earring',
+        'earrings',
+        'crescent',
+        'pendant',
+        'bangle',
+        'bracelet',
+        'anklet',
+        'ornament',
+        'coin',
+        'coins',
+        'crown',
+        'tiara',
+        'trophy',
+        'medal',
+        'diamond',
+        'gem',
+        'precious',
+        'crystal',
+        'luxury',
+        'palace',
+        'castle',
+        'ferrari',
+        'car',
+        'supercar',
+        'lamborghini',
+        'yacht',
+        'jet',
+        'plane',
+        'rolex',
+        'watch',
+        'treasure',
+        'chest'
+      ];
+      return goldKeywords.any((k) => searchStr.contains(k));
+    } else if (target == 'farms' || target == 'farm' || target.contains('farm')) {
+      const farmKeywords = [
+        'farm',
+        'farms',
+        'farmer',
+        'rose',
+        'flower',
+        'flowers',
+        'bouquet',
+        'tulip',
+        'sunflower',
+        'lotus',
+        'lily',
+        'orchid',
+        'tree',
+        'plant',
+        'leaf',
+        'leaves',
+        'grass',
+        'garden',
+        'nature',
+        'forest',
+        'horse',
+        'cow',
+        'sheep',
+        'hen',
+        'rooster',
+        'chicken',
+        'bird',
+        'duck',
+        'pig',
+        'goat',
+        'rabbit',
+        'animal',
+        'animals',
+        'dog',
+        'puppy',
+        'cat',
+        'kitten',
+        'fish',
+        'butterfly',
+        'bee',
+        'barn'
+      ];
+      return farmKeywords.any((k) => searchStr.contains(k));
     }
 
     return false;
   }
 
   List<Gift> _filterGifts(List<Gift> gifts) {
-    if (_selectedCategory == 'All') return gifts;
+    if (_selectedCategory.toLowerCase().trim() == 'all') return gifts;
     return gifts.where((g) => _giftMatchesCategory(g, _selectedCategory)).toList();
   }
 

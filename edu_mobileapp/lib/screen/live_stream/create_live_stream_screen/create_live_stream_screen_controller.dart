@@ -357,6 +357,20 @@ class CreateLiveStreamScreenController extends BaseController {
       DocumentReference userStateRef =
           livestreamRef.collection(FirebaseConst.userState).doc('$userId');
 
+      // Clean up previous livestream comments so the new live starts completely clean
+      try {
+        final oldComments = await livestreamRef.collection(FirebaseConst.comments).limit(300).get();
+        if (oldComments.docs.isNotEmpty) {
+          final batchDelete = db.batch();
+          for (final doc in oldComments.docs) {
+            batchDelete.delete(doc.reference);
+          }
+          await batchDelete.commit();
+        }
+      } catch (e) {
+        Loggers.error('Error purging old livestream comments: $e');
+      }
+
       WriteBatch batch = db.batch();
 
       batch.set(livestreamRef, livestream.toJson());

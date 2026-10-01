@@ -162,12 +162,12 @@ class OtherLivesSidePanel extends StatelessWidget {
     final watching = stream.watchingCount ?? 0;
 
     return GestureDetector(
-      onTap: () {
+      onTap: () async {
         onClose();
         if (Get.isRegistered<AudioRoomController>()) {
-          Get.find<AudioRoomController>().leaveRoom();
+          await Get.find<AudioRoomController>().leaveRoom(shouldPop: false);
         }
-        Get.to(() => LiveStreamAudienceScreen(
+        Get.off(() => LiveStreamAudienceScreen(
               livestream: stream,
               isHost: false,
             ));
@@ -224,9 +224,9 @@ class OtherLivesSidePanel extends StatelessWidget {
                         color: const Color(0xFFFF2200),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Row(
+                      child: const Row(
                         mainAxisSize: MainAxisSize.min,
-                        children: const [
+                        children: [
                           Icon(Icons.sensors_rounded, color: Colors.white, size: 10),
                           SizedBox(width: 3),
                           Text(
@@ -262,7 +262,7 @@ class OtherLivesSidePanel extends StatelessWidget {
                 ),
               ),
 
-              // Bottom details: Host Name with checkmark + Chatroom pill + Play circle
+              // Bottom details: Host Name with checkmark + Classroom pill + Play circle
               Positioned(
                 bottom: 8,
                 left: 8,
@@ -300,24 +300,24 @@ class OtherLivesSidePanel extends StatelessWidget {
 
                     const SizedBox(height: 4),
 
-                    // Chatroom pill on the left & Play circle icon on the right
+                    // Classroom pill on the left & Play circle icon on the right
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // Chatroom Cyan Pill
+                        // Classroom Cyan Pill
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                           decoration: BoxDecoration(
                             color: const Color(0xFF00ADB5),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: Row(
+                          child: const Row(
                             mainAxisSize: MainAxisSize.min,
-                            children: const [
-                              Icon(Icons.chat_bubble_rounded, color: Colors.white, size: 9),
+                            children: [
+                              Icon(Icons.school_rounded, color: Colors.white, size: 9.5),
                               SizedBox(width: 3),
                               Text(
-                                'Chatroom',
+                                'Classroom',
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 9,
@@ -362,12 +362,12 @@ class OtherLivesSidePanel extends StatelessWidget {
     final watching = room.participantIds?.length ?? 1;
 
     return GestureDetector(
-      onTap: () {
+      onTap: () async {
         onClose();
         if (Get.isRegistered<AudioRoomController>()) {
-          Get.find<AudioRoomController>().leaveRoom();
+          await Get.find<AudioRoomController>().leaveRoom(shouldPop: false);
         }
-        Get.to(() => AudioRoomScreen(
+        Get.off(() => AudioRoomScreen(
               room: room,
               isHost: false,
             ));
@@ -423,9 +423,9 @@ class OtherLivesSidePanel extends StatelessWidget {
                         color: const Color(0xFFFF2200),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Row(
+                      child: const Row(
                         mainAxisSize: MainAxisSize.min,
-                        children: const [
+                        children: [
                           Icon(Icons.mic_rounded, color: Colors.white, size: 10),
                           SizedBox(width: 3),
                           Text(
@@ -503,13 +503,13 @@ class OtherLivesSidePanel extends StatelessWidget {
                             color: const Color(0xFF00ADB5),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: Row(
+                          child: const Row(
                             mainAxisSize: MainAxisSize.min,
-                            children: const [
-                              Icon(Icons.mic_none_rounded, color: Colors.white, size: 9),
+                            children: [
+                              Icon(Icons.school_rounded, color: Colors.white, size: 9.5),
                               SizedBox(width: 3),
                               Text(
-                                'Chatroom',
+                                'Classroom',
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 9,

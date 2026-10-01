@@ -60,10 +60,10 @@ class RegistrationScreen extends StatelessWidget {
                         controller.loginError = null;
                         Get.back();
                       } else {
-                        controller.clearRegistrationErrors();
-                        controller.clearErrors();
+                        controller.clearRegistrationErrors(notify: false);
+                        controller.clearErrors(notify: false);
                         controller.loginError = null;
-                        controller.resetLoginState(keepCredentials: false);
+                        controller.resetLoginState(keepCredentials: false, notify: false);
                         Get.off(() => const LoginScreen());
                       }
                     },
@@ -348,10 +348,10 @@ class _Step1Personal extends StatelessWidget {
                 onAction: c.isMobileAlreadyRegistered
                     ? () {
                         final mob = controller.mobileController.text.trim();
-                        controller.clearRegistrationErrors();
-                        controller.clearErrors();
+                        controller.clearRegistrationErrors(notify: false);
+                        controller.clearErrors(notify: false);
                         controller.loginError = null;
-                        controller.resetLoginState(keepCredentials: true);
+                        controller.resetLoginState(keepCredentials: true, notify: false);
                         controller.loginMobileController.text = mob;
                         Get.off(() => const LoginScreen());
                       }
@@ -381,10 +381,10 @@ class _Step1Personal extends StatelessWidget {
                 onAction: c.isEmailAlreadyRegistered
                     ? () {
                         final em = controller.emailController.text.trim();
-                        controller.clearRegistrationErrors();
-                        controller.clearErrors();
+                        controller.clearRegistrationErrors(notify: false);
+                        controller.clearErrors(notify: false);
                         controller.loginError = null;
-                        controller.resetLoginState(keepCredentials: true);
+                        controller.resetLoginState(keepCredentials: true, notify: false);
                         controller.loginEmailController.text = em;
                         Get.off(() => const LoginScreen());
                       }
@@ -458,10 +458,10 @@ class _Step1Personal extends StatelessWidget {
               Center(
                 child: GestureDetector(
                   onTap: () {
-                    controller.clearRegistrationErrors();
-                    controller.clearErrors();
+                    controller.clearRegistrationErrors(notify: false);
+                    controller.clearErrors(notify: false);
                     controller.loginError = null;
-                    controller.resetLoginState(keepCredentials: false);
+                    controller.resetLoginState(keepCredentials: false, notify: false);
                     if (Navigator.canPop(context)) {
                       Get.back();
                     } else {

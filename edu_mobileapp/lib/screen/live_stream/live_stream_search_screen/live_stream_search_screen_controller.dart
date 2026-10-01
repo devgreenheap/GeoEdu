@@ -241,55 +241,42 @@ class LiveStreamSearchScreenController extends BaseController {
   Future<void> fetchLiveStreams() async {
     isLoading.value = true;
 
-    // Using a map for faster access and modification
-    final Map<String, Livestream> livestreamMap = {};
-
     livestreamListListener = db
         .collection(FirebaseConst.liveStreams)
         .withConverter(
-          fromFirestore: (snapshot, options) => Livestream.fromJson(snapshot.data()!),
+          fromFirestore: (snapshot, options) =>
+              Livestream.fromJson(snapshot.data()!),
           toFirestore: (Livestream livestream, options) => livestream.toJson(),
         )
         .snapshots()
         .listen((snapshot) {
-      for (var change in snapshot.docChanges) {
-        final Livestream? livestream = change.doc.data();
-        String roomId = livestream?.roomID ?? '';
-        if (livestream == null || roomId.isEmpty) continue;
-
-        // Add, modify, or remove based on document change type
-        switch (change.type) {
-          case DocumentChangeType.added:
-            livestreamMap[roomId] = livestream;
-            if (livestream.hostId != null && livestream.hostId != -1) {
-              firebaseFirestoreController.fetchUserIfNeeded(livestream.hostId ?? -1);
-            }
-            break;
-
-          case DocumentChangeType.modified:
-            // Update only if the livestream has changed
-            livestreamMap[roomId] = livestream;
-            for (var coHostId in (livestream.coHostIds ?? [])) {
-              firebaseFirestoreController.fetchUserIfNeeded(coHostId);
-            }
-            break;
-
-          case DocumentChangeType.removed:
-            livestreamMap.remove(roomId);
-            break;
+      final activeStreams = <Livestream>[];
+      for (var doc in snapshot.docs) {
+        final stream = doc.data();
+        if (stream.roomID != null && stream.roomID!.isNotEmpty) {
+          activeStreams.add(stream);
+          if (stream.hostId != null && stream.hostId != -1) {
+            firebaseFirestoreController.fetchUserIfNeeded(stream.hostId ?? -1);
+          }
+          for (var coHostId in (stream.coHostIds ?? [])) {
+            firebaseFirestoreController.fetchUserIfNeeded(coHostId);
+          }
         }
       }
 
-      // Convert map back to lists
-      livestreamList.value = List.from(livestreamMap.values);
-      // Perform any additional cleanup or transformations
+      livestreamList.value = activeStreams;
       removeDummyLive();
-      // Apply current category filter
       _applyFilter();
-
       _assignHostUsersToStreams();
-      isLoading.value = false; // Hide loader after initial fetch
+      isLoading.value = false;
     });
+  }
+
+  void removeStreamLocally(String? roomId, int? hostId) {
+    livestreamList.removeWhere((s) =>
+        (roomId != null && s.roomID == roomId) ||
+        (hostId != null && s.hostId == hostId));
+    _applyFilter();
   }
 
   void _assignHostUsersToStreams() {

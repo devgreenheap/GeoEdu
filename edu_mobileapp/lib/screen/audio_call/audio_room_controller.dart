@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
@@ -6,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:geoedu/common/widget/live_summary_dialog.dart';
+import 'package:geoedu/screen/audio_call/audio_call_list_controller.dart';
 import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/screen/star_store_diamond_and_effect/star_store_diamond _screen.dart';
 import 'package:geoedu/common/controller/base_controller.dart';
@@ -24,6 +27,7 @@ import 'package:geoedu/model/livestream/entry_effects_model.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/utilities/app_res.dart';
 import 'package:geoedu/utilities/firebase_const.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:zego_express_engine/zego_express_engine.dart';
 import 'package:geoedu/common/manager/gift_audio_player.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/entry_effects_widget.dart'
@@ -90,6 +94,7 @@ class AudioRoomController extends BaseController {
   bool _diamondBalanceFetched = false;
   Rx<int?> favouriteGiftId = Rx<int?>(null);
   RxBool isRoyalMode = false.obs;
+  RxBool isAutoMode = false.obs;
   Rx<int?> themeIndex = Rx<int?>(null);
   RxList<int> mutedSpeakerIds = <int>[].obs;
   RxList<int> lockedSeatIndices = <int>[].obs;
@@ -147,6 +152,8 @@ class AudioRoomController extends BaseController {
   // arrive over the room-wide broadcast — not fabricated placeholders.
   RxInt hostGiftCount = 0.obs;
   RxInt hostStarTotal = 0.obs;
+  RxInt connectedCallsCount = 0.obs;
+  RxInt sessionFollowersGained = 0.obs;
 
   // Host-set diamond goal for this session — host-local only, matching the
   // video top bar's Target pill (no backend field for a session goal).
@@ -204,11 +211,15 @@ class AudioRoomController extends BaseController {
   @override
   void onInit() {
     super.onInit();
+    comments.clear();
+    room.createdAt ??= DateTime.now().millisecondsSinceEpoch;
     roomName.value = room.roomName ?? 'Audio Room';
     _lastSeenLikeCount = room.likeCount ?? 0;
     participantIds.value = List<int>.from(room.participantIds ?? []);
     backgroundImage.value = room.backgroundImage ?? '';
     musicUrls.value = List<String>.from(room.musicUrls ?? []);
+    isAutoMode.value = room.isAutoMode ?? false;
+    isRoyalMode.value = room.isRoyalMode ?? false;
 
     _refreshGiftsAndPreload();
   }
@@ -226,27 +237,136 @@ class AudioRoomController extends BaseController {
     fetchDiamondBalanceIfNeeded(force: true);
   }
 
+  Future<void> _purgeSubcollection(CollectionReference coll, {int limit = 300}) async {
+    try {
+      final snap = await coll.limit(limit).get();
+      if (snap.docs.isNotEmpty) {
+        final batch = _db.batch();
+        for (final doc in snap.docs) {
+          batch.delete(doc.reference);
+        }
+        await batch.commit();
+      }
+    } catch (e) {
+      Loggers.error('Error purging subcollection: $e');
+    }
+  }
+
+  Future<void> _purgeHostSubcollections() async {
+    try {
+      final hostRoomRef = _db
+          .collection(FirebaseConst.audioRooms)
+          .doc(room.hostId.toString());
+      final roomCreated = room.createdAt ?? DateTime.now().millisecondsSinceEpoch;
+
+      final oldComments = await hostRoomRef
+          .collection('comments')
+          .where('timestamp', isLessThan: roomCreated - 3000)
+          .limit(300)
+          .get();
+      if (oldComments.docs.isNotEmpty) {
+        final batch = _db.batch();
+        for (final doc in oldComments.docs) {
+          batch.delete(doc.reference);
+        }
+        await batch.commit();
+      }
+    } catch (e) {
+      Loggers.error('Error in _purgeHostSubcollections: $e');
+    }
+  }
+
   void _listenComments() {
-    _commentsSubscription = _db
+    _commentsSubscription?.cancel();
+    comments.clear();
+
+    if (isHost) {
+      _purgeHostSubcollections();
+    }
+
+    final roomCreated = room.createdAt ?? DateTime.now().millisecondsSinceEpoch;
+
+    Query query = _db
         .collection(FirebaseConst.audioRooms)
         .doc(room.hostId.toString())
         .collection('comments')
-        .orderBy('timestamp')
+        .orderBy('timestamp');
+
+    if (roomCreated > 0) {
+      query = query.where('timestamp', isGreaterThanOrEqualTo: roomCreated - 3000);
+    }
+
+    _commentsSubscription = query
         .limitToLast(100)
         .snapshots()
-        .listen((snapshot) {
-      comments.value = snapshot.docs
-          .map((doc) => AudioComment.fromJson(doc.data()))
-          .toList();
-    });
+        .listen(
+      (snapshot) {
+        comments.value = snapshot.docs
+            .map((doc) => AudioComment.fromJson(doc.data() as Map<String, dynamic>))
+            .where((c) {
+              if (room.roomId != null &&
+                  room.roomId!.isNotEmpty &&
+                  c.roomId != null &&
+                  c.roomId!.isNotEmpty) {
+                return c.roomId == room.roomId;
+              }
+              if (roomCreated > 0) {
+                return c.timestamp >= (roomCreated - 3000);
+              }
+              return true;
+            })
+            .toList();
+      },
+      onError: (err) {
+        Loggers.error('Comments query error with filter, falling back: $err');
+        _commentsSubscription?.cancel();
+        _commentsSubscription = _db
+            .collection(FirebaseConst.audioRooms)
+            .doc(room.hostId.toString())
+            .collection('comments')
+            .orderBy('timestamp')
+            .limitToLast(100)
+            .snapshots()
+            .listen((fallbackSnap) {
+          comments.value = fallbackSnap.docs
+              .map((doc) => AudioComment.fromJson(doc.data()))
+              .where((c) {
+                if (room.roomId != null &&
+                    room.roomId!.isNotEmpty &&
+                    c.roomId != null &&
+                    c.roomId!.isNotEmpty) {
+                  return c.roomId == room.roomId;
+                }
+                if (roomCreated > 0) {
+                  return c.timestamp >= (roomCreated - 3000);
+                }
+                return true;
+              })
+              .toList();
+        });
+      },
+    );
   }
 
   Future<void> _postComment(AudioComment comment) {
+    final commentWithRoom = AudioComment(
+      senderId: comment.senderId,
+      senderName: comment.senderName,
+      senderPhoto: comment.senderPhoto,
+      senderLevel: comment.senderLevel,
+      type: comment.type,
+      text: comment.text,
+      giftName: comment.giftName,
+      giftImage: comment.giftImage,
+      giftCoinPrice: comment.giftCoinPrice,
+      timestamp: comment.timestamp,
+      roomId: comment.roomId ?? room.roomId,
+    );
     return _db
         .collection(FirebaseConst.audioRooms)
         .doc(room.hostId.toString())
         .collection('comments')
-        .add(comment.toJson());
+        .add(commentWithRoom.toJson());
   }
 
   /// Host waving at a listener who just joined — a real chat message.
@@ -311,18 +431,17 @@ class AudioRoomController extends BaseController {
         .listen((snapshot) {
       for (var change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added) {
-          GiftEffect gift =
-              GiftEffect.fromJson(change.doc.data() as Map<String, dynamic>);
-
-          recordGiftForTopGifter(gift.username, gift.coinPrice ?? 0);
-
-          // If the gift was sent before this user entered the room, do not replay it
-          if (gift.timestamp < _roomEnteredAt) {
+          final roomCreated = room.createdAt ?? 0;
+          // If the gift was sent before this room session or before user entered, do not record or replay
+          if (gift.timestamp < _roomEnteredAt ||
+              (roomCreated > 0 && gift.timestamp < roomCreated - 3000)) {
             try {
               change.doc.reference.delete();
             } catch (_) {}
             continue;
           }
+
+          recordGiftForTopGifter(gift.username, gift.coinPrice ?? 0);
 
           // Sender already played the gift effect immediately locally
           if (gift.userId == myUser?.id) {
@@ -391,20 +510,31 @@ class AudioRoomController extends BaseController {
     if (myUser?.id != null) {
       OnlinePresenceService.instance.setInCall(myUser!.id!, false);
     }
-    // If host is closing, delete the room so participants get disconnected
+    // If host is closing, delete the room and clean subcollections so participants get disconnected
     if (isHost) {
-      _db
+      final hostRoomRef = _db
           .collection(FirebaseConst.audioRooms)
-          .doc(room.hostId.toString())
-          .delete();
+          .doc(room.hostId.toString());
+      _purgeSubcollection(hostRoomRef.collection('comments'));
+      _purgeSubcollection(hostRoomRef.collection('gifts'));
+      hostRoomRef.delete();
     }
     super.onClose();
   }
 
   Future<void> _initAudio() async {
     try {
+      if (isHost) {
+        final micStatus = await Permission.microphone.request();
+        if (!micStatus.isGranted) {
+          showSnackBar('Microphone permission is required to host the audio room');
+        }
+      }
+
       await ZegoExpressEngine.instance.enableCamera(false);
+      await ZegoExpressEngine.instance.enableAudioCaptureDevice(true);
       await ZegoExpressEngine.instance.setAudioRouteToSpeaker(true);
+      await ZegoExpressEngine.instance.muteAllPlayStreamAudio(false);
 
       // Register callbacks BEFORE loginRoom so we don't miss existing streams
       ZegoExpressEngine.onRoomStreamUpdate = _onRoomStreamUpdate;
@@ -414,28 +544,31 @@ class AudioRoomController extends BaseController {
       final userName = myUser?.fullname ?? '';
       final zegoUser = ZegoUser(userId, userName);
 
+      final roomConfig = ZegoRoomConfig.defaultConfig()
+        ..isUserStatusNotify = true;
+
       await ZegoExpressEngine.instance.loginRoom(
         room.roomId ?? '',
         zegoUser,
+        config: roomConfig,
       );
 
       if (isHost) {
-        // Only host publishes audio stream
+        // Host publishes audio stream
         await ZegoExpressEngine.instance.muteMicrophone(false);
+        await ZegoExpressEngine.instance.mutePublishStreamAudio(false);
+        await ZegoExpressEngine.instance.setCaptureVolume(100);
         await ZegoExpressEngine.instance.startPublishingStream(
           '${room.roomId}_$userId',
         );
       } else {
-        // Participants only listen — no mic, no stream
+        // Participants only listen initially — no mic
         await ZegoExpressEngine.instance.muteMicrophone(true);
+        await ZegoExpressEngine.instance.mutePublishStreamAudio(true);
 
         // Manually play host's stream in case onRoomStreamUpdate didn't fire
         final hostStreamId = '${room.roomId}_${room.hostId}';
-        _playingStreamIds.add(hostStreamId);
-        Future.delayed(const Duration(milliseconds: 500), () {
-          ZegoExpressEngine.instance.startPlayingStream(hostStreamId);
-          Loggers.info('AudioRoom: Manually started playing host stream $hostStreamId');
-        });
+        _playRemoteSpeakerStream(hostStreamId);
       }
 
       await OnlinePresenceService.instance.setInCall(myUser!.id!, true);
@@ -446,21 +579,64 @@ class AudioRoomController extends BaseController {
     }
   }
 
+  void _playRemoteSpeakerStream(String streamId) {
+    final myStreamId = '${room.roomId}_${myUser?.id}';
+    if (streamId == myStreamId) return; // Never play own stream
+    _playingStreamIds.add(streamId);
+    Loggers.info('AudioRoom: Subscribing to remote stream $streamId');
+
+    void doPlay() async {
+      try {
+        await ZegoExpressEngine.instance.muteAllPlayStreamAudio(false);
+        await ZegoExpressEngine.instance.setAudioRouteToSpeaker(true);
+        await ZegoExpressEngine.instance.startPlayingStream(streamId);
+        await ZegoExpressEngine.instance.mutePlayStreamAudio(streamId, false);
+        await ZegoExpressEngine.instance.setPlayVolume(streamId, 100);
+        await ZegoExpressEngine.instance.setAllPlayStreamVolume(100);
+        Loggers.success('AudioRoom: Successfully playing remote stream $streamId');
+      } catch (e) {
+        Loggers.error('AudioRoom: Error playing remote stream $streamId: $e');
+      }
+    }
+
+    doPlay();
+
+    // Redo after short delay in case remote publisher was still negotiating connection
+    Future.delayed(const Duration(milliseconds: 1000), () {
+      if (_playingStreamIds.contains(streamId)) {
+        doPlay();
+      }
+    });
+  }
+
+  void _stopRemoteSpeakerStream(String streamId) {
+    if (!_playingStreamIds.contains(streamId)) return;
+    _playingStreamIds.remove(streamId);
+    try {
+      ZegoExpressEngine.instance.stopPlayingStream(streamId);
+      Loggers.info('AudioRoom: Stopped playing remote stream $streamId');
+    } catch (e) {
+      Loggers.error('AudioRoom: Error stopping remote stream $streamId: $e');
+    }
+  }
+
   void _onRoomStreamUpdate(String roomID, ZegoUpdateType updateType,
       List<ZegoStream> streamList, Map<String, dynamic> extendedData) {
+    final myStreamId = '${room.roomId}_${myUser?.id}';
     for (var stream in streamList) {
+      final streamId = stream.streamID;
+      if (streamId == myStreamId) continue;
+
       if (updateType == ZegoUpdateType.Add) {
-        _playingStreamIds.add(stream.streamID);
-        ZegoExpressEngine.instance.startPlayingStream(stream.streamID);
-        Loggers.success('AudioRoom: Playing stream ${stream.streamID}');
+        _playRemoteSpeakerStream(streamId);
+        Loggers.success('AudioRoom: _onRoomStreamUpdate Add stream $streamId');
       } else {
-        _playingStreamIds.remove(stream.streamID);
-        ZegoExpressEngine.instance.stopPlayingStream(stream.streamID);
-        Loggers.info('AudioRoom: Stopped stream ${stream.streamID}');
+        _stopRemoteSpeakerStream(streamId);
+        Loggers.info('AudioRoom: _onRoomStreamUpdate Stopped stream $streamId');
 
         // Check if the host's stream was deleted — force exit all participants
         final hostStreamId = '${room.roomId}_${room.hostId}';
-        if (!isHost && stream.streamID == hostStreamId) {
+        if (!isHost && streamId == hostStreamId) {
           Loggers.info('AudioRoom: Host stream deleted, forcing exit');
           _forceExit('Host has ended the room');
         }
@@ -494,13 +670,22 @@ class AudioRoomController extends BaseController {
       }
       final data = snapshot.data()!;
       final updatedRoom = AudioRoom.fromJson(data);
+      if (updatedRoom.isActive == false && !isHost) {
+        _forceExit('Host has ended the room');
+        return;
+      }
       participantIds.value = List<int>.from(updatedRoom.participantIds ?? []);
       if (participantIds.length > peakListenerCount) {
         peakListenerCount = participantIds.length;
       }
+      final newSpeakerCount = (updatedRoom.speakerIds?.length ?? 1) - 1;
+      if (newSpeakerCount > connectedCallsCount.value) {
+        connectedCallsCount.value = newSpeakerCount;
+      }
       roomName.value = updatedRoom.roomName ?? 'Audio Room';
       backgroundImage.value = updatedRoom.backgroundImage ?? '';
       isRoomActive.value = updatedRoom.isActive ?? false;
+      isAutoMode.value = updatedRoom.isAutoMode ?? false;
       favouriteGiftId.value = updatedRoom.favouriteGiftId;
       isRoyalMode.value = updatedRoom.isRoyalMode ?? false;
       themeIndex.value = updatedRoom.themeIndex;
@@ -547,10 +732,41 @@ class AudioRoomController extends BaseController {
       speakerIds.value = newSpeakerIds;
       requestIds.value = newRequestIds;
 
+      // Ensure every remote speaker's stream is playing on this device
+      for (final spkId in newSpeakerIds) {
+        if (spkId != myUser?.id) {
+          final spkStreamId = '${room.roomId}_$spkId';
+          if (!_playingStreamIds.contains(spkStreamId)) {
+            _playRemoteSpeakerStream(spkStreamId);
+          }
+        }
+      }
+
+      // Stop any stream whose user is no longer a speaker (and not the host)
+      final allowedActiveStreams = {
+        '${room.roomId}_${room.hostId}',
+        ...newSpeakerIds.map((id) => '${room.roomId}_$id'),
+      };
+      final staleStreams = _playingStreamIds
+          .where((id) => !allowedActiveStreams.contains(id))
+          .toList();
+      for (final staleId in staleStreams) {
+        _stopRemoteSpeakerStream(staleId);
+      }
+
+      // Sync playback muting for any muted speakers
+      for (final spkId in newSpeakerIds) {
+        if (spkId != myUser?.id) {
+          final isSpkMuted = mutedSpeakerIds.contains(spkId);
+          ZegoExpressEngine.instance.mutePlayStreamAudio(
+            '${room.roomId}_$spkId',
+            isSpkMuted,
+          );
+        }
+      }
+
       // "Automatic Mode" (set when the host created the room) auto-accepts
-      // speak requests instead of the host approving each one manually —
-      // that field already existed on the room but was never actually
-      // consumed anywhere, so toggling it did nothing until now.
+      // speak requests instead of the host approving each one manually
       if (isHost &&
           (updatedRoom.isAutoMode ?? false) &&
           newRequestIds.isNotEmpty &&
@@ -643,7 +859,8 @@ class AudioRoomController extends BaseController {
 
   Future<void> _fetchParticipantProfiles() async {
     final List<OnlineUser> fetched = [];
-    for (int id in participantIds) {
+    final allIds = <int>{...participantIds, ...speakerIds, ...requestIds};
+    for (int id in allIds) {
       try {
         final doc = await _db
             .collection(FirebaseConst.onlineUsers)
@@ -651,6 +868,20 @@ class AudioRoomController extends BaseController {
             .get();
         if (doc.exists) {
           fetched.add(OnlineUser.fromJson(doc.data()!));
+        } else {
+          final userDoc = await _db
+              .collection(FirebaseConst.users)
+              .doc(id.toString())
+              .get();
+          if (userDoc.exists) {
+            final data = userDoc.data()!;
+            fetched.add(OnlineUser(
+              userId: id,
+              fullname: data['fullname'] ?? data['username'] ?? 'User $id',
+              username: data['username'],
+              profilePhoto: data['profile_photo'] ?? data['profile'],
+            ));
+          }
         }
       } catch (e) {
         Loggers.error('AudioRoom: fetch participant $id error: $e');
@@ -693,6 +924,11 @@ class AudioRoomController extends BaseController {
       showSnackBar('Join Call request is pending host approval');
       return;
     }
+    final micStatus = await Permission.microphone.request();
+    if (!micStatus.isGranted) {
+      showSnackBar('Microphone permission is required to join call');
+      return;
+    }
     hasRequested.value = true;
     try {
       await _db
@@ -720,6 +956,11 @@ class AudioRoomController extends BaseController {
   /// Host accepts a speaker request
   void acceptSpeaker(int userId) async {
     if (!isHost) return;
+    connectedCallsCount.value++;
+    final speakerStreamId = '${room.roomId}_$userId';
+    // Immediately subscribe so host hears the user as soon as they speak
+    _playRemoteSpeakerStream(speakerStreamId);
+
     await _db
         .collection(FirebaseConst.audioRooms)
         .doc(room.hostId.toString())
@@ -754,6 +995,8 @@ class AudioRoomController extends BaseController {
   /// Host revokes speaking permission
   void revokeSpeaker(int userId) async {
     if (!isHost) return;
+    final speakerStreamId = '${room.roomId}_$userId';
+    _stopRemoteSpeakerStream(speakerStreamId);
     await _db
         .collection(FirebaseConst.audioRooms)
         .doc(room.hostId.toString())
@@ -765,6 +1008,8 @@ class AudioRoomController extends BaseController {
   void toggleMuteParticipant(int userId) async {
     if (!isHost) return;
     final isMuted = mutedSpeakerIds.contains(userId);
+    final speakerStreamId = '${room.roomId}_$userId';
+    ZegoExpressEngine.instance.mutePlayStreamAudio(speakerStreamId, !isMuted);
     await _db
         .collection(FirebaseConst.audioRooms)
         .doc(room.hostId.toString())
@@ -967,14 +1212,24 @@ class AudioRoomController extends BaseController {
   /// Start publishing stream when approved as speaker
   Future<void> _startSpeaking() async {
     try {
+      final micStatus = await Permission.microphone.request();
+      if (!micStatus.isGranted) {
+        showSnackBar('Microphone permission is required to speak');
+        return;
+      }
       final userId = myUser?.id?.toString() ?? '0';
+      final streamId = '${room.roomId}_$userId';
+
+      await ZegoExpressEngine.instance.enableAudioCaptureDevice(true);
       await ZegoExpressEngine.instance.muteMicrophone(false);
-      await ZegoExpressEngine.instance.startPublishingStream(
-        '${room.roomId}_$userId',
-      );
+      await ZegoExpressEngine.instance.mutePublishStreamAudio(false);
+      await ZegoExpressEngine.instance.setCaptureVolume(100);
+      await ZegoExpressEngine.instance.setAudioRouteToSpeaker(true);
+
+      await ZegoExpressEngine.instance.startPublishingStream(streamId);
       isMuted.value = false;
       showSnackBar('You can now speak');
-      Loggers.success('AudioRoom: Started speaking');
+      Loggers.success('AudioRoom: Started speaking on stream $streamId');
     } catch (e) {
       Loggers.error('AudioRoom: start speaking error: $e');
     }
@@ -985,6 +1240,7 @@ class AudioRoomController extends BaseController {
     try {
       await ZegoExpressEngine.instance.stopPublishingStream();
       await ZegoExpressEngine.instance.muteMicrophone(true);
+      await ZegoExpressEngine.instance.mutePublishStreamAudio(true);
       isMuted.value = false;
       showSnackBar('Speaking permission revoked');
       Loggers.info('AudioRoom: Stopped speaking');
@@ -997,6 +1253,7 @@ class AudioRoomController extends BaseController {
     if (!isHost && !isSpeaker.value) return;
     isMuted.value = !isMuted.value;
     ZegoExpressEngine.instance.muteMicrophone(isMuted.value);
+    ZegoExpressEngine.instance.mutePublishStreamAudio(isMuted.value);
   }
 
   void toggleSpeaker() {
@@ -1099,10 +1356,36 @@ class AudioRoomController extends BaseController {
   /// visible to every viewer, toggled on/off by the host.
   void toggleRoyalMode() async {
     if (!isHost) return;
-    await _db
-        .collection(FirebaseConst.audioRooms)
-        .doc(room.hostId.toString())
-        .update({'is_royal_mode': !isRoyalMode.value});
+    final newValue = !isRoyalMode.value;
+    isRoyalMode.value = newValue;
+    try {
+      await _db
+          .collection(FirebaseConst.audioRooms)
+          .doc(room.hostId.toString())
+          .update({'is_royal_mode': newValue});
+    } catch (e) {
+      Loggers.error('AudioRoom: toggleRoyalMode error: $e');
+      isRoyalMode.value = !newValue;
+    }
+  }
+
+  void toggleAutoMode(bool value) async {
+    isAutoMode.value = value;
+    if (!isHost) return;
+    try {
+      await _db
+          .collection(FirebaseConst.audioRooms)
+          .doc(room.hostId.toString())
+          .update({'is_auto_mode': value});
+      if (value && requestIds.isNotEmpty && speakerIds.length < maxSpeakerSeats) {
+        final freeSeats = maxSpeakerSeats - speakerIds.length;
+        for (final userId in List<int>.from(requestIds).take(freeSeats)) {
+          acceptSpeaker(userId);
+        }
+      }
+    } catch (e) {
+      Loggers.error('toggleAutoMode error: $e');
+    }
   }
 
   void setFavouriteGift(Gift gift) async {
@@ -1320,29 +1603,90 @@ class AudioRoomController extends BaseController {
   void endRoom() async {
     if (!isHost || _isCleaningUp) return;
     _isCleaningUp = true;
+
+    final startTime = DateTime.fromMillisecondsSinceEpoch(
+        room.createdAt ?? DateTime.now().millisecondsSinceEpoch);
+    final durationMinutes = math.max(
+        1,
+        ((DateTime.now().millisecondsSinceEpoch -
+                (room.createdAt ?? DateTime.now().millisecondsSinceEpoch)) /
+            60000).ceil());
+    final viewers = math.max(peakListenerCount, participantIds.length);
+    final followers = sessionFollowersGained.value;
+    final calls = connectedCallsCount.value;
+    final commentsCount = comments.length;
+    final gifts = hostGiftCount.value;
+    final stars = hostStarTotal.value;
+
     _roomDocSubscription?.cancel();
     _musicPlayer.stop();
     _musicPlayer.dispose();
     await _leaveZegoRoom();
+
     if (apiAudioRoomId != null) {
       try {
         await GiftWalletService.instance.endAudioRoom(
           audioRoomId: apiAudioRoomId!,
-          peakListenerCount: peakListenerCount,
+          peakListenerCount: viewers,
         );
       } catch (e) {
         Loggers.error('AudioRoom: end history error: $e');
       }
     }
-    await _db
-        .collection(FirebaseConst.audioRooms)
-        .doc(room.hostId.toString())
-        .delete();
-    Get.back();
-    Get.delete<AudioRoomController>();
+
+    try {
+      await _db
+          .collection(FirebaseConst.audioRooms)
+          .doc(room.hostId.toString())
+          .update({'is_active': false});
+    } catch (_) {}
+
+    try {
+      await _db
+          .collection(FirebaseConst.audioRooms)
+          .doc(room.hostId.toString())
+          .delete();
+    } catch (_) {}
+
+    if (room.roomId != null && room.roomId!.isNotEmpty) {
+      try {
+        await _db
+            .collection(FirebaseConst.audioRooms)
+            .doc(room.roomId!)
+            .delete();
+      } catch (_) {}
+    }
+
+    // Instantly remove from AudioCallListController so it vanishes from Home Page
+    if (Get.isRegistered<AudioCallListController>()) {
+      Get.find<AudioCallListController>().audioRooms.removeWhere(
+            (r) => r.hostId == room.hostId || r.roomId == room.roomId,
+          );
+    }
+
+    Get.dialog(
+      LiveSummaryDialog(
+        title: 'Audio Live Show',
+        startTime: startTime,
+        durationMinutes: durationMinutes,
+        followersCount: followers,
+        viewersCount: viewers,
+        callsCount: calls,
+        commentsCount: commentsCount,
+        premiumGiftsCount: gifts,
+        starsEarned: stars,
+        endedBy: 'Host',
+        onClose: () {
+          Get.back(); // close summary dialog
+          Get.back(); // exit AudioRoomScreen to home
+          Get.delete<AudioRoomController>();
+        },
+      ),
+      barrierDismissible: false,
+    );
   }
 
-  void leaveRoom() async {
+  Future<void> leaveRoom({bool shouldPop = true}) async {
     if (_isCleaningUp || myUser?.id == null) return;
     _isCleaningUp = true;
     _roomDocSubscription?.cancel();
@@ -1350,16 +1694,27 @@ class AudioRoomController extends BaseController {
     _musicPlayer.dispose();
     await _leaveZegoRoom();
     try {
-      await _db
-          .collection(FirebaseConst.audioRooms)
-          .doc(room.hostId.toString())
-          .update({
-        'participant_ids': FieldValue.arrayRemove([myUser!.id]),
-      });
+      if (isHost) {
+        final hostRoomRef = _db
+            .collection(FirebaseConst.audioRooms)
+            .doc(room.hostId.toString());
+        await _purgeSubcollection(hostRoomRef.collection('comments'));
+        await _purgeSubcollection(hostRoomRef.collection('gifts'));
+        await hostRoomRef.delete();
+      } else {
+        await _db
+            .collection(FirebaseConst.audioRooms)
+            .doc(room.hostId.toString())
+            .update({
+          'participant_ids': FieldValue.arrayRemove([myUser!.id]),
+        });
+      }
     } catch (e) {
       Loggers.error('AudioRoom: leave room update error: $e');
     }
-    Get.back();
+    if (shouldPop) {
+      Get.back();
+    }
     Get.delete<AudioRoomController>();
   }
 

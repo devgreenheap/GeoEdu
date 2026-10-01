@@ -24,6 +24,8 @@ class AudioRoom {
   List<int>? lockedSeatIndices;
   String? pinnedComment;
   int? likeCount;
+  int? categoryId;
+  String? categoryName;
 
   // PK Battle (audio-host-vs-audio-host)
   int? pkOpponentId;
@@ -59,6 +61,8 @@ class AudioRoom {
     this.lockedSeatIndices,
     this.pinnedComment,
     this.likeCount,
+    this.categoryId,
+    this.categoryName,
     this.pkOpponentId,
     this.pkStatus,
     this.pkStartedAt,
@@ -109,6 +113,8 @@ class AudioRoom {
         : [];
     pinnedComment = json['pinned_comment'];
     likeCount = json['like_count'];
+    categoryId = json['category_id'];
+    categoryName = json['category_name'];
     pkOpponentId = json['pk_opponent_id'];
     pkStatus = json['pk_status'];
     pkStartedAt = json['pk_started_at'];
@@ -144,6 +150,8 @@ class AudioRoom {
       'locked_seat_indices': lockedSeatIndices,
       'pinned_comment': pinnedComment,
       'like_count': likeCount,
+      'category_id': categoryId,
+      'category_name': categoryName,
       'pk_opponent_id': pkOpponentId,
       'pk_status': pkStatus,
       'pk_started_at': pkStartedAt,

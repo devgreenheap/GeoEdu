@@ -166,6 +166,7 @@ class UserService {
 
   Future<User?> updateUserDetails(
       {XFile? profilePhoto,
+      XFile? verificationPhoto,
       String? fullname,
       String? userName,
       String? bio,
@@ -222,7 +223,8 @@ class UserService {
     UserModel userModel = await ApiService.instance.multiPartCallApi(
         url: WebService.user.updateUserDetails,
         filesMap: {
-          Params.profilePhoto: [profilePhoto]
+          if (profilePhoto != null) Params.profilePhoto: [profilePhoto],
+          if (verificationPhoto != null) Params.verificationPhoto: [verificationPhoto],
         },
         param: {
           Params.fullname: fullname,
