@@ -83,6 +83,7 @@
                             <tr>
                                 <th>{{ __('S.No')}}</th>
                                 <th>{{ __('User')}}</th>
+                                <th>{{ __('Verification Photo')}}</th>
                                 <th>{{ __('Real/Dummy')}}</th>
                                 <th>{{ __('Identity')}}</th>
                                 <th>{{ __('Mobile')}}</th>

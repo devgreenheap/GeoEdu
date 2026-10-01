@@ -104,6 +104,34 @@ use App\Models\GlobalFunction;
                 </div>
             </div>
         </div>
+        {{-- Verification Photo Card (Admin Only) --}}
+        <div class="card">
+            <div class="card-header d-flex align-items-center border-bottom">
+                <h4 class="card-title header-title mb-0">
+                    <i class="uil-shield-check text-success me-1"></i> {{ __('Verification Photo') }}
+                </h4>
+                <span class="badge bg-danger ms-auto">{{ __('Admin Only') }}</span>
+            </div>
+            <div class="card-body text-center">
+                @if(!empty($user->verification_photo))
+                    <div class="position-relative d-inline-block w-100">
+                        <a href="{{ $baseUrl . $user->verification_photo }}" target="_blank" title="Click to view full photo">
+                            <img src="{{ $baseUrl . $user->verification_photo }}" class="img-thumbnail rounded-3 shadow-sm object-fit-cover w-100" style="max-height: 240px;" alt="Verification Photo">
+                        </a>
+                    </div>
+                    <div class="mt-2">
+                        <a href="{{ $baseUrl . $user->verification_photo }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                            <i class="uil-external-link-alt"></i> {{ __('View Full Photo') }}
+                        </a>
+                    </div>
+                @else
+                    <div class="py-3 text-muted">
+                        <i class="uil-image-slash font-24 mb-1 d-block"></i>
+                        <span class="fs-6">{{ __('No verification photo submitted') }}</span>
+                    </div>
+                @endif
+            </div>
+        </div>
         {{-- Wallet Card --}}
         <div class="card">
             <div class="card-header d-flex align-items-center border-bottom">

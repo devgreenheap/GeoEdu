@@ -1376,7 +1376,7 @@ class LivestreamScreenController extends BaseController {
         switch (change.type) {
           case DocumentChangeType.added:
             if (comment.id != null && liveData.value.createdAt != null) {
-              final liveCreated = int.tryParse(liveData.value.createdAt ?? '') ?? 0;
+              final liveCreated = int.tryParse(liveData.value.createdAt?.toString() ?? '') ?? 0;
               if (liveCreated > 0 && comment.id! < liveCreated - 3000) {
                 continue;
               }

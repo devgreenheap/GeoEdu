@@ -31,6 +31,7 @@
                                 <th>{{ __('Request ID')}}</th>
                                 <th>{{ __('Type')}}</th>
                                 <th>{{ __('User')}}</th>
+                                <th>{{ __('Verification Photo')}}</th>
                                 <th>{{ __('Requested Date')}}</th>
                                 <th>{{ __('Status')}}</th>
                                 <th style="width: 200px;" class="text-end">{{ __('Action')}}</th>
@@ -47,6 +48,7 @@
                                 <th>{{ __('Request ID')}}</th>
                                 <th>{{ __('Type')}}</th>
                                 <th>{{ __('User')}}</th>
+                                <th>{{ __('Verification Photo')}}</th>
                                 <th>{{ __('Requested Date')}}</th>
                                 <th>{{ __('Action Date')}}</th>
                                 <th>{{ __('Status')}}</th>
@@ -63,6 +65,7 @@
                                 <th>{{ __('Request ID')}}</th>
                                 <th>{{ __('Type')}}</th>
                                 <th>{{ __('User')}}</th>
+                                <th>{{ __('Verification Photo')}}</th>
                                 <th>{{ __('Requested Date')}}</th>
                                 <th>{{ __('Action Date')}}</th>
                                 <th>{{ __('Status')}}</th>

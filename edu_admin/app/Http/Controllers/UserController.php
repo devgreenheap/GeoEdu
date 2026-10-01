@@ -660,6 +660,12 @@ class UserController extends Controller
             }
             $user->profile_photo = GlobalFunction::saveFileAndGivePath($request->profile_photo);
         }
+        if($request->has('verification_photo')){
+            if($user->verification_photo != null){
+                GlobalFunction::deleteFile($user->verification_photo);
+            }
+            $user->verification_photo = GlobalFunction::saveFileAndGivePath($request->verification_photo);
+        }
         $user->username = $request->username;
         $user->fullname = $request->fullname;
         if ($request->has('user_email')) {
@@ -2206,9 +2212,18 @@ class UserController extends Controller
                 {$commissionHtml}
             </div>";
 
+            $verificationPhotoHtml = "<span class='badge bg-light text-muted border'>Not Uploaded</span>";
+            if (!empty($item->verification_photo)) {
+                $vPhotoUrl = GlobalFunction::generateFileUrl($item->verification_photo);
+                $verificationPhotoHtml = "<a href='{$vPhotoUrl}' target='_blank' class='d-inline-block position-relative' title='View Verification Photo (Admin Only)'>
+                    <img src='{$vPhotoUrl}' class='rounded-3 border border-2 border-primary object-fit-cover shadow-sm' style='width: 46px; height: 46px;' alt='Verification Photo'>
+                </a>";
+            }
+
             return [
                 $serialNumber,
                 $userProfileCard,
+                $verificationPhotoHtml,
                 $realOrFake,
                 $item->identity,
                 $mobile,
@@ -2505,6 +2520,7 @@ class UserController extends Controller
             'instagram_handle' => 'nullable|string|max:100',
             'app_language' => 'nullable|string|max:20',
             'profile_photo' => 'nullable',
+            'verification_photo' => 'nullable',
             'bank_name' => 'nullable|string|max:255',
             'account_number' => 'nullable|string|max:100',
             'ifsc_code' => 'nullable|string|max:50',
@@ -2607,6 +2623,14 @@ class UserController extends Controller
                 GlobalFunction::deleteFile($user->profile_photo);
             }
             $user->profile_photo = GlobalFunction::saveFileAndGivePath($request->profile_photo);
+        }
+
+        // Handle verification photo separately (Admin verification only)
+        if ($request->has('verification_photo')) {
+            if ($user->verification_photo) {
+                GlobalFunction::deleteFile($user->verification_photo);
+            }
+            $user->verification_photo = GlobalFunction::saveFileAndGivePath($request->verification_photo);
         }
         // Handle Username
         if ($request->has('username')) {

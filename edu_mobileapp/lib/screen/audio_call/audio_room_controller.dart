@@ -431,6 +431,8 @@ class AudioRoomController extends BaseController {
         .listen((snapshot) {
       for (var change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added) {
+          GiftEffect gift =
+              GiftEffect.fromJson(change.doc.data() as Map<String, dynamic>);
           final roomCreated = room.createdAt ?? 0;
           // If the gift was sent before this room session or before user entered, do not record or replay
           if (gift.timestamp < _roomEnteredAt ||
@@ -441,14 +443,14 @@ class AudioRoomController extends BaseController {
             continue;
           }
 
-          recordGiftForTopGifter(gift.username, gift.coinPrice ?? 0);
+          recordGiftForTopGifter(gift.username, (gift.coinPrice ?? 0).toInt());
 
           // Sender already played the gift effect immediately locally
           if (gift.userId == myUser?.id) {
             continue;
           }
           hostGiftCount.value++;
-          hostStarTotal.value += gift.coinPrice ?? 0;
+          hostStarTotal.value += (gift.coinPrice ?? 0).toInt();
           giftQueue.add(gift);
           _processGiftQueue();
         }

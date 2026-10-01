@@ -1457,6 +1457,15 @@ class WalletController extends Controller
 
         $data = $result->map(function ($item) use ($status) {
             $user = GlobalFunction::createUserDetailsColumn($item->user_id);
+            $userModel = Users::find($item->user_id);
+            $verificationPhotoHtml = "<span class='badge bg-light text-muted border'>Not Uploaded</span>";
+            if ($userModel && !empty($userModel->verification_photo)) {
+                $vPhotoUrl = GlobalFunction::generateFileUrl($userModel->verification_photo);
+                $verificationPhotoHtml = "<a href='{$vPhotoUrl}' target='_blank' class='d-inline-block position-relative' title='View Verification Photo (Admin Only)'>
+                    <img src='{$vPhotoUrl}' class='rounded-3 border border-2 border-primary object-fit-cover shadow-sm' style='width: 46px; height: 46px;' alt='Verification Photo'>
+                </a>";
+            }
+
             $requestType = intval($item->request_type) === Constants::roleRequestHost
                 ? "<span class='badge bg-primary'>HOST</span>"
                 : "<span class='badge bg-info'>AGENT</span>";
@@ -1486,6 +1495,7 @@ class WalletController extends Controller
                     "#{$item->id}",
                     $requestType,
                     $user,
+                    $verificationPhotoHtml,
                     GlobalFunction::formateDatabaseTime($item->requested_at ?? $item->created_at),
                     $statusBadge,
                     $action,
@@ -1496,6 +1506,7 @@ class WalletController extends Controller
                 "#{$item->id}",
                 $requestType,
                 $user,
+                $verificationPhotoHtml,
                 GlobalFunction::formateDatabaseTime($item->requested_at ?? $item->created_at),
                 GlobalFunction::formateDatabaseTime($item->action_at ?? $item->updated_at),
                 $statusBadge,
