@@ -201,8 +201,20 @@ class SendGiftSheet extends StatelessWidget {
 
 Widget _buildGiftGrid(
     List<Gift> gifts, SendGiftSheetController controller, BuildContext context) {
+  int? favouriteGiftId;
+  if (Get.isRegistered<LivestreamScreenController>()) {
+    favouriteGiftId =
+        Get.find<LivestreamScreenController>().liveData.value.favouriteGiftId;
+  }
+
+  final sortedGifts = List<Gift>.from(gifts);
+  if (favouriteGiftId != null) {
+    sortedGifts.sort((a, b) => (a.id == favouriteGiftId ? 0 : 1)
+        .compareTo(b.id == favouriteGiftId ? 0 : 1));
+  }
+
   return GridView.builder(
-    itemCount: gifts.length,
+    itemCount: sortedGifts.length,
     padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 4,
@@ -210,17 +222,23 @@ Widget _buildGiftGrid(
         crossAxisSpacing: 8,
         mainAxisSpacing: 8),
     itemBuilder: (context, index) {
-      Gift gift = gifts[index];
-      String? badgeText = gift.categoryName;
+      Gift gift = sortedGifts[index];
+      final isFav = favouriteGiftId != null && gift.id == favouriteGiftId;
+      String? badgeText = isFav ? "Host's Pick" : gift.categoryName;
       return InkWell(
         onTap: () => controller.onGiftTap(gift, context),
         borderRadius: BorderRadius.circular(16),
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.06),
+            color: isFav
+                ? const Color(0xFF2E221B)
+                : Colors.white.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-                color: Colors.white.withValues(alpha: 0.08), width: 1),
+                color: isFav
+                    ? const Color(0xFFFF7A19)
+                    : Colors.white.withValues(alpha: 0.08),
+                width: isFav ? 1.5 : 1),
           ),
           child: Column(
             children: [
@@ -232,18 +250,29 @@ Widget _buildGiftGrid(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 6, vertical: 1.5),
                         decoration: BoxDecoration(
-                          color: badgeText.toLowerCase().contains('love')
-                              ? const Color(0xFFE91E63)
-                              : const Color(0xFFFFB300),
+                          color: isFav
+                              ? const Color(0xFFFF7A19)
+                              : (badgeText.toLowerCase().contains('love')
+                                  ? const Color(0xFFE91E63)
+                                  : const Color(0xFFFFB300)),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Text(
-                          badgeText,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 8.5,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (isFav) ...[
+                              const Icon(Icons.star, size: 9, color: Colors.white),
+                              const SizedBox(width: 2),
+                            ],
+                            Text(
+                              badgeText,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
                         ),
                       )
                     : const SizedBox.shrink(),

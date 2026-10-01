@@ -28,6 +28,12 @@ class SideActionColumn extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           _ActionIcon(
+            icon: Icons.card_giftcard_rounded,
+            label: 'Gift',
+            onTap: () => controller.showFavouriteGiftSheet(context),
+          ),
+          const SizedBox(height: 16),
+          _ActionIcon(
             icon: Icons.face_retouching_natural_rounded,
             label: 'Themes',
             onTap: () => Get.snackbar('Themes', 'Beauty filters are not available yet.',
@@ -55,6 +61,15 @@ class SideActionColumn extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.card_giftcard_rounded, color: Color(0xFFFF7A19)),
+              title: const Text('Favourite Gift', style: TextStyle(color: Colors.white)),
+              subtitle: const Text('Highlight one gift to your viewers', style: TextStyle(color: Colors.white38, fontSize: 12)),
+              onTap: () {
+                Get.back();
+                controller.showFavouriteGiftSheet(context);
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.flip_camera_ios_rounded, color: Colors.white),
               title: const Text('Flip Camera', style: TextStyle(color: Colors.white)),

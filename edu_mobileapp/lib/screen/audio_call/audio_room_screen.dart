@@ -4057,7 +4057,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
 
   void _showCategoryGiftsSheet(AudioRoomController controller) {
     if (isHost) {
-      showSnackBar('Hosts cannot send gifts to themselves');
+      _showFavouriteGiftSheet(controller);
       return;
     }
     controller.fetchDiamondBalanceIfNeeded(force: true);

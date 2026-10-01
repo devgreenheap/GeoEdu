@@ -316,10 +316,14 @@ class TextFieldSuffixIcon extends StatelessWidget {
 
     if (!isAudience) {
       return AnimatedContainer(
-        width: !isTextEmpty ? 80 : 0,
+        width: !isTextEmpty ? 80 : 40,
         alignment: AlignmentDirectional.centerEnd,
         duration: const Duration(milliseconds: 100),
-        child: !isTextEmpty ? _sendButton(context) : const SizedBox.shrink(),
+        child: !isTextEmpty
+            ? _sendButton(context)
+            : GiftIcon(
+                onTap: () => controller.showFavouriteGiftSheet(context),
+              ),
       );
     }
 

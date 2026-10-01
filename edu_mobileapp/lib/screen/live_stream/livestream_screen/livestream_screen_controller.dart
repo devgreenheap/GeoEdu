@@ -51,6 +51,7 @@ import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:zego_express_engine/zego_express_engine.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requested_sheet.dart';
+import 'package:geoedu/common/widget/live_room/favourite_gift_sheet.dart';
 
 import '../../../common/extensions/string_extension.dart';
 import '../../../model/livestream/entry_effects_model.dart';
@@ -1125,6 +1126,26 @@ class LivestreamScreenController extends BaseController {
   void setFavouriteGift(Gift gift) {
     if (gift.id == null) return;
     updateLiveStreamData(favouriteGiftId: gift.id);
+  }
+
+  void removeFavouriteGift() {
+    liveStreamDocRef.update({
+      FirebaseConst.favouriteGiftId: FieldValue.delete(),
+    });
+  }
+
+  void showFavouriteGiftSheet(BuildContext context) {
+    final availableGifts = setting?.allGiftsWithPen.isNotEmpty == true
+        ? setting!.allGiftsWithPen
+        : (setting?.gifts ?? []);
+
+    FavouriteGiftSheet.show(
+      context: context,
+      currentFavGiftId: liveData.value.favouriteGiftId,
+      availableGifts: availableGifts,
+      onSetGift: (gift) => setFavouriteGift(gift),
+      onRemoveGift: () => removeFavouriteGift(),
+    );
   }
 
   void handleRequestResponse({
