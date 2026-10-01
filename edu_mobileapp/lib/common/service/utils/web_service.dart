@@ -113,6 +113,8 @@ class _User {
   String fetchMyFavoriteUsers = "${apiURL}user/fetchMyFavoriteUsers";
   String unFavoriteUser = "${apiURL}user/unFavoriteUser";
   String sendSignupOtp = "${apiURL}user/sendSignupOtp";
+  String sendLoginOtp = "${apiURL}user/sendLoginOtp";
+  String checkIdentityAvailability = "${apiURL}user/checkIdentityAvailability";
   String verifySignupOtp = "${apiURL}user/verifySignupOtp";
   String logInWithVerifiedOtp = "${apiURL}user/logInWithVerifiedOtp";
   String fetchMyInterests = "${apiURL}user/fetchMyInterests";

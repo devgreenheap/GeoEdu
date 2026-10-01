@@ -10,8 +10,45 @@ import 'package:geoedu/utilities/asset_res.dart';
 
 /// Premium dark-theme Login Screen — unified with the 3-step registration flow.
 /// Features glassmorphism cards, glowing brand logo, fluid gradients, and instant OTP verification.
-class LoginScreen extends StatelessWidget {
+class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  late final AuthScreenController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = Get.isRegistered<AuthScreenController>()
+        ? Get.find<AuthScreenController>()
+        : Get.put(AuthScreenController());
+
+    // Dismiss any carried-over snackbars immediately
+    if (Get.isSnackbarOpen) {
+      Get.closeAllSnackbars();
+    }
+    controller.stopSnackBar();
+
+    // Reset registration error states so Login page opens clean without previous errors
+    controller.clearRegistrationErrors();
+    controller.clearErrors();
+    controller.loginError = null;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (Get.isSnackbarOpen) {
+        Get.closeAllSnackbars();
+      }
+      controller.stopSnackBar();
+      controller.clearRegistrationErrors();
+      controller.clearErrors();
+      controller.loginError = null;
+      controller.update();
+    });
+  }
 
   void _openOtpScreen(AuthScreenController controller) {
     Get.to(() => OtpVerificationScreen(
@@ -30,9 +67,6 @@ class LoginScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.isRegistered<AuthScreenController>()
-        ? Get.find<AuthScreenController>()
-        : Get.put(AuthScreenController());
 
     return Scaffold(
       backgroundColor: AuthColors.background,
@@ -216,7 +250,20 @@ class LoginScreen extends StatelessWidget {
                                 : c.selectLoginCountryCode,
                             controller: controller.loginMobileController,
                             enabled: !c.isLoginOtpVerified,
+                            hasError: c.loginError != null &&
+                                !c.loginError!.toLowerCase().contains('already registered') &&
+                                !c.loginError!.toLowerCase().contains('already exists'),
+                            onChanged: (val) {
+                              if (c.loginError != null) {
+                                c.loginError = null;
+                                c.update();
+                              }
+                            },
                           ),
+                          if (c.loginError != null &&
+                              !c.loginError!.toLowerCase().contains('already registered') &&
+                              !c.loginError!.toLowerCase().contains('already exists'))
+                            AuthErrorText(c.loginError),
 
                           if (c.isLoginOtpVerified) ...[
                             const SizedBox(height: 12),
@@ -288,6 +335,11 @@ class LoginScreen extends StatelessWidget {
                         onTap: () {
                           controller.fullNameController.clear();
                           controller.emailController.clear();
+                          controller.mobileController.clear();
+                          controller.clearRegistrationErrors();
+                          controller.clearErrors();
+                          controller.loginError = null;
+                          controller.goToStep(1);
                           Get.to(() => const RegistrationScreen());
                         },
                         child: Container(

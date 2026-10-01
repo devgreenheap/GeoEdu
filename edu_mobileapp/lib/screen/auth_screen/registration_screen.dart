@@ -55,8 +55,15 @@ class RegistrationScreen extends StatelessWidget {
                       if (c.registrationStep > 1) {
                         controller.goToPreviousStep();
                       } else if (Navigator.canPop(context)) {
+                        controller.clearRegistrationErrors();
+                        controller.clearErrors();
+                        controller.loginError = null;
                         Get.back();
                       } else {
+                        controller.clearRegistrationErrors();
+                        controller.clearErrors();
+                        controller.loginError = null;
+                        controller.resetLoginState(keepCredentials: false);
                         Get.off(() => const LoginScreen());
                       }
                     },
@@ -331,10 +338,25 @@ class _Step1Personal extends StatelessWidget {
                 onCountryCodeChanged:
                     c.isOtpVerified ? null : controller.selectCountryCode,
                 controller: controller.mobileController,
+                onChanged: controller.onMobileChanged,
                 enabled: !c.isOtpVerified,
                 hasError: c.getError('mobile') != null,
               ),
-              AuthErrorText(c.getError('mobile')),
+              AuthErrorText(
+                c.getError('mobile'),
+                actionText: c.isMobileAlreadyRegistered ? 'Login' : null,
+                onAction: c.isMobileAlreadyRegistered
+                    ? () {
+                        final mob = controller.mobileController.text.trim();
+                        controller.clearRegistrationErrors();
+                        controller.clearErrors();
+                        controller.loginError = null;
+                        controller.resetLoginState(keepCredentials: true);
+                        controller.loginMobileController.text = mob;
+                        Get.off(() => const LoginScreen());
+                      }
+                    : null,
+              ),
 
               // Phone verified badge
               if (c.isOtpVerified) ...[
@@ -350,9 +372,24 @@ class _Step1Personal extends StatelessWidget {
                 hintText: 'Enter your email address',
                 icon: Icons.email_outlined,
                 keyboardType: TextInputType.emailAddress,
+                onChanged: controller.onEmailChanged,
                 hasError: c.getError('email') != null,
               ),
-              AuthErrorText(c.getError('email')),
+              AuthErrorText(
+                c.getError('email'),
+                actionText: c.isEmailAlreadyRegistered ? 'Login' : null,
+                onAction: c.isEmailAlreadyRegistered
+                    ? () {
+                        final em = controller.emailController.text.trim();
+                        controller.clearRegistrationErrors();
+                        controller.clearErrors();
+                        controller.loginError = null;
+                        controller.resetLoginState(keepCredentials: true);
+                        controller.loginEmailController.text = em;
+                        Get.off(() => const LoginScreen());
+                      }
+                    : null,
+              ),
               const SizedBox(height: 30),
 
               // ── Continue Button ──
@@ -367,7 +404,15 @@ class _Step1Personal extends StatelessWidget {
                     : const Icon(Icons.arrow_forward_rounded,
                         color: Colors.white, size: 18),
                 onTap: () async {
-                  controller.fieldErrors.clear();
+                  if (controller.isMobileAlreadyRegistered) {
+                    controller.fieldErrors['mobile'] =
+                        'This mobile number is already registered. Please login to continue.';
+                  }
+                  if (controller.isEmailAlreadyRegistered) {
+                    controller.fieldErrors['email'] =
+                        'This email is already registered. Please login to continue.';
+                  }
+
                   bool hasError = false;
                   if (controller.fullNameController.text.trim().isEmpty) {
                     controller.fieldErrors['fullName'] =
@@ -378,6 +423,8 @@ class _Step1Personal extends StatelessWidget {
                     controller.fieldErrors['mobile'] =
                         'Mobile number is required';
                     hasError = true;
+                  } else if (controller.isMobileAlreadyRegistered) {
+                    hasError = true;
                   }
                   if (controller.emailController.text.trim().isEmpty) {
                     controller.fieldErrors['email'] = 'Email is required';
@@ -386,6 +433,8 @@ class _Step1Personal extends StatelessWidget {
                       controller.emailController.text.trim())) {
                     controller.fieldErrors['email'] =
                         'Enter a valid email address';
+                    hasError = true;
+                  } else if (controller.isEmailAlreadyRegistered) {
                     hasError = true;
                   }
                   controller.update();
@@ -409,6 +458,10 @@ class _Step1Personal extends StatelessWidget {
               Center(
                 child: GestureDetector(
                   onTap: () {
+                    controller.clearRegistrationErrors();
+                    controller.clearErrors();
+                    controller.loginError = null;
+                    controller.resetLoginState(keepCredentials: false);
                     if (Navigator.canPop(context)) {
                       Get.back();
                     } else {
@@ -621,13 +674,31 @@ class _Step2Category extends StatelessWidget {
 
 // ─── Step 3: Address ──────────────────────────────────────────────────────────
 
-class _Step3Address extends StatelessWidget {
+class _Step3Address extends StatefulWidget {
   final AuthScreenController controller;
 
   const _Step3Address({required this.controller});
 
   @override
+  State<_Step3Address> createState() => _Step3AddressState();
+}
+
+class _Step3AddressState extends State<_Step3Address> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!widget.controller.isLocationAutoDetected &&
+          !widget.controller.isDetectingLocation &&
+          widget.controller.address1Controller.text.trim().isEmpty) {
+        widget.controller.autoDetectLocation(silent: true);
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final controller = widget.controller;
     return GetBuilder<AuthScreenController>(
       builder: (c) {
         return SingleChildScrollView(
@@ -805,7 +876,7 @@ class _AutoDetectButton extends StatelessWidget {
                       padding: EdgeInsets.all(10),
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.my_location_rounded,
+                  : const Icon(Icons.edit_location_alt_rounded,
                       color: Colors.white, size: 20),
             ),
             const SizedBox(width: 14),
@@ -816,7 +887,7 @@ class _AutoDetectButton extends StatelessWidget {
                   Text(
                     c.isDetectingLocation
                         ? 'Detecting your location...'
-                        : 'Auto-detect My Location',
+                        : 'Change Location Manually',
                     style: const TextStyle(
                         color: AuthColors.gioGold,
                         fontSize: 14,
@@ -825,7 +896,7 @@ class _AutoDetectButton extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     c.detectedLocationLabel ??
-                        'Tap to fill address automatically',
+                        'Edit fields below or tap to re-detect',
                     style: const TextStyle(
                         color: AuthColors.textSecondary,
                         fontSize: 12),

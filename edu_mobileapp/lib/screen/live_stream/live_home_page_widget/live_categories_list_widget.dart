@@ -92,7 +92,96 @@ class LiveCategoriesListWidget extends StatelessWidget {
             );
           }),
         ),
+        Obx(() {
+          final subCat = controller.selectedSubCategory.value;
+          final div = controller.selectedDivision.value;
+          final top = controller.selectedTopic.value;
+
+          if (subCat == null && div == null && top == null) {
+            return const SizedBox.shrink();
+          }
+
+          return Container(
+            margin: const EdgeInsets.only(top: 8, left: 14, right: 14),
+            height: 28,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              children: [
+                if (subCat != null)
+                  _buildActiveChip(
+                    label: subCat.name ?? '',
+                    icon: Icons.subdirectory_arrow_right_rounded,
+                    onClear: () {
+                      controller.selectedSubCategory.value = null;
+                      controller.selectedDivision.value = null;
+                      controller.selectedTopic.value = null;
+                      controller.onCategorySelected(controller.selectedCategoryIndex.value);
+                    },
+                  ),
+                if (div != null)
+                  _buildActiveChip(
+                    label: div.name ?? '',
+                    icon: Icons.layers_rounded,
+                    onClear: () {
+                      controller.selectedDivision.value = null;
+                      controller.selectedTopic.value = null;
+                      controller.onCategorySelected(controller.selectedCategoryIndex.value);
+                    },
+                  ),
+                if (top != null)
+                  _buildActiveChip(
+                    label: top.name ?? '',
+                    icon: Icons.topic_rounded,
+                    onClear: () {
+                      controller.selectedTopic.value = null;
+                      controller.onCategorySelected(controller.selectedCategoryIndex.value);
+                    },
+                  ),
+              ],
+            ),
+          );
+        }),
       ],
+    );
+  }
+
+  Widget _buildActiveChip({
+    required String label,
+    required IconData icon,
+    required VoidCallback onClear,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFF7A00).withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0xFFFF7A00).withValues(alpha: 0.5),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: const Color(0xFFFF7A00)),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFFFF7A00),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onClear,
+            child: const Icon(Icons.close_rounded, size: 12, color: Color(0xFFFF7A00)),
+          ),
+        ],
+      ),
     );
   }
 }

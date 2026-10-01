@@ -6,6 +6,8 @@ class AppUser {
   int? isVerify;
   String? identity;
   int? categoryId;
+  int? subCategoryId;
+  int? topicId;
   int? level;
 
   AppUser(
@@ -16,6 +18,8 @@ class AppUser {
       this.isVerify,
       this.identity,
       this.categoryId,
+      this.subCategoryId,
+      this.topicId,
       this.level});
 
   AppUser.fromJson(Map<String, dynamic> json) {
@@ -26,6 +30,8 @@ class AppUser {
     profile = json['profile'];
     isVerify = json['is_verify'];
     categoryId = json['category_id'];
+    subCategoryId = json['sub_category_id'];
+    topicId = json['topic_id'];
     level = json['level'];
   }
 
@@ -38,6 +44,8 @@ class AppUser {
     data['profile'] = profile;
     data['is_verify'] = isVerify;
     data['category_id'] = categoryId;
+    data['sub_category_id'] = subCategoryId;
+    data['topic_id'] = topicId;
     data['level'] = level;
     return data;
   }

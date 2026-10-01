@@ -457,10 +457,27 @@ class UserService {
     await ApiService.instance.call(url: WebService.user.updateLastUsedAt);
   }
 
+  Future<StatusModel> checkIdentityAvailability({
+    String? mobile,
+    String? email,
+  }) async {
+    StatusModel model = await ApiService.instance.call(
+      url: WebService.user.checkIdentityAvailability,
+      param: {
+        if (mobile != null && mobile.isNotEmpty) 'mobile': mobile,
+        if (email != null && email.isNotEmpty) 'email': email,
+      },
+      fromJson: StatusModel.fromJson,
+      cancelAuthToken: true,
+    );
+    return model;
+  }
+
   Future<StatusModel> sendSignupOtp({
     String? mobileCountryCode,
     String? mobile,
     String? email,
+    bool isLogin = false,
   }) async {
     StatusModel model = await ApiService.instance.call(
       url: WebService.user.sendSignupOtp,
@@ -470,11 +487,45 @@ class UserService {
           Params.mobileCountryCode: mobileCountryCode,
           Params.userMobileNo: mobile,
         },
+        if (isLogin) 'is_login': 1,
+        if (isLogin) 'purpose': 'login',
       },
       fromJson: StatusModel.fromJson,
       cancelAuthToken: true,
     );
     return model;
+  }
+
+  Future<StatusModel> sendLoginOtp({
+    String? mobileCountryCode,
+    String? mobile,
+    String? email,
+  }) async {
+    final bool byEmail = email != null && email.isNotEmpty;
+    try {
+      StatusModel model = await ApiService.instance.call(
+        url: WebService.user.sendLoginOtp,
+        param: {
+          if (byEmail) 'email': email,
+          if (!byEmail) ...{
+            Params.mobileCountryCode: mobileCountryCode,
+            Params.userMobileNo: mobile,
+          },
+          'is_login': 1,
+          'purpose': 'login',
+        },
+        fromJson: StatusModel.fromJson,
+        cancelAuthToken: true,
+      );
+      return model;
+    } catch (_) {
+      return sendSignupOtp(
+        mobileCountryCode: mobileCountryCode,
+        mobile: mobile,
+        email: email,
+        isLogin: true,
+      );
+    }
   }
 
   Future<StatusModel> verifySignupOtp({

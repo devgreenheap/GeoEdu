@@ -110,7 +110,7 @@ class LiveStreamBottomView extends StatelessWidget {
                                         currentUserName: myUser?.fullname ?? myUser?.username ?? 'You',
                                         currentUserPhotoUrl: myUser?.profilePhoto,
                                         shareLink: shareLink,
-                                        isAudio: false,
+                                        isAudio: false, isHost: controller.isHost,
                                       );
                                     },
                                   ),

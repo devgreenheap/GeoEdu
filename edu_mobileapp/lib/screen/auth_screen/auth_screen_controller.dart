@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
@@ -46,6 +47,11 @@ class AuthScreenController extends BaseController {
   void goToStep(int step) {
     registrationStep = step;
     update();
+    if (step == 3) {
+      if (!isLocationAutoDetected && !isDetectingLocation) {
+        autoDetectLocation(silent: true);
+      }
+    }
   }
 
   void goToPreviousStep() {
@@ -57,15 +63,20 @@ class AuthScreenController extends BaseController {
 
   // ── Location detection ──
   bool isDetectingLocation = false;
+  bool isLocationAutoDetected = false;
   String? detectedLocationLabel;
 
-  Future<void> autoDetectLocation() async {
+  String _cleanGeo(String? s) => (s ?? '')
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+  Future<void> autoDetectLocation({bool silent = false}) async {
     isDetectingLocation = true;
     update();
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        showSnackBar('Location services are disabled. Please enable them.');
+        if (!silent) showSnackBar('Location services are disabled. Please enable them.');
         isDetectingLocation = false;
         update();
         return;
@@ -74,15 +85,17 @@ class AuthScreenController extends BaseController {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          showSnackBar('Location permission denied.');
+          if (!silent) showSnackBar('Location permission denied.');
           isDetectingLocation = false;
           update();
           return;
         }
       }
       if (permission == LocationPermission.deniedForever) {
-        showSnackBar(
-            'Location permission permanently denied. Enable in settings.');
+        if (!silent) {
+          showSnackBar(
+              'Location permission permanently denied. Enable in settings.');
+        }
         isDetectingLocation = false;
         update();
         return;
@@ -113,16 +126,22 @@ class AuthScreenController extends BaseController {
           place.country,
         ].where((e) => e != null && e.isNotEmpty).join(', ');
 
+        // Ensure countries are loaded
+        if (countryDataList.isEmpty) {
+          await fetchCountryStateList();
+        }
+
         // ── Auto-select Country ──────────────────────────────────────────
         if (place.country != null && place.country!.isNotEmpty) {
-          final countryMatch = countryDataList.firstWhereOrNull((e) =>
-              e.name?.toLowerCase() == place.country!.toLowerCase());
+          final cleanCountry = _cleanGeo(place.country);
+          final countryMatch = countryDataList.firstWhereOrNull((e) {
+            final cleanName = _cleanGeo(e.name);
+            return cleanName == cleanCountry ||
+                cleanName.contains(cleanCountry) ||
+                cleanCountry.contains(cleanName);
+          });
 
           if (countryMatch != null) {
-            // Directly set country state without triggering the
-            // fire-and-forget fetchStatesForCountry inside selectCountry().
-            // We will await the fetch ourselves so state/city selection
-            // happens only after the lists are actually populated.
             selectedCountry = countryMatch.name;
             selectedCountryObj = countryMatch;
             selectedState = null;
@@ -140,12 +159,13 @@ class AuthScreenController extends BaseController {
             if (place.administrativeArea != null &&
                 place.administrativeArea!.isNotEmpty &&
                 stateList.isNotEmpty) {
-              final stateMatch = stateList.firstWhereOrNull((s) =>
-                  s.toLowerCase().contains(
-                      place.administrativeArea!.toLowerCase()) ||
-                  place.administrativeArea!
-                      .toLowerCase()
-                      .contains(s.toLowerCase()));
+              final cleanAdmin = _cleanGeo(place.administrativeArea);
+              final stateMatch = stateList.firstWhereOrNull((s) {
+                final cleanS = _cleanGeo(s);
+                return cleanS == cleanAdmin ||
+                    cleanS.contains(cleanAdmin) ||
+                    cleanAdmin.contains(cleanS);
+              });
 
               if (stateMatch != null) {
                 selectedState = stateMatch;
@@ -161,30 +181,40 @@ class AuthScreenController extends BaseController {
                 }
 
                 // ── Auto-select City ───────────────────────────────────
-                if (place.locality != null &&
-                    place.locality!.isNotEmpty &&
-                    cityList.isNotEmpty) {
-                  final cityMatch = cityList.firstWhereOrNull((c) =>
-                      c.toLowerCase()
-                          .contains(place.locality!.toLowerCase()) ||
-                      place.locality!
-                          .toLowerCase()
-                          .contains(c.toLowerCase()));
-                  if (cityMatch != null) {
-                    selectedCity = cityMatch;
-                    update();
-                  }
+                final candidateCities = [
+                  place.locality,
+                  place.subAdministrativeArea,
+                  place.subLocality,
+                ].where((e) => e != null && e.isNotEmpty).cast<String>().toList();
+
+                String? matchedCity;
+                for (final candidate in candidateCities) {
+                  final cleanCandidate = _cleanGeo(candidate);
+                  if (cleanCandidate.isEmpty) continue;
+                  matchedCity = cityList.firstWhereOrNull((c) {
+                    final cleanC = _cleanGeo(c);
+                    return cleanC == cleanCandidate ||
+                        cleanC.contains(cleanCandidate) ||
+                        cleanCandidate.contains(cleanC);
+                  });
+                  if (matchedCity != null) break;
+                }
+
+                if (matchedCity != null) {
+                  selectedCity = matchedCity;
+                  update();
                 }
               }
             }
           }
         }
+        isLocationAutoDetected = true;
         update();
-        showSnackBar('Location detected successfully ✅');
+        if (!silent) showSnackBar('Location detected successfully ✅');
       }
     } catch (e) {
       Loggers.error('Location detection failed: $e');
-      showSnackBar('Failed to detect location. Please fill manually.');
+      if (!silent) showSnackBar('Failed to detect location. Please fill manually.');
     }
     isDetectingLocation = false;
     update();
@@ -316,8 +346,152 @@ class AuthScreenController extends BaseController {
 
   String? getError(String key) => fieldErrors[key];
 
-  void clearErrors() {
+  bool isMobileAlreadyRegistered = false;
+  bool isEmailAlreadyRegistered = false;
+  Timer? _mobileCheckDebounce;
+  Timer? _emailCheckDebounce;
+
+  void onMobileChanged(String value) {
+    final clean = value.trim();
+    if (isMobileAlreadyRegistered || fieldErrors['mobile'] != null) {
+      isMobileAlreadyRegistered = false;
+      fieldErrors.remove('mobile');
+      update();
+    }
+    _mobileCheckDebounce?.cancel();
+    if (clean.length >= 10) {
+      _mobileCheckDebounce = Timer(const Duration(milliseconds: 500), () {
+        checkMobileAvailability(clean);
+      });
+    }
+  }
+
+  void onEmailChanged(String value) {
+    final clean = value.trim();
+    if (isEmailAlreadyRegistered || fieldErrors['email'] != null) {
+      isEmailAlreadyRegistered = false;
+      fieldErrors.remove('email');
+      update();
+    }
+    _emailCheckDebounce?.cancel();
+    if (clean.isNotEmpty && GetUtils.isEmail(clean)) {
+      _emailCheckDebounce = Timer(const Duration(milliseconds: 500), () {
+        checkEmailAvailability(clean);
+      });
+    }
+  }
+
+  Future<void> checkMobileAvailability(String mobile) async {
+    final clean = mobile.trim();
+    if (clean.isEmpty) return;
+    try {
+      final res = await UserService.instance.checkIdentityAvailability(mobile: clean);
+      if (res.alreadyRegistered ||
+          (res.message ?? '').toLowerCase().contains('already registered') ||
+          (res.message ?? '').toLowerCase().contains('already exists')) {
+        isMobileAlreadyRegistered = true;
+        registrationError = 'This mobile number is already registered. Please login to continue.';
+        fieldErrors['mobile'] = registrationError;
+        update();
+      } else if (isMobileAlreadyRegistered) {
+        isMobileAlreadyRegistered = false;
+        registrationError = null;
+        if (fieldErrors['mobile'] != null &&
+            fieldErrors['mobile']!.contains('already registered')) {
+          fieldErrors.remove('mobile');
+        }
+        update();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> checkEmailAvailability(String email) async {
+    final clean = email.trim();
+    if (clean.isEmpty || !GetUtils.isEmail(clean)) return;
+    try {
+      final res = await UserService.instance.checkIdentityAvailability(email: clean);
+      if (res.alreadyRegistered ||
+          (res.message ?? '').toLowerCase().contains('already registered') ||
+          (res.message ?? '').toLowerCase().contains('already exists')) {
+        isEmailAlreadyRegistered = true;
+        registrationError = 'This email is already registered. Please login to continue.';
+        fieldErrors['email'] = registrationError;
+        update();
+      } else if (isEmailAlreadyRegistered) {
+        isEmailAlreadyRegistered = false;
+        registrationError = null;
+        if (fieldErrors['email'] != null &&
+            fieldErrors['email']!.contains('already registered')) {
+          fieldErrors.remove('email');
+        }
+        update();
+      }
+    } catch (_) {}
+  }
+
+  String? registrationError;
+  String? loginError;
+
+  void clearRegistrationErrors() {
+    registrationError = null;
+    isMobileAlreadyRegistered = false;
+    isEmailAlreadyRegistered = false;
+    _mobileCheckDebounce?.cancel();
+    _emailCheckDebounce?.cancel();
+    fieldErrors.remove('mobile');
+    fieldErrors.remove('email');
+    fieldErrors.remove('fullName');
+    fieldErrors.remove('category');
+    fieldErrors.remove('language');
+    loginError = null;
+    UserService.instance.lastLoginResponse = null;
+    if (Get.isSnackbarOpen) {
+      Get.closeAllSnackbars();
+    }
+    stopSnackBar();
+    update();
+  }
+
+  void resetLoginState({bool keepCredentials = true}) {
+    registrationError = null;
+    isMobileAlreadyRegistered = false;
+    isEmailAlreadyRegistered = false;
+    _mobileCheckDebounce?.cancel();
+    _emailCheckDebounce?.cancel();
     fieldErrors.clear();
+    loginError = null;
+    UserService.instance.lastLoginResponse = null;
+
+    if (Get.isSnackbarOpen) {
+      Get.closeAllSnackbars();
+    }
+    stopSnackBar();
+
+    isLoginOtpSent = false;
+    isLoginOtpVerified = false;
+    isSendingLoginOtp = false;
+    isVerifyingLoginOtp = false;
+    loginOtpController.clear();
+
+    if (!keepCredentials) {
+      loginMobileController.clear();
+      loginEmailController.clear();
+    }
+    update();
+  }
+
+  void clearErrors() {
+    registrationError = null;
+    isMobileAlreadyRegistered = false;
+    isEmailAlreadyRegistered = false;
+    _mobileCheckDebounce?.cancel();
+    _emailCheckDebounce?.cancel();
+    fieldErrors.clear();
+    loginError = null;
+    if (Get.isSnackbarOpen) {
+      Get.closeAllSnackbars();
+    }
+    stopSnackBar();
     update();
   }
 
@@ -479,7 +653,15 @@ class AuthScreenController extends BaseController {
         if (result.alreadyRegistered ||
             (result.message ?? '').toLowerCase().contains('already registered') ||
             (result.message ?? '').toLowerCase().contains('already exists')) {
-          fieldErrors['mobile'] = 'Already registered. Please login.';
+          if (byEmail) {
+            isEmailAlreadyRegistered = true;
+            registrationError = 'This email is already registered. Please login to continue.';
+            fieldErrors['email'] = registrationError;
+          } else {
+            isMobileAlreadyRegistered = true;
+            registrationError = 'This mobile number is already registered. Please login to continue.';
+            fieldErrors['mobile'] = registrationError;
+          }
           update();
 
           AuthStatusDialog.show(
@@ -489,6 +671,9 @@ class AuthScreenController extends BaseController {
                 'This account is already registered. Please proceed to Login.',
             buttonText: 'Go to Login',
             onConfirm: () {
+              clearRegistrationErrors();
+              clearErrors();
+              resetLoginState(keepCredentials: true);
               loginMobileController.text = mobile;
               loginEmailController.text = email;
               Get.off(() => const LoginScreen());
@@ -562,30 +747,63 @@ class AuthScreenController extends BaseController {
     final String email = loginEmailController.text.trim();
     final String mobile = loginMobileController.text.trim();
 
+    loginError = null;
+    clearRegistrationErrors();
+
     if (byEmail) {
       if (email.isEmpty || !GetUtils.isEmail(email)) {
-        return showSnackBar('Please enter a valid email address');
+        loginError = 'Please enter a valid email address';
+        update();
+        return showSnackBar(loginError);
       }
     } else if (mobile.isEmpty) {
-      return showSnackBar('Please enter Mobile Number');
+      loginError = 'Please enter Mobile Number';
+      update();
+      return showSnackBar(loginError);
     }
 
     isSendingLoginOtp = true;
     update();
     try {
-      final result = await UserService.instance.sendSignupOtp(
+      final result = await UserService.instance.sendLoginOtp(
         mobileCountryCode: byEmail ? null : loginCountryCode,
         mobile: byEmail ? null : mobile,
         email: byEmail ? email : null,
       );
+
+      final msg = (result.message ?? '').toLowerCase();
+      final isAlreadyRegistered = result.alreadyRegistered ||
+          msg.contains('already registered') ||
+          msg.contains('already exists');
+      final isNotRegistered = result.notRegistered ||
+          msg.contains('not registered') ||
+          msg.contains('no account found') ||
+          msg.contains('does not exist');
+
       if (result.status == true) {
         isLoginOtpSent = true;
+        loginError = null;
         showSnackBar(result.message ?? 'OTP sent successfully');
+      } else if (isNotRegistered) {
+        isLoginOtpSent = false;
+        loginError = byEmail
+            ? 'This email is not registered. Please sign up to continue.'
+            : 'This mobile number is not registered. Please sign up to continue.';
+        showSnackBar(loginError);
+      } else if (isAlreadyRegistered) {
+        // An existing user is a valid login case!
+        // The Login page must NEVER display "already registered, please login".
+        // Treat as valid login attempt and allow proceeding to OTP screen:
+        isLoginOtpSent = true;
+        loginError = null;
+        showSnackBar('OTP sent to your ${byEmail ? 'email' : 'mobile number'}');
       } else {
-        showSnackBar(result.message ?? 'Failed to send OTP');
+        loginError = result.message ?? 'Failed to send OTP';
+        showSnackBar(loginError);
       }
     } catch (e) {
-      showSnackBar('Failed to send OTP');
+      loginError = 'Failed to send OTP';
+      showSnackBar(loginError);
     }
     isSendingLoginOtp = false;
     update();
@@ -594,10 +812,12 @@ class AuthScreenController extends BaseController {
   Future<bool> verifyLoginOtp() async {
     final otp = loginOtpController.text.trim();
     if (otp.isEmpty) {
+      loginError = 'Please enter the 6-digit OTP sent to your number.';
+      update();
       AuthStatusDialog.show(
         isSuccess: false,
         title: 'OTP Required',
-        message: 'Please enter the 6-digit OTP sent to your number.',
+        message: loginError!,
       );
       return false;
     }
@@ -613,19 +833,22 @@ class AuthScreenController extends BaseController {
       );
       if (result.status == true) {
         isLoginOtpVerified = true;
+        loginError = null;
         success = true;
       } else {
+        loginError = result.message ?? 'Invalid OTP code. Please check and try again.';
         AuthStatusDialog.show(
           isSuccess: false,
           title: 'Verification Failed',
-          message: result.message ?? 'Invalid OTP code. Please check and try again.',
+          message: loginError!,
         );
       }
     } catch (e) {
+      loginError = 'Failed to verify OTP. Please check your network and try again.';
       AuthStatusDialog.show(
         isSuccess: false,
         title: 'Verification Failed',
-        message: 'Failed to verify OTP. Please check your network and try again.',
+        message: loginError!,
       );
     }
     isVerifyingLoginOtp = false;
@@ -718,6 +941,7 @@ class AuthScreenController extends BaseController {
     stopLoader();
 
     if (data != null) {
+      loginError = null;
       await AuthStatusDialog.show(
         isSuccess: true,
         title: 'Welcome Back! 👋',
@@ -727,10 +951,12 @@ class AuthScreenController extends BaseController {
         onConfirm: () => _navigateScreen(data),
       );
     } else {
+      loginError = 'No account found for this number. Please register first.';
+      update();
       AuthStatusDialog.show(
         isSuccess: false,
         title: 'Login Failed',
-        message: 'No account found for this number. Please register first.',
+        message: loginError!,
       );
     }
   }
@@ -791,8 +1017,11 @@ class AuthScreenController extends BaseController {
               : 'This mobile number is already registered. Please login to continue.',
           buttonText: 'Go to Login',
           onConfirm: () {
-            loginMobileController.text = mobileController.text.trim();
-            loginEmailController.text = emailController.text.trim();
+            final m = mobileController.text.trim();
+            final e = emailController.text.trim();
+            resetLoginState(keepCredentials: true);
+            loginMobileController.text = m;
+            loginEmailController.text = e;
             Get.off(() => const LoginScreen());
           },
         );

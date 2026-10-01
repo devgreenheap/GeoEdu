@@ -226,7 +226,8 @@ class WalletController extends Controller
     public function fetchDiamondPackages()
     {
         $packages = DiamondPackages::where('status', 1)
-            ->orderBy('id', 'DESC')
+            ->orderByRaw('CAST(COALESCE(NULLIF(discounted_price, 0), diamond_plan_price) AS DECIMAL(10,2)) ASC')
+            ->orderByRaw('CAST(diamond_amount AS UNSIGNED) ASC')
             ->get()
             ->map(function ($item) {
                 $originalPrice = floatval($item->diamond_plan_price);

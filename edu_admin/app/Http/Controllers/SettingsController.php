@@ -12,6 +12,7 @@ use App\Models\Constants;
 use App\Models\CountryMaster;
 use App\Models\DeepARFilters;
 use App\Models\DiamondBuyingInformation;
+use App\Models\Divisions;
 use App\Models\DummyLiveVideos;
 use App\Models\Gifts;
 use App\Models\GlobalFunction;
@@ -1042,6 +1043,17 @@ class SettingsController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'category_id']);
 
+        $divisionsQuery = Divisions::where('status', 1);
+        if ($request->filled('category_id')) {
+            $divisionsQuery->where('category_id', $request->category_id);
+        }
+        if ($request->filled('sub_category_id')) {
+            $divisionsQuery->where('sub_category_id', $request->sub_category_id);
+        }
+        $divisions = $divisionsQuery
+            ->orderBy('name')
+            ->get(['id', 'name', 'sub_category_id', 'category_id']);
+
         $topicsQuery = Topics::where('status', 1);
         if ($request->filled('category_id')) {
             $topicsQuery->where('category_id', $request->category_id);
@@ -1051,22 +1063,24 @@ class SettingsController extends Controller
         }
         $topics = $topicsQuery
             ->orderBy('name')
-            ->get(['id', 'name', 'sub_category_id']);
+            ->get(['id', 'name', 'sub_category_id', 'division_id']);
 
         $topicsBySubCategory = $topics->groupBy('sub_category_id');
+        $divisionsBySubCategory = $divisions->groupBy('sub_category_id');
 
-        $subCategoriesByCategory = $subCategories->groupBy('category_id')->map(function ($items) use ($topicsBySubCategory, $request) {
-            return $items->filter(function ($subCategory) use ($topicsBySubCategory, $request) {
+        $subCategoriesByCategory = $subCategories->groupBy('category_id')->map(function ($items) use ($topicsBySubCategory, $divisionsBySubCategory, $request) {
+            return $items->filter(function ($subCategory) use ($request) {
                 if ($request->filled('sub_category_id')) {
                     return intval($subCategory->id) === intval($request->sub_category_id);
                 }
 
                 return true;
-            })->map(function ($subCategory) use ($topicsBySubCategory) {
+            })->map(function ($subCategory) use ($topicsBySubCategory, $divisionsBySubCategory) {
                 return [
                     'id' => $subCategory->id,
                     'name' => $subCategory->name,
                     'category_id' => $subCategory->category_id,
+                    'divisions' => ($divisionsBySubCategory[$subCategory->id] ?? collect())->values()->toArray(),
                     'topics' => ($topicsBySubCategory[$subCategory->id] ?? collect())->values()->toArray(),
                 ];
             })->values();

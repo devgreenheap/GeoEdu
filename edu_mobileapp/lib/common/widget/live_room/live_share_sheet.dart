@@ -20,6 +20,7 @@ class LiveShareSheet extends StatefulWidget {
   final String? currentUserPhotoUrl;
   final String shareLink;
   final bool isAudio;
+  final bool isHost;
 
   const LiveShareSheet({
     super.key,
@@ -29,6 +30,7 @@ class LiveShareSheet extends StatefulWidget {
     required this.currentUserPhotoUrl,
     required this.shareLink,
     this.isAudio = false,
+    this.isHost = false,
   });
 
   static void show({
@@ -39,6 +41,7 @@ class LiveShareSheet extends StatefulWidget {
     required String? currentUserPhotoUrl,
     required String shareLink,
     bool isAudio = false,
+    bool isHost = false,
   }) {
     Get.bottomSheet(
       LiveShareSheet(
@@ -48,6 +51,7 @@ class LiveShareSheet extends StatefulWidget {
         currentUserPhotoUrl: currentUserPhotoUrl,
         shareLink: shareLink,
         isAudio: isAudio,
+        isHost: isHost,
       ),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -62,6 +66,12 @@ class LiveShareSheet extends StatefulWidget {
 class _LiveShareSheetState extends State<LiveShareSheet> {
   final GlobalKey _cardKey = GlobalKey();
   bool _isSharing = false;
+
+  bool get _isHostSharing =>
+      widget.isHost ||
+      (widget.currentUserName.trim().toLowerCase() ==
+              widget.hostName.trim().toLowerCase() &&
+          widget.currentUserName.trim().isNotEmpty);
 
   Future<String?> _captureCardImage() async {
     try {
@@ -81,7 +91,11 @@ class _LiveShareSheetState extends State<LiveShareSheet> {
       final shareText = AppRes.getLiveShareMessage(
         hostName: widget.hostName,
         smartLink: widget.shareLink,
+        isHost: _isHostSharing,
       );
+      final shareSubject = _isHostSharing
+          ? (widget.isAudio ? 'Join My Audio Live' : 'Join My Live')
+          : 'Join Me & ${widget.hostName}';
 
       if (imagePath != null && File(imagePath).existsSync()) {
         final xFile = XFile(imagePath);
@@ -90,7 +104,7 @@ class _LiveShareSheetState extends State<LiveShareSheet> {
             ShareParams(
               files: [xFile],
               text: shareText,
-              subject: 'Join Me & ${widget.hostName}',
+              subject: shareSubject,
             ),
           );
         } else if (platform == 'whatsapp') {
@@ -260,74 +274,103 @@ class _LiveShareSheetState extends State<LiveShareSheet> {
 
                         const SizedBox(height: 18),
 
-                        // Two Intersecting / Side-by-Side Profile Circles
+                        // Profile Avatar(s): Single centered avatar if host sharing, two side-by-side if audience sharing
                         SizedBox(
                           height: 88,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              // Current User Avatar
-                              Container(
-                                width: 80,
-                                height: 80,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                      color: Colors.white, width: 3.5),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Colors.black38,
-                                      blurRadius: 8,
-                                      offset: Offset(0, 3),
+                          child: _isHostSharing
+                              ? Center(
+                                  child: Container(
+                                    width: 86,
+                                    height: 86,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                          color: Colors.white, width: 3.5),
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Colors.black38,
+                                          blurRadius: 10,
+                                          offset: Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: ClipOval(
+                                      child: CustomImage(
+                                        size: const Size(79, 79),
+                                        image: widget.hostPhotoUrl?.addBaseURL(),
+                                        fullName: widget.hostName,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    // Current User Avatar
+                                    Container(
+                                      width: 80,
+                                      height: 80,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                            color: Colors.white, width: 3.5),
+                                        boxShadow: const [
+                                          BoxShadow(
+                                            color: Colors.black38,
+                                            blurRadius: 8,
+                                            offset: Offset(0, 3),
+                                          ),
+                                        ],
+                                      ),
+                                      child: ClipOval(
+                                        child: CustomImage(
+                                          size: const Size(73, 73),
+                                          image: widget.currentUserPhotoUrl?.addBaseURL(),
+                                          fullName: widget.currentUserName,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      ),
+                                    ),
+
+                                    const SizedBox(width: 8),
+
+                                    // Host Avatar
+                                    Container(
+                                      width: 80,
+                                      height: 80,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                            color: Colors.white, width: 3.5),
+                                        boxShadow: const [
+                                          BoxShadow(
+                                            color: Colors.black38,
+                                            blurRadius: 8,
+                                            offset: Offset(0, 3),
+                                          ),
+                                        ],
+                                      ),
+                                      child: ClipOval(
+                                        child: CustomImage(
+                                          size: const Size(73, 73),
+                                          image: widget.hostPhotoUrl?.addBaseURL(),
+                                          fullName: widget.hostName,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      ),
                                     ),
                                   ],
                                 ),
-                                child: ClipOval(
-                                  child: CustomImage(
-                                    size: const Size(73, 73),
-                                    image: widget.currentUserPhotoUrl?.addBaseURL(),
-                                    fullName: widget.currentUserName,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(width: 8),
-
-                              // Host Avatar
-                              Container(
-                                width: 80,
-                                height: 80,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                      color: Colors.white, width: 3.5),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Colors.black38,
-                                      blurRadius: 8,
-                                      offset: Offset(0, 3),
-                                    ),
-                                  ],
-                                ),
-                                child: ClipOval(
-                                  child: CustomImage(
-                                    size: const Size(73, 73),
-                                    image: widget.hostPhotoUrl?.addBaseURL(),
-                                    fullName: widget.hostName,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
                         ),
 
                         const SizedBox(height: 14),
 
-                        // Title: Join Me & [HOST]
+                        // Title: "Join My Live" / "Join My Audio Live" (Host) or "Join Me & [HOST]" (Audience)
                         Text(
-                          'Join Me & ${widget.hostName.toUpperCase()}',
+                          _isHostSharing
+                              ? (widget.isAudio ? 'Join My Audio Live' : 'Join My Live')
+                              : 'Join Me & ${widget.hostName.toUpperCase()}',
                           textAlign: TextAlign.center,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

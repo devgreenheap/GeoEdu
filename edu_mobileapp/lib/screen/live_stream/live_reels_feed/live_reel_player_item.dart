@@ -251,8 +251,9 @@ class _LiveReelPlayerItemState extends State<LiveReelPlayerItem> {
       final liveData = controller.liveData.value;
       final isBattleOn = liveData.type == LivestreamType.battle;
       final isCoHost = (liveData.coHostIds ?? []).contains(controller.myUserId);
+      final isHost = controller.isHost || liveData.hostId == controller.myUserId;
 
-      if (isBattleOn || liveData.isRestrictToJoin != 0 || isCoHost) {
+      if (isHost || isBattleOn || liveData.isRestrictToJoin != 0 || isCoHost) {
         return const SizedBox();
       }
 

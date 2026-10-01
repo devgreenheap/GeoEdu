@@ -45,6 +45,9 @@ class LiveStreamSearchScreenController extends BaseController {
   // Category filter state
   RxList<Category> filterCategories = <Category>[].obs;
   RxInt selectedCategoryIndex = 0.obs;
+  Rxn<SubCategory> selectedSubCategory = Rxn<SubCategory>();
+  Rxn<Division> selectedDivision = Rxn<Division>();
+  Rxn<Topic> selectedTopic = Rxn<Topic>();
 
   // User interests (ids from tbl_interests) — used to auto-select category
   RxList<Interest> myInterests = <Interest>[].obs;
@@ -434,6 +437,32 @@ class LiveStreamSearchScreenController extends BaseController {
 
   void onCategorySelected(int index) {
     selectedCategoryIndex.value = index;
+    selectedSubCategory.value = null;
+    selectedDivision.value = null;
+    selectedTopic.value = null;
+    _applyFilter();
+    fetchRecordedLives();
+  }
+
+  void setHierarchicalFilter({
+    required int categoryIndex,
+    SubCategory? subCategory,
+    Division? division,
+    Topic? topic,
+  }) {
+    selectedCategoryIndex.value = categoryIndex;
+    selectedSubCategory.value = subCategory;
+    selectedDivision.value = division;
+    selectedTopic.value = topic;
+    _applyFilter();
+    fetchRecordedLives();
+  }
+
+  void clearHierarchicalFilter() {
+    selectedCategoryIndex.value = 0;
+    selectedSubCategory.value = null;
+    selectedDivision.value = null;
+    selectedTopic.value = null;
     _applyFilter();
     fetchRecordedLives();
   }
@@ -470,14 +499,45 @@ class LiveStreamSearchScreenController extends BaseController {
       }
     } else {
       final selectedCat = filterCategories[selectedCategoryIndex.value - 1];
+      final targetSubCat = selectedSubCategory.value;
+      final targetDiv = selectedDivision.value;
+      final targetTop = selectedTopic.value;
+
       filtered = livestreamList.where((s) {
-        if (s.categoryId == selectedCat.id) return true;
-        if (s.hostId != null) {
+        // Category check
+        bool matchCategory = false;
+        if (s.categoryId == selectedCat.id) {
+          matchCategory = true;
+        } else if (s.hostId != null) {
           final hostUser = firebaseFirestoreController.users
               .firstWhereOrNull((u) => u.userId == s.hostId);
-          if (hostUser?.categoryId == selectedCat.id) return true;
+          if (hostUser?.categoryId == selectedCat.id) matchCategory = true;
         }
-        return false;
+        if (!matchCategory) return false;
+
+        // SubCategory check if selected
+        if (targetSubCat != null) {
+          bool matchSub = (s.subCategoryId == targetSubCat.id);
+          if (!matchSub && s.hostId != null) {
+            final hostUser = firebaseFirestoreController.users
+                .firstWhereOrNull((u) => u.userId == s.hostId);
+            if (hostUser?.subCategoryId == targetSubCat.id) matchSub = true;
+          }
+          if (!matchSub) return false;
+        }
+
+        // Topic check if selected
+        if (targetTop != null) {
+          bool matchTopic = (s.topicId == targetTop.id);
+          if (!matchTopic && s.hostId != null) {
+            final hostUser = firebaseFirestoreController.users
+                .firstWhereOrNull((u) => u.userId == s.hostId);
+            if (hostUser?.topicId == targetTop.id) matchTopic = true;
+          }
+          if (!matchTopic) return false;
+        }
+
+        return true;
       }).toList();
     }
 

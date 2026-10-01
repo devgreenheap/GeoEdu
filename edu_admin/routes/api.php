@@ -37,6 +37,8 @@ Route::middleware('checkHeader')->group(function () {
     Route::prefix('user')->group(function () {
         Route::post('logInUser', [UserController::class, 'logInUser']);
         Route::post('sendSignupOtp', [UserController::class, 'sendSignupOtp']);
+        Route::post('sendLoginOtp', [UserController::class, 'sendLoginOtp']);
+        Route::post('checkIdentityAvailability', [UserController::class, 'checkIdentityAvailability']);
         Route::post('verifySignupOtp', [UserController::class, 'verifySignupOtp']);
         Route::post('logInWithVerifiedOtp', [UserController::class, 'logInWithVerifiedOtp']);
         Route::post('logInFakeUser', [UserController::class, 'logInFakeUser']);

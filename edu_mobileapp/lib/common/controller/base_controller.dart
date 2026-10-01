@@ -7,11 +7,10 @@ import 'package:geoedu/utilities/theme_res.dart';
 class BaseController extends FullLifeCycleController {
   RxBool isLoading = false.obs;
   static final share = BaseController();
-
   void showLoader({bool barrierDismissible = true}) async {
     if (isLoading.value) return;
     if (Get.isSnackbarOpen) {
-      Get.back();
+      Get.closeAllSnackbars();
     }
     isLoading.value = true;
     await Get.dialog(const LoaderWidget(),
@@ -28,6 +27,7 @@ class BaseController extends FullLifeCycleController {
   void showSnackBar(String? title, {int second = 2}) {
     if (Get.isSnackbarOpen) {
       return;
+         
     }
 
     Get.rawSnackbar(
@@ -46,7 +46,7 @@ class BaseController extends FullLifeCycleController {
 
   void stopSnackBar() {
     if (Get.isSnackbarOpen) {
-      Get.back();
+      Get.closeAllSnackbars();
     }
   }
 }

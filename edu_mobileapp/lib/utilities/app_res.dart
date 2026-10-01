@@ -8,7 +8,16 @@ class AppRes {
   static String playStoreLink =
       'https://play.google.com/store/apps/details?id=com.geoedu.app';
 
-  static String getLiveShareMessage({required String hostName, required String smartLink}) {
+  static String getLiveShareMessage({
+    required String hostName,
+    required String smartLink,
+    bool isHost = false,
+  }) {
+    if (isHost) {
+      return 'Join my live on ${AppRes.appName}!\n'
+          '📲 Open/Install App: $smartLink\n'
+          '👉 Or Download directly from Play Store: $playStoreLink';
+    }
     return 'Join Me & ${hostName.toUpperCase()} live on ${AppRes.appName}!\n'
         '📲 Open/Install App: $smartLink\n'
         '👉 Or Download directly from Play Store: $playStoreLink';

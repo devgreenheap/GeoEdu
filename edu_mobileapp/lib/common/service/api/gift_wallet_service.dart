@@ -67,7 +67,23 @@ class GiftWalletService {
     DiamondPackResponseModel response = await ApiService.instance.call(
         url: WebService.giftWallet.fetchDiamondPackages,
         fromJson: DiamondPackResponseModel.fromJson);
-    return response.data ?? [];
+    final packs = response.data ?? [];
+    packs.sort((a, b) {
+      final aPrice = (a.discountedPrice != null && a.discountedPrice! > 0)
+          ? a.discountedPrice!
+          : (a.originalPrice != null && a.originalPrice! > 0
+              ? a.originalPrice!
+              : (a.diamonds?.toDouble() ?? 0.0));
+      final bPrice = (b.discountedPrice != null && b.discountedPrice! > 0)
+          ? b.discountedPrice!
+          : (b.originalPrice != null && b.originalPrice! > 0
+              ? b.originalPrice!
+              : (b.diamonds?.toDouble() ?? 0.0));
+      final cmp = aPrice.compareTo(bPrice);
+      if (cmp != 0) return cmp;
+      return (a.diamonds ?? 0).compareTo(b.diamonds ?? 0);
+    });
+    return packs;
   }
 
   Future<UserModel> verifyDiamondPurchase({

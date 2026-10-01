@@ -113,6 +113,9 @@ class _LiveStreamAudienceScreenState extends State<LiveStreamAudienceScreen> {
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 110, right: 4),
         child: Obx(() {
+          // Host must never see "Join Call" on their own live stream
+          if (widget.isHost) return const SizedBox.shrink();
+
           final liveData = controller.liveData.value;
           final isBattleOn = liveData.type == LivestreamType.battle;
           final isCoHost =

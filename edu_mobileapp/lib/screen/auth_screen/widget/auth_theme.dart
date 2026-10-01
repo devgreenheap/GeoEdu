@@ -165,6 +165,7 @@ class AuthTextField extends StatefulWidget {
   final TextInputType? keyboardType;
   final List<TextInputFormatter>? inputFormatters;
   final bool hasError;
+  final ValueChanged<String>? onChanged;
 
   const AuthTextField({
     super.key,
@@ -176,6 +177,7 @@ class AuthTextField extends StatefulWidget {
     this.keyboardType,
     this.inputFormatters,
     this.hasError = false,
+    this.onChanged,
   });
 
   @override
@@ -254,6 +256,7 @@ class _AuthTextFieldState extends State<AuthTextField>
         obscureText: widget.isPassword && _obscure,
         keyboardType: widget.keyboardType ?? TextInputType.text,
         inputFormatters: widget.inputFormatters,
+        onChanged: widget.onChanged,
         onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
         textAlignVertical: TextAlignVertical.center,
         style: const TextStyle(
@@ -307,6 +310,8 @@ class AuthMobileField extends StatefulWidget {
   final bool enabled;
   final bool hasError;
 
+  final ValueChanged<String>? onChanged;
+
   const AuthMobileField({
     super.key,
     required this.countryCode,
@@ -315,6 +320,7 @@ class AuthMobileField extends StatefulWidget {
     required this.controller,
     this.enabled = true,
     this.hasError = false,
+    this.onChanged,
   });
 
   @override
@@ -428,6 +434,7 @@ class _AuthMobileFieldState extends State<AuthMobileField>
                 FilteringTextInputFormatter.digitsOnly,
                 LengthLimitingTextInputFormatter(10)
               ],
+              onChanged: widget.onChanged,
               onTapOutside: (_) =>
                   FocusManager.instance.primaryFocus?.unfocus(),
               style: const TextStyle(
@@ -560,26 +567,57 @@ class AuthFieldLabel extends StatelessWidget {
   }
 }
 
-// ─── Inline Error Text ────────────────────────────────────────────────────────
-
 class AuthErrorText extends StatelessWidget {
   final String? error;
+  final String? actionText;
+  final VoidCallback? onAction;
 
-  const AuthErrorText(this.error, {super.key});
+  const AuthErrorText(this.error, {super.key, this.actionText, this.onAction});
 
   @override
   Widget build(BuildContext context) {
-    if (error == null) return const SizedBox(height: 2);
+    if (error == null || error!.isEmpty) return const SizedBox(height: 2);
     return Padding(
       padding: const EdgeInsets.only(top: 6, left: 4),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           const Icon(Icons.error_outline_rounded,
-              color: AuthColors.error, size: 13),
+              color: AuthColors.error, size: 14),
           const SizedBox(width: 4),
-          Text(error!,
-              style: const TextStyle(
-                  color: AuthColors.error, fontSize: 12)),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                text: error!,
+                style: const TextStyle(
+                  color: AuthColors.error,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+                children: [
+                  if (actionText != null && onAction != null) ...[
+                    const TextSpan(text: ' '),
+                    WidgetSpan(
+                      alignment: PlaceholderAlignment.middle,
+                      child: GestureDetector(
+                        onTap: onAction,
+                        child: Text(
+                          actionText!,
+                          style: const TextStyle(
+                            color: AuthColors.primaryOrange,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            decoration: TextDecoration.underline,
+                            decorationColor: AuthColors.primaryOrange,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

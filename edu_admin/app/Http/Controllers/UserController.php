@@ -186,13 +186,26 @@ class UserController extends Controller
             return GlobalFunction::sendSimpleResponse(false, 'Invalid mobile number');
         }
 
-        // Prevent already-registered mobile numbers from registering again
+        $isLoginRequest = filter_var($request->input('is_login', false), FILTER_VALIDATE_BOOLEAN) ||
+            $request->input('purpose') === 'login' ||
+            $request->input('is_login') === '1' ||
+            $request->input('is_login') === 1;
+
+        // If it's registration / signup, prevent already-registered numbers
         $existingUser = $this->findUserByMobileFlexible($mobile);
-        if ($existingUser) {
+        if (!$isLoginRequest && $existingUser) {
             return response()->json([
                 'status' => false,
                 'already_registered' => true,
                 'message' => 'This mobile number is already registered. Please login to continue.',
+            ]);
+        }
+        // If it's a login request, verify that user actually exists
+        if ($isLoginRequest && !$existingUser) {
+            return response()->json([
+                'status' => false,
+                'not_registered' => true,
+                'message' => 'This mobile number is not registered. Please sign up to continue.',
             ]);
         }
 
@@ -251,6 +264,12 @@ class UserController extends Controller
         ]);
     }
 
+    public function sendLoginOtp(Request $request)
+    {
+        $request->merge(['is_login' => 1, 'purpose' => 'login']);
+        return $this->sendSignupOtp($request);
+    }
+
     private function sendSignupOtpByEmail(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -262,15 +281,30 @@ class UserController extends Controller
 
         $email = strtolower(trim((string) $request->email));
 
-        // Prevent already-registered email from registering again
+        $isLoginRequest = filter_var($request->input('is_login', false), FILTER_VALIDATE_BOOLEAN) ||
+            $request->input('purpose') === 'login' ||
+            $request->input('is_login') === '1' ||
+            $request->input('is_login') === 1;
+
+        // Check user existence
         $existingEmailUser = Users::whereRaw('LOWER(identity) = ?', [$email])
             ->orWhereRaw('LOWER(user_email) = ?', [$email])
             ->first();
-        if ($existingEmailUser) {
+
+        // If signup, prevent duplicate registration
+        if (!$isLoginRequest && $existingEmailUser) {
             return response()->json([
                 'status' => false,
                 'already_registered' => true,
                 'message' => 'This email is already registered. Please login to continue.',
+            ]);
+        }
+        // If login, ensure user exists
+        if ($isLoginRequest && !$existingEmailUser) {
+            return response()->json([
+                'status' => false,
+                'not_registered' => true,
+                'message' => 'This email is not registered. Please sign up to continue.',
             ]);
         }
 
@@ -2232,6 +2266,50 @@ class UserController extends Controller
 
         return GlobalFunction::sendSimpleResponse(true, 'username available!');
 
+    }
+
+    public function checkIdentityAvailability(Request $request)
+    {
+        $mobile = trim((string) ($request->mobile ?? ''));
+        $email = strtolower(trim((string) ($request->email ?? '')));
+
+        if ($mobile !== '') {
+            $existing = $this->findUserByMobileFlexible($mobile);
+            if ($existing) {
+                return response()->json([
+                    'status' => false,
+                    'already_registered' => true,
+                    'type' => 'mobile',
+                    'message' => 'This mobile number is already registered. Please login.',
+                ]);
+            }
+            return response()->json([
+                'status' => true,
+                'type' => 'mobile',
+                'message' => 'Mobile number is available',
+            ]);
+        }
+
+        if ($email !== '') {
+            $existing = Users::whereRaw('LOWER(identity) = ?', [$email])
+                ->orWhereRaw('LOWER(user_email) = ?', [$email])
+                ->first();
+            if ($existing) {
+                return response()->json([
+                    'status' => false,
+                    'already_registered' => true,
+                    'type' => 'email',
+                    'message' => 'This email is already registered. Please login.',
+                ]);
+            }
+            return response()->json([
+                'status' => true,
+                'type' => 'email',
+                'message' => 'Email address is available',
+            ]);
+        }
+
+        return GlobalFunction::sendSimpleResponse(false, 'Mobile or email is required');
     }
 
     public function editeUserLink(Request $request){

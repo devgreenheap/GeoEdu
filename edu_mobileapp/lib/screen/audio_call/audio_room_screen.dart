@@ -804,19 +804,18 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
   }
 
   Widget _buildDashedJoinCallCard(AudioRoomController controller) {
+    // The host is already in the room and hosting, so they must never see a Join Call card
+    if (isHost) return const SizedBox.shrink();
+
     return Obx(() {
       final isSpeaker = controller.isSpeaker.value;
       final hasRequested = controller.hasRequested.value;
-      final pendingCount = controller.requestIds.length;
 
       String label = 'Join Call';
       IconData icon = Icons.video_call_rounded;
       Color iconColor = Colors.white;
 
-      if (isHost) {
-        label = pendingCount > 0 ? 'Calls ($pendingCount)' : 'Join Call';
-        icon = Icons.video_call_rounded;
-      } else if (isSpeaker) {
+      if (isSpeaker) {
         label = 'In Call';
         icon = Icons.mic;
         iconColor = const Color(0xFFFFB300);
@@ -828,9 +827,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
 
       return GestureDetector(
         onTap: () {
-          if (isHost) {
-            _showRequestsSheet(controller);
-          } else if (isSpeaker) {
+          if (isSpeaker) {
             controller.toggleMute();
           } else if (hasRequested) {
             controller.showSnackBar('Join Call request is pending host approval');
@@ -875,26 +872,6 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                         size: 24,
                       ),
                     ),
-                    if (isHost && pendingCount > 0)
-                      Positioned(
-                        top: -2,
-                        right: -2,
-                        child: Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFFF1744),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Text(
-                            '$pendingCount',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -1060,7 +1037,10 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
       Color bgColor = Colors.white;
 
       if (isHost) {
-        label = pendingCount > 0 ? 'Calls ($pendingCount)' : 'Join Call';
+        // Host is already hosting, never show "Join Call". Only show if there are pending requests to manage.
+        if (pendingCount == 0) return const SizedBox.shrink();
+        label = 'Calls ($pendingCount)';
+        icon = Icons.people_alt_rounded;
       } else if (isSpeaker) {
         label = 'In Call';
         icon = Icons.mic;
@@ -2772,6 +2752,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
       currentUserPhotoUrl: myUser?.profilePhoto,
       shareLink: shareLink,
       isAudio: true,
+      isHost: isHost,
     );
   }
 
