@@ -19,6 +19,8 @@ import 'package:geoedu/screen/live_stream/livestream_screen/widget/other_lives_s
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/video_room_gift_category_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_beauty_filter_sheet.dart';
 import 'package:geoedu/screen/report_sheet/report_sheet.dart';
+import 'package:geoedu/common/manager/haptic_manager.dart';
+import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/utilities/app_res.dart';
 
 /// Unified Modern Overlay for Video Live Rooms (Host & Audience).
@@ -109,6 +111,21 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                   ),
                 ),
                 ListTile(
+                  leading: const Icon(Icons.people_alt_rounded,
+                      color: Color(0xFFFF9500), size: 24),
+                  title: const Text('Members',
+                      style: TextStyle(color: Colors.white, fontSize: 14.5)),
+                  subtitle: const Text('View host, co-hosts and audience in this live',
+                      style: TextStyle(color: Colors.white54, fontSize: 11.5)),
+                  onTap: () {
+                    Get.back();
+                    Get.bottomSheet(
+                      const MembersSheet(isHost: false),
+                      isScrollControlled: true,
+                    );
+                  },
+                ),
+                ListTile(
                   leading: const Icon(Icons.flag_outlined, color: Colors.white),
                   title: const Text('Report Live Stream',
                       style: TextStyle(color: Colors.white, fontSize: 14.5)),
@@ -139,7 +156,7 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
       return;
     }
 
-    // Host Settings sheet
+    // Host Settings & Management sheet
     Get.bottomSheet(
       Container(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
@@ -165,13 +182,95 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
               ),
               const Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Live Settings',
+                child: Text('Live Settings & Management',
                     style: TextStyle(
                         color: Colors.white,
                         fontSize: 16,
                         fontWeight: FontWeight.bold)),
               ),
               const SizedBox(height: 12),
+
+              // 1. Members & Calls (Requests, Audience, Invited, Co-hosts)
+              ListTile(
+                leading: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.people_alt_rounded,
+                        color: Color(0xFFFF9500), size: 24),
+                    Obx(() {
+                      if (controller.requestList.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      return Positioned(
+                        top: -3,
+                        right: -5,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFFF1744),
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(
+                              minWidth: 15, minHeight: 15),
+                          alignment: Alignment.center,
+                          child: Text(
+                            '${controller.requestList.length}',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+                title: const Text('Members & Requests',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.bold)),
+                subtitle: Obx(() => Text(
+                  controller.requestList.isNotEmpty
+                      ? '${controller.requestList.length} join request(s) waiting'
+                      : 'Requests, Audience, Invited & Co-hosts',
+                  style: const TextStyle(color: Colors.white54, fontSize: 11.5),
+                )),
+                onTap: () {
+                  Get.back();
+                  Get.bottomSheet(
+                    const MembersSheet(isHost: true),
+                    isScrollControlled: true,
+                  );
+                },
+              ),
+
+              // 2. Start PK Battle (Host with connected co-host)
+              Obx(() {
+                final stream = controller.liveData.value;
+                final hasCoHost = controller.streamViews.length >= 2 ||
+                    (stream.coHostIds != null && stream.coHostIds!.isNotEmpty);
+                final isBattleRunning = stream.battleType == BattleType.running ||
+                    stream.battleType == BattleType.waiting;
+                if (!hasCoHost || isBattleRunning) return const SizedBox.shrink();
+                return ListTile(
+                  leading: const Icon(Icons.sports_kabaddi_rounded,
+                      color: Color(0xFFFF1744), size: 24),
+                  title: const Text('Start PK Battle',
+                      style: TextStyle(
+                          color: Color(0xFFFF5252),
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Challenge connected co-host to a PK battle',
+                      style: TextStyle(color: Colors.white54, fontSize: 11.5)),
+                  onTap: () {
+                    Get.back();
+                    HapticManager.shared.medium();
+                    controller.startBattle();
+                  },
+                );
+              }),
+
               ListTile(
                 leading: const Icon(Icons.push_pin_outlined,
                     color: Color(0xFFFFB300)),
@@ -330,10 +429,13 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
 
                   const SizedBox(height: 6),
 
-                  // 4. Quick Gift 1-tap Bar (Audience)
+                  // 4. PK Battle Start Action (Host when co-host connected)
+                  _buildStartBattlePrompt(controller),
+
+                  // 5. Quick Gift 1-tap Bar (Audience)
                   _buildQuickGiftBar(controller),
 
-                  // 5. Modern Bottom Bar
+                  // 6. Modern Bottom Bar
                   _buildBottomBar(controller),
                 ],
               ),
@@ -521,11 +623,18 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                       ],
                     ),
                     const SizedBox(width: 6),
-                    // Settings gear
+                    // Three dots ⋮ menu
                     GestureDetector(
                       onTap: _showMoreSheet,
-                      child: const Icon(Icons.settings_outlined,
-                          color: Colors.white, size: 18),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.14),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.more_vert_rounded,
+                            color: Colors.white, size: 18),
+                      ),
                     ),
                     const SizedBox(width: 6),
                     // Close
@@ -847,6 +956,70 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                 ),
               ),
             ],
+          ),
+        ),
+      );
+    });
+  }
+
+  // -------------------------------------------------------------
+  // PK Battle Start Action (Host when co-host is connected)
+  // -------------------------------------------------------------
+  Widget _buildStartBattlePrompt(LivestreamScreenController controller) {
+    if (!widget.isHost) return const SizedBox.shrink();
+    return Obx(() {
+      final stream = controller.liveData.value;
+      final hasCoHost = controller.streamViews.length >= 2 ||
+          (stream.coHostIds != null && stream.coHostIds!.isNotEmpty);
+      final isBattleRunning = stream.battleType == BattleType.running ||
+          stream.battleType == BattleType.waiting;
+      final canStartBattle = hasCoHost &&
+          !isBattleRunning &&
+          (controller.setting?.liveBattle ?? 1) == 1;
+
+      if (!canStartBattle) return const SizedBox.shrink();
+
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Center(
+          child: GestureDetector(
+            onTap: () {
+              HapticManager.shared.medium();
+              controller.startBattle();
+            },
+            child: Container(
+              height: 38,
+              padding: const EdgeInsets.symmetric(horizontal: 22),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFF1744), Color(0xFFFF8A00)],
+                ),
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFF1744).withValues(alpha: 0.45),
+                    blurRadius: 12,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('⚔️', style: TextStyle(fontSize: 16)),
+                  const SizedBox(width: 8),
+                  Text(
+                    LKey.startBattle.tr.toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       );
