@@ -527,15 +527,6 @@ class AudioRoomController extends BaseController {
     if (myUser?.id != null) {
       OnlinePresenceService.instance.setInCall(myUser!.id!, false);
     }
-    // If host is closing, delete the room and clean subcollections so participants get disconnected
-    if (isHost) {
-      final hostRoomRef = _db
-          .collection(FirebaseConst.audioRooms)
-          .doc(room.hostId.toString());
-      _purgeSubcollection(hostRoomRef.collection('comments'));
-      _purgeSubcollection(hostRoomRef.collection('gifts'));
-      hostRoomRef.delete();
-    }
     super.onClose();
   }
 
@@ -712,8 +703,10 @@ class AudioRoomController extends BaseController {
         .snapshots()
         .listen((snapshot) {
       if (!snapshot.exists) {
-        // Room was deleted (host ended)
-        _forceExit('Host has ended the room');
+        // Room was deleted (host ended) - only listeners should be forced to exit
+        if (!isHost) {
+          _forceExit('Host has ended the room');
+        }
         return;
       }
       final data = snapshot.data()!;

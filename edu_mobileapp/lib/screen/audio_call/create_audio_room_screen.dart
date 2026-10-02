@@ -295,17 +295,17 @@ class CreateAudioRoomController extends BaseController {
         Loggers.error('Error clearing old live room subcollections: $e');
       }
 
+      if (Get.isRegistered<AudioRoomController>()) {
+        Get.delete<AudioRoomController>(force: true);
+      }
+
       await _db
           .collection(FirebaseConst.audioRooms)
           .doc(user.id.toString())
           .set(room.toJson());
 
-      if (Get.isRegistered<AudioRoomController>()) {
-        Get.delete<AudioRoomController>(force: true);
-      }
-
       isStartingLive.value = false;
-      Get.off(() => AudioRoomScreen(room: room, isHost: true));
+      Get.to(() => AudioRoomScreen(room: room, isHost: true));
     } catch (e) {
       isStartingLive.value = false;
       showSnackBar('Failed to create room: $e');
