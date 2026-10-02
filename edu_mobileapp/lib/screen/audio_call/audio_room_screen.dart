@@ -294,36 +294,19 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                     ),
                   ),
 
-                  // 3. Middle-lower area: Pin comment + Top gifter badge + Chat & Event list
+                  // 3. Top gifter pill & Quick Gift Bar (if listener)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Obx(() => controller.pinnedComment.value.isNotEmpty
-                            ? _buildPinnedCommentBanner(controller)
-                            : const SizedBox.shrink()),
-
-                        if (isHost) _buildPinCommentInput(controller),
-
-                        _buildTopGifterPill(controller),
-                        const SizedBox(height: 2),
-                        SizedBox(
-                          height: 120, // Full width chat list matching reference UI
-                          child: _buildChatList(controller),
-                        ),
-                      ],
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _buildTopGifterPill(controller),
                     ),
                   ),
-
-                  const SizedBox(height: 6),
-
-                  // 4. Horizontal Gift Quick Bar (Rose 💎3, Love 💎9, Car 💎298, Castle 💎2.5K...)
                   _buildQuickGiftBar(controller),
 
-                  // 5. Bottom Input & Action Bar (Say Hi!, Share, Gift, Heart)
-                  _buildBottomBar(controller),
+                  // 4. Footer Section matching user reference screenshot:
+                  // Room Welcome Banner + Chat list + [ 🛋️ Requests (0) ] + [ PK Battle ] + Right vertical (Mute, Calls, Share, More)
+                  _buildFooterSection(controller),
                 ],
               ),
             ),
@@ -2132,237 +2115,546 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
 });
 }
 
-  Widget _buildBottomBar(AudioRoomController controller) {
+  Widget _buildFooterSection(AudioRoomController controller) {
     return Padding(
-      padding: const EdgeInsets.only(left: 14, right: 14, bottom: 8),
+      padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // "Say Hi!" input pill with "New" badge
+          // Left Area: Welcome Announcement + Chat Stream + Bottom Action Pills
           Expanded(
-            child: Container(
-              height: 38,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Pinned / Welcome announcement card (matching user reference screenshot)
+                _buildRoomWelcomeBanner(controller),
+                const SizedBox(height: 6),
+                // Streaming chat list
+                SizedBox(
+                  height: 90,
+                  child: _buildChatList(controller),
+                ),
+                const SizedBox(height: 8),
+                // Bottom pills row: [ 🛋️ Requests (0) ]  [ PK Battle ]  [ 💬 ]
+                _buildBottomActionPills(controller),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          // Right Area: Vertical Action Column (Mute, Calls, Share, More)
+          _buildRightVerticalActions(controller),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoomWelcomeBanner(AudioRoomController controller) {
+    return Obx(() {
+      final pinText = controller.pinnedComment.value;
+      final hostName = room.hostName ?? 'Jk';
+      final displayText = pinText.isNotEmpty
+          ? pinText
+          : 'Hello everyone, Welcome to my Chatroom! You can Play, Chat & Make Friends! Do follow me for updates.';
+
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.52),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.12),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                CustomImage(
+                  size: const Size(26, 26),
+                  image: room.hostPhoto,
+                  radius: 13,
+                  fullName: hostName,
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFFD54F),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.stars_rounded,
+                      color: Colors.black, size: 10),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  hostName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Text('🌸', style: TextStyle(fontSize: 11)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () {
+                    if (isHost) {
+                      _showPinCommentSheet(controller);
+                    }
+                  },
+                  child: const Icon(
+                    Icons.open_in_full_rounded,
+                    color: Colors.white70,
+                    size: 14,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              displayText,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11.5,
+                height: 1.35,
+                fontWeight: FontWeight.w500,
               ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 5, vertical: 2),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFFF8A00), Color(0xFFFF3D00)],
-                      ),
-                      borderRadius: BorderRadius.circular(6),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _buildBottomActionPills(AudioRoomController controller) {
+    return Obx(() {
+      final reqCount = controller.requestIds.length;
+      final isSpeaker = controller.isSpeaker.value;
+      final hasRequested = controller.hasRequested.value;
+
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 1. Orange Pill: [ 🛋️ Requests (0) ] (Real-time data!)
+            GestureDetector(
+              onTap: () {
+                if (isHost) {
+                  _showRequestsSheet(controller);
+                } else if (isSpeaker) {
+                  _showSelfSeatMenu(controller);
+                } else if (hasRequested) {
+                  _showCancelRequestDialog(controller);
+                } else {
+                  controller.requestToSpeak();
+                  showSnackBar('Join call request sent to host!');
+                }
+              },
+              child: Container(
+                height: 38,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF7A00), Color(0xFFFF5200)],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFF6D00).withValues(alpha: 0.4),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
-                    child: const Text(
-                      'New',
-                      style: TextStyle(
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.weekend_rounded,
+                        color: Colors.white, size: 17),
+                    const SizedBox(width: 6),
+                    Text(
+                      isHost
+                          ? 'Requests ($reqCount)'
+                          : (isSpeaker
+                              ? 'My Seat'
+                              : (hasRequested ? 'Requested' : 'Join Call')),
+                      style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 8.5,
-                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // 2. Dark Pill: [ PK Battle ]
+            GestureDetector(
+              onTap: () {
+                if (controller.pkStatus.value == 'running') {
+                  showSnackBar('PK Battle is currently live!');
+                } else if (isHost) {
+                  _showPkInviteListSheet(controller);
+                } else {
+                  showSnackBar('PK Battle is managed by the host');
+                }
+              },
+              child: Container(
+                height: 38,
+                padding: const EdgeInsets.symmetric(horizontal: 13),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E1E26).withValues(alpha: 0.95),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.16),
+                    width: 1,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: controller.textCommentController,
-                      style: const TextStyle(color: Colors.white, fontSize: 13),
-                      onTapOutside: (_) =>
-                          FocusManager.instance.primaryFocus?.unfocus(),
-                      onSubmitted: (_) => controller.sendTextComment(),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        border: InputBorder.none,
-                        hintText: 'Say Hi!',
-                        hintStyle: TextStyle(
-                            color: Colors.white60,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w500),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [Color(0xFFE040FB), Color(0xFF7C4DFF)],
+                      ).createShader(bounds),
+                      child: const Text(
+                        'PK',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 5),
+                    Text(
+                      controller.pkStatus.value == 'running'
+                          ? '⚔️ Live'
+                          : 'Battle',
+                      style: const TextStyle(
+                        color: Color(0xFFFF8A00),
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // 3. Chat / Comment bubble button (Say Hi!)
+            GestureDetector(
+              onTap: () => _openChatInputDialog(controller),
+              child: Container(
+                height: 38,
+                padding: const EdgeInsets.symmetric(horizontal: 11),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
                   ),
-                  GestureDetector(
-                    onTap: controller.sendTextComment,
-                    child: const Icon(Icons.send_rounded,
-                        color: Color(0xFFFF7A19), size: 18),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.chat_bubble_outline_rounded,
+                        color: Colors.white, size: 16),
+                    SizedBox(width: 4),
+                    Text(
+                      'Say Hi!',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // 4. Gift & Like buttons (for listeners)
+            if (!isHost) ...[
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () => _showCategoryGiftsSheet(controller),
+                child: Container(
+                  height: 38,
+                  width: 38,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.14),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white12),
                   ),
+                  child: const Icon(Icons.card_giftcard_rounded,
+                      color: Color(0xFFFF7A19), size: 18),
+                ),
+              ),
+              const SizedBox(width: 8),
+              LiveStreamLikeButton(
+                likeCount: controller.likeCount.value,
+                size: 38,
+                onLikeTap: (fn) => controller.onLikeTap = fn,
+                onTap: controller.onLikeButtonTap,
+              ),
+            ],
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _buildRightVerticalActions(AudioRoomController controller) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // 1. Mute / Unmute
+        Obx(() {
+          final isMuted = isHost
+              ? controller.isMuted.value
+              : (controller.isSpeaker.value
+                  ? controller.isMuted.value
+                  : !controller.isSpeakerOn.value);
+          final label = isMuted ? 'Muted' : 'Mute';
+          final iconData =
+              isMuted ? Icons.mic_off_rounded : Icons.mic_none_rounded;
+          final iconColor =
+              isMuted ? const Color(0xFFFF5252) : Colors.white;
+
+          return _verticalActionButton(
+            icon: iconData,
+            label: label,
+            iconColor: iconColor,
+            onTap: () {
+              if (isHost || controller.isSpeaker.value) {
+                controller.toggleMute();
+              } else {
+                controller.toggleSpeaker();
+              }
+            },
+          );
+        }),
+        const SizedBox(height: 12),
+
+        // 2. Calls (Sofa Icon + "Calls" text)
+        _verticalActionButton(
+          icon: Icons.weekend_outlined,
+          label: 'Calls',
+          onTap: () => _showRequestsSheet(controller),
+        ),
+        const SizedBox(height: 12),
+
+        // 3. Share (Share Icon + "Share" text)
+        _verticalActionButton(
+          icon: Icons.share_rounded,
+          label: 'Share',
+          onTap: () => _shareRoom(controller),
+        ),
+        const SizedBox(height: 12),
+
+        // 4. More (Three vertical dots + "More" text)
+        _verticalActionButton(
+          icon: Icons.more_vert_rounded,
+          label: 'More',
+          onTap: () => _showMoreSheet(controller),
+        ),
+      ],
+    );
+  }
+
+  Widget _verticalActionButton({
+    required IconData icon,
+    required String label,
+    Color iconColor = Colors.white,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: 46,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(icon, color: iconColor, size: 26),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                color: iconColor,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                shadows: const [
+                  Shadow(color: Colors.black87, blurRadius: 4),
                 ],
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          if (isHost) ...[
-            // Host Mute/Unmute Mic Button
-            Obx(() {
-              final isMuted = controller.isMuted.value;
-              return GestureDetector(
-                onTap: controller.toggleMute,
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: isMuted
-                        ? const Color(0xFFFF1744).withValues(alpha: 0.25)
-                        : Colors.white.withValues(alpha: 0.14),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: isMuted ? const Color(0xFFFF1744) : Colors.white24,
-                      width: 1.2,
-                    ),
-                  ),
-                  child: Icon(
-                    isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
-                    color: isMuted ? const Color(0xFFFF1744) : Colors.white,
-                    size: 20,
-                  ),
-                ),
-              );
-            }),
-            const SizedBox(width: 8),
-            // Share button
-            GestureDetector(
-              onTap: () => _shareRoom(controller),
-              child: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.14),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.reply_rounded,
-                    color: Colors.white, size: 20),
-              ),
-            ),
-            const SizedBox(width: 8),
-            // 1st: Three dots menu button
-            GestureDetector(
-              onTap: () => _showMoreSheet(controller),
-              child: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.14),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.more_vert_rounded,
-                    color: Colors.white, size: 20),
-              ),
-            ),
-            const SizedBox(width: 8),
-            // 2nd: Gift button (Host sets favourite gift for room)
-            GestureDetector(
-              onTap: () => _showFavouriteGiftSheet(controller),
-              child: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.14),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.card_giftcard_rounded,
-                    color: Color(0xFFFF7A19), size: 20),
-              ),
-            ),
-            const SizedBox(width: 8),
-            // 3rd: Heart like button in the right corner
-            Obx(() => LiveStreamLikeButton(
-              likeCount: controller.likeCount.value,
-              size: 38,
-              onLikeTap: (fn) => controller.onLikeTap = fn,
-              onTap: controller.onLikeButtonTap,
-            )),
-          ] else ...[
-            // Speaker Mute/Unmute if approved speaker
-            Obx(() {
-              if (!controller.isSpeaker.value) return const SizedBox.shrink();
-              final isMuted = controller.isMuted.value;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: GestureDetector(
-                  onTap: controller.toggleMute,
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: isMuted
-                          ? const Color(0xFFFF1744).withValues(alpha: 0.25)
-                          : Colors.white.withValues(alpha: 0.14),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color:
-                            isMuted ? const Color(0xFFFF1744) : Colors.white24,
-                        width: 1.2,
-                      ),
-                    ),
-                    child: Icon(
-                      isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
-                      color: isMuted ? const Color(0xFFFF1744) : Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                ),
-              );
-            }),
-            // Share button
-            GestureDetector(
-              onTap: () => _shareRoom(controller),
-              child: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.14),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.reply_rounded,
-                    color: Colors.white, size: 20),
-              ),
-            ),
-            const SizedBox(width: 8),
-            // 1st: Three dots menu button
-            GestureDetector(
-              onTap: () => _showMoreSheet(controller),
-              child: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.14),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.more_vert_rounded,
-                    color: Colors.white, size: 20),
-              ),
-            ),
-            const SizedBox(width: 8),
-            // 2nd: Gift button (Listeners send to host)
-            GestureDetector(
-              onTap: () => _showCategoryGiftsSheet(controller),
-              child: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.14),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.card_giftcard_rounded,
-                    color: Color(0xFFFF7A19), size: 20),
-              ),
-            ),
-            const SizedBox(width: 8),
-            // 3rd: Heart like button in the right corner
-            Obx(() => LiveStreamLikeButton(
-              likeCount: controller.likeCount.value,
-              size: 38,
-              onLikeTap: (fn) => controller.onLikeTap = fn,
-              onTap: controller.onLikeButtonTap,
-            )),
           ],
-        ],
+        ),
       ),
+    );
+  }
+
+  void _openChatInputDialog(AudioRoomController controller) {
+    Get.bottomSheet(
+      Container(
+        padding: EdgeInsets.only(
+          left: 14,
+          right: 14,
+          top: 12,
+          bottom: MediaQuery.of(Get.context!).viewInsets.bottom + 12,
+        ),
+        decoration: const BoxDecoration(
+          color: Color(0xFF1E1E26),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller.textCommentController,
+                  autofocus: true,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                    hintText: 'Say Hi! Say something nice...',
+                    hintStyle: TextStyle(color: Colors.white38, fontSize: 13),
+                  ),
+                  onSubmitted: (_) {
+                    controller.sendTextComment();
+                    Get.back();
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  controller.sendTextComment();
+                  Get.back();
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFF7A19),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.send_rounded,
+                      color: Colors.white, size: 18),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
+  void _showPinCommentSheet(AudioRoomController controller) {
+    final textController =
+        TextEditingController(text: controller.pinnedComment.value);
+    Get.bottomSheet(
+      Container(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(Get.context!).viewInsets.bottom + 16,
+        ),
+        decoration: const BoxDecoration(
+          color: Color(0xFF1E1E26),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Room Announcement / Pin Comment',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: textController,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'Type announcement...',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.08),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      controller.clearPinnedComment();
+                      Get.back();
+                    },
+                    child: const Text('Clear',
+                        style: TextStyle(color: Colors.white60)),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () {
+                      controller.pinCommentController.text =
+                          textController.text.trim();
+                      controller.submitPinnedComment();
+                      Get.back();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF7A00),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('Save'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+      isScrollControlled: true,
     );
   }
 
