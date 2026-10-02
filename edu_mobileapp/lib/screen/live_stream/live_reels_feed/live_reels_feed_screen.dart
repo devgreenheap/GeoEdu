@@ -294,7 +294,7 @@ class _LiveReelsFeedScreenState extends State<LiveReelsFeedScreen>
             ),
             const SizedBox(height: 28),
             const Text(
-              "No Live Streams Right Now",
+              "No Host Is Live Right Now",
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white,
@@ -305,7 +305,7 @@ class _LiveReelsFeedScreenState extends State<LiveReelsFeedScreen>
             ),
             const SizedBox(height: 10),
             Text(
-              "All live calls and streams will appear here directly in real-time as soon as hosts start broadcasting.",
+              "There are currently no hosts live. When a host starts broadcasting, their live stream will appear here in real-time.",
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.65),

@@ -5,14 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:geoedu/common/controller/base_controller.dart';
 import 'package:geoedu/common/controller/firebase_firestore_controller.dart';
-import 'package:geoedu/common/extensions/user_extension.dart';
 import 'package:geoedu/common/manager/logger.dart';
-import 'package:geoedu/common/manager/session_manager.dart';
-import 'package:geoedu/model/general/settings_model.dart';
 import 'package:geoedu/model/livestream/livestream.dart';
-import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/screen/dashboard_screen/dashboard_screen_controller.dart';
-import 'package:geoedu/screen/live_stream/live_stream_search_screen/live_stream_search_screen_controller.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
 import 'package:geoedu/utilities/firebase_const.dart';
 import 'package:zego_express_engine/zego_express_engine.dart';
@@ -28,7 +23,6 @@ class LiveReelsFeedController extends BaseController {
 
   StreamSubscription<QuerySnapshot<Livestream>>? _firestoreSub;
   Worker? _tabWorker;
-  Worker? _searchCtrlWorker;
 
   final Map<String, Livestream> _streamMap = {};
 
@@ -63,38 +57,20 @@ class LiveReelsFeedController extends BaseController {
     }
   }
 
+  /// Strictly validates that the stream belongs to an actual real host
+  /// who is currently broadcasting, and is NOT a dummy/sample stream.
+  bool _isRealLiveStream(Livestream stream) {
+    if (stream.isDummyLive == 1) return false;
+    if (stream.type == LivestreamType.dummy) return false;
+    if (stream.dummyUserLink != null && stream.dummyUserLink!.isNotEmpty) return false;
+    final roomId = stream.roomID ?? '';
+    if (roomId.isEmpty) return false;
+    if (stream.hostId == null || stream.hostId! <= 0) return false;
+    return true;
+  }
+
   void _initStreams() {
-    // 1. Instantly copy streams from search controller if already populated
-    if (Get.isRegistered<LiveStreamSearchScreenController>()) {
-      final searchCtrl = Get.find<LiveStreamSearchScreenController>();
-      if (searchCtrl.livestreamList.isNotEmpty) {
-        final initialList = List<Livestream>.from(searchCtrl.livestreamList);
-        for (var s in initialList) {
-          if (s.roomID != null && s.roomID!.isNotEmpty) {
-            _streamMap[s.roomID!] = s;
-          }
-        }
-        liveStreams.assignAll(initialList);
-        isLoading.value = false;
-      }
-
-      // Also listen to search controller changes
-      _searchCtrlWorker = ever(searchCtrl.livestreamList, (List<Livestream> list) {
-        if (list.isNotEmpty) {
-          for (var s in list) {
-            if (s.roomID != null && s.roomID!.isNotEmpty) {
-              _streamMap[s.roomID!] = s;
-            }
-          }
-          final merged = List<Livestream>.from(_streamMap.values);
-          _assignHostUsers(merged);
-          liveStreams.assignAll(merged);
-          isLoading.value = false;
-        }
-      });
-    }
-
-    // 2. Real-time Firestore stream listener on liveStreams collection
+    // Real-time Firestore stream listener on liveStreams collection
     _firestoreSub = _db
         .collection(FirebaseConst.liveStreams)
         .withConverter(
@@ -103,48 +79,32 @@ class LiveReelsFeedController extends BaseController {
         )
         .snapshots()
         .listen((snapshot) {
-      for (var change in snapshot.docChanges) {
-        final stream = change.doc.data();
-        final roomId = stream?.roomID ?? '';
-        if (stream == null || roomId.isEmpty) continue;
-
-        switch (change.type) {
-          case DocumentChangeType.added:
-          case DocumentChangeType.modified:
-            _streamMap[roomId] = stream;
-            if (stream.hostId != null && stream.hostId != -1) {
-              if (Get.isRegistered<FirebaseFirestoreController>()) {
-                Get.find<FirebaseFirestoreController>().fetchUserIfNeeded(stream.hostId!);
-              }
+      _streamMap.clear();
+      for (var doc in snapshot.docs) {
+        final stream = doc.data();
+        if (_isRealLiveStream(stream)) {
+          final roomId = stream.roomID!;
+          _streamMap[roomId] = stream;
+          if (stream.hostId != null && stream.hostId! > 0) {
+            if (Get.isRegistered<FirebaseFirestoreController>()) {
+              Get.find<FirebaseFirestoreController>().fetchUserIfNeeded(stream.hostId!);
             }
-            break;
-          case DocumentChangeType.removed:
-            _streamMap.remove(roomId);
-            break;
+          }
         }
       }
 
       final list = List<Livestream>.from(_streamMap.values);
       _assignHostUsers(list);
-      _populateDummyIfEmpty(list);
+
+      if (currentIndex.value >= list.length) {
+        currentIndex.value = list.isNotEmpty ? list.length - 1 : 0;
+      }
 
       liveStreams.assignAll(list);
       isLoading.value = false;
     }, onError: (e) {
       Loggers.error('LiveReels: firestore subscription error: $e');
       isLoading.value = false;
-    });
-
-    // Fallback if list still empty after initial tick
-    Future.delayed(const Duration(milliseconds: 1200), () {
-      if (liveStreams.isEmpty) {
-        final list = <Livestream>[];
-        _populateDummyIfEmpty(list);
-        if (list.isNotEmpty) {
-          liveStreams.assignAll(list);
-          isLoading.value = false;
-        }
-      }
     });
   }
 
@@ -158,33 +118,6 @@ class LiveReelsFeedController extends BaseController {
     for (var stream in list) {
       if (stream.hostId != null && userMap.containsKey(stream.hostId)) {
         stream.hostUser = userMap[stream.hostId];
-      }
-    }
-  }
-
-  void _populateDummyIfEmpty(List<Livestream> list) {
-    if (list.isNotEmpty) return;
-    final Setting? setting = SessionManager.instance.getSettings();
-    final dummyLives = setting?.dummyLives ?? [];
-    if (dummyLives.isEmpty) return;
-
-    final now = DateTime.now().millisecondsSinceEpoch;
-    for (var dummy in dummyLives) {
-      if (dummy.status == 1 && dummy.user != null) {
-        final User user = dummy.user!;
-        final stream = user.livestream(
-          time: now,
-          type: LivestreamType.dummy,
-          dummyUserLink: dummy.link,
-          isDummyLive: 1,
-          description: dummy.title,
-          categoryId: dummy.categoryId ?? user.categoryId,
-          categoryName: dummy.categoryName ?? user.categoryName,
-          languageId: dummy.languageId ?? user.languageId,
-          languageName: dummy.languageName ?? user.languageName,
-        );
-        stream.hostUser = user.appUser;
-        list.add(stream);
       }
     }
   }
@@ -209,13 +142,17 @@ class LiveReelsFeedController extends BaseController {
       _streamMap.clear();
       for (var doc in snap.docs) {
         final stream = doc.data();
-        if (stream.roomID != null && stream.roomID!.isNotEmpty) {
+        if (_isRealLiveStream(stream)) {
           _streamMap[stream.roomID!] = stream;
         }
       }
       final list = List<Livestream>.from(_streamMap.values);
       _assignHostUsers(list);
-      _populateDummyIfEmpty(list);
+
+      if (currentIndex.value >= list.length) {
+        currentIndex.value = list.isNotEmpty ? list.length - 1 : 0;
+      }
+
       liveStreams.assignAll(list);
     } catch (e) {
       Loggers.error('LiveReels: refresh error: $e');
@@ -228,7 +165,6 @@ class LiveReelsFeedController extends BaseController {
   void onClose() {
     _firestoreSub?.cancel();
     _tabWorker?.dispose();
-    _searchCtrlWorker?.dispose();
     pageController.dispose();
 
     // Clean up any remaining LivestreamScreenController
@@ -241,3 +177,4 @@ class LiveReelsFeedController extends BaseController {
     super.onClose();
   }
 }
+

@@ -254,6 +254,11 @@ class LiveStreamSearchScreenController extends BaseController {
       for (var doc in snapshot.docs) {
         final stream = doc.data();
         if (stream.roomID != null && stream.roomID!.isNotEmpty) {
+          if (stream.isDummyLive == 1 ||
+              stream.type == LivestreamType.dummy ||
+              (stream.dummyUserLink != null && stream.dummyUserLink!.isNotEmpty)) {
+            continue;
+          }
           activeStreams.add(stream);
           if (stream.hostId != null && stream.hostId != -1) {
             firebaseFirestoreController.fetchUserIfNeeded(stream.hostId ?? -1);
@@ -541,10 +546,7 @@ class LiveStreamSearchScreenController extends BaseController {
 
   Future<void> addDummyUsers() async {
     try {
-      final settingDummyLives = setting?.dummyLives ?? [];
-      Loggers.info('Total dummy lives from settings: ${settingDummyLives.length}');
-
-      // Fetch existing livestreams from Firestore
+      // Clean up any lingering dummy livestreams from Firestore so they never pollute real-time streams
       final livestreamList = await db
           .collection(FirebaseConst.liveStreams)
           .withConverter<Livestream>(
@@ -553,30 +555,17 @@ class LiveStreamSearchScreenController extends BaseController {
           )
           .get();
 
-      // Collect existing stream IDs
-      final existingIds = livestreamList.docs.map((doc) => doc.id).toSet();
-
-      for (var dummy in settingDummyLives) {
-        final dummyId = dummy.userId;
-
-        // Skip invalid IDs
-        if (dummyId == null || dummyId == -1) continue;
-
-        final alreadyExists = existingIds.contains('$dummyId');
-        if (dummy.status == 1) {
-          // Create or update dummy livestream
-          await createLiveStream(dummy);
-          Loggers.info('${alreadyExists ? 'Updated' : 'Created'} dummy livestream: $dummyId');
-        } else if (alreadyExists && dummy.status == 0) {
-          // Delete if status is inactive
-          await deleteStreamOnFirebase(dummyId);
-          Loggers.info('Deleted inactive dummy livestream: $dummyId');
-        } else {
-          Loggers.info('No action for dummy: $dummyId (exists: $alreadyExists, status: ${dummy.status})');
+      for (var doc in livestreamList.docs) {
+        final stream = doc.data();
+        if (stream.isDummyLive == 1 ||
+            stream.type == LivestreamType.dummy ||
+            (stream.dummyUserLink != null && stream.dummyUserLink!.isNotEmpty)) {
+          await deleteStreamOnFirebase(stream.hostId);
+          Loggers.info('Deleted dummy livestream from Firestore: ${stream.hostId}');
         }
       }
-    } catch (e, _) {
-      Loggers.error('Error in addDummyUsers: $e');
+    } catch (e) {
+      Loggers.error('Error in cleaning dummy users: $e');
     }
   }
 
