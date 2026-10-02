@@ -1010,6 +1010,37 @@ class AudioRoomController extends BaseController {
     }
   }
 
+  void cancelRequest() async {
+    if (myUser?.id == null) return;
+    hasRequested.value = false;
+    try {
+      await _db
+          .collection(FirebaseConst.audioRooms)
+          .doc(room.hostId.toString())
+          .update({
+        'request_ids': FieldValue.arrayRemove([myUser!.id]),
+      });
+    } catch (e) {
+      Loggers.error('cancelRequest error: $e');
+    }
+  }
+
+  void leaveSpeaker() async {
+    if (myUser?.id == null) return;
+    isSpeaker.value = false;
+    try {
+      await ZegoExpressEngine.instance.stopPublishingStream();
+      await _db
+          .collection(FirebaseConst.audioRooms)
+          .doc(room.hostId.toString())
+          .update({
+        'speaker_ids': FieldValue.arrayRemove([myUser!.id]),
+      });
+    } catch (e) {
+      Loggers.error('leaveSpeaker error: $e');
+    }
+  }
+
   /// Host accepts a speaker request
   void acceptSpeaker(int userId) async {
     if (!isHost) return;

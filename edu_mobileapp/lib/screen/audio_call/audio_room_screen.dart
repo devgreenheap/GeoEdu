@@ -260,7 +260,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
             child: SafeArea(
               child: Column(
                 children: [
-                  // 1. Top Header: Punam + Follow, LIVE, viewers, settings, close, top contributors, Lives >
+                  // 1. Top Header: Row 1 (HostName + LIVE + Close), Row 2 (Gifts|Stars + Timer|Members), Row 3 (Target + Wallpaper)
                   _buildHeader(controller),
 
                   // PK battle bar (if active)
@@ -268,44 +268,45 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                       ? _buildPkBattleBar(controller)
                       : const SizedBox.shrink()),
 
-                  // Top cards row: Promo / Target Gift card (💎 148, matching reference UI)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: _buildPromoGiftCard(controller),
-                    ),
-                  ),
-
-                  // Center Stage: Host Avatar (gold ring, mic badge, speaking highlight) + Sofa Seat Grid (8 chairs)
+                  // Center Stage: Floating Target Gift Card (on left) + Centered Host Avatar + Sofa Seat Grid (8 chairs) + Topic Pill
                   Expanded(
                     child: Center(
                       child: SingleChildScrollView(
                         physics: const BouncingScrollPhysics(),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
+                        child: Stack(
+                          alignment: Alignment.topCenter,
                           children: [
-                            _buildHostAvatar(controller),
-                            const SizedBox(height: 10),
-                            _buildSeatGrid(controller),
+                            // Main vertical column: Host Avatar + 8 Chairs + Topic Pill
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _buildHostAvatar(controller),
+                                  const SizedBox(height: 8),
+                                  _buildSeatGrid(controller),
+                                  _buildTopicPill(controller),
+                                ],
+                              ),
+                            ),
+
+                            // Floating Target / Promo Gift Card (matching user reference screenshot on left)
+                            Positioned(
+                              left: 14,
+                              top: 2,
+                              child: _buildPromoGiftCard(controller),
+                            ),
                           ],
                         ),
                       ),
                     ),
                   ),
 
-                  // 3. Top gifter pill & Quick Gift Bar (if listener)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: _buildTopGifterPill(controller),
-                    ),
-                  ),
-                  _buildQuickGiftBar(controller),
+                  // 3. Quick Gift Bar (if listener)
+                  if (!isHost) _buildQuickGiftBar(controller),
 
-                  // 4. Footer Section matching user reference screenshot:
-                  // Room Welcome Banner + Chat list + [ 🛋️ Requests (0) ] + [ PK Battle ] + Right vertical (Mute, Calls, Share, More)
+                  // 4. Footer Section matching user reference screenshot (comments preserved untouched):
+                  // Room Welcome Banner + Streaming chat list + [ 🛋️ Requests (0) ] + [ PK Battle ] + Right vertical (Mute, Calls, Share, More)
                   _buildFooterSection(controller),
                 ],
               ),
@@ -612,147 +613,42 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
 
   Widget _buildHeader(AudioRoomController controller) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 4),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Left: Back button + Host avatar + name + star count + Target diamonds
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                GestureDetector(
-                  onTap: () => _handleBackOrClose(context, controller),
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    margin: const EdgeInsets.only(right: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.arrow_back_ios_new_rounded,
-                        color: Colors.white, size: 14),
-                  ),
-                ),
-                CustomImage(
-                  size: const Size(36, 36),
-                  image: room.hostPhoto,
-                  radius: 18,
-                  strokeWidth: 2,
-                  strokeColor: const Color(0xFFFFB300),
-                  fullName: room.hostName,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFFFD54F),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.stars_rounded,
-                                color: Colors.black, size: 12),
-                          ),
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              room.hostName ?? 'Host',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _headerPill(children: [
-                            const Text('🎁', style: TextStyle(fontSize: 10)),
-                            Obx(() => Text(' ${controller.hostGiftCount.value}',
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w600))),
-                            const SizedBox(width: 5),
-                            const Text('⭐', style: TextStyle(fontSize: 10)),
-                            Obx(() => Text(' ${controller.hostStarTotal.value}',
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w600))),
-                          ]),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (isHost)
-                            GestureDetector(
-                              onTap: () => _showSetTargetDialog(controller),
-                              child: Obx(() => _headerPill(children: [
-                                    const Text('💎', style: TextStyle(fontSize: 10)),
-                                    Text(
-                                        controller.targetDiamonds.value > 0
-                                            ? ' Target: ${controller.hostStarTotal.value}/${controller.targetDiamonds.value}'
-                                            : ' Target: ✏️',
-                                        style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 10.5,
-                                            fontWeight: FontWeight.w600)),
-                                    const SizedBox(width: 3),
-                                    const Icon(Icons.edit,
-                                        color: Colors.white70, size: 10),
-                                  ])),
-                            )
-                          else
-                            Obx(() => _headerPill(children: [
-                                  const Text('💎', style: TextStyle(fontSize: 10)),
-                                  Text(
-                                      controller.targetDiamonds.value > 0
-                                          ? ' Target: ${controller.hostStarTotal.value}/${controller.targetDiamonds.value}'
-                                          : ' Target',
-                                      style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10.5,
-                                          fontWeight: FontWeight.w600)),
-                                ])),
-                          if (!isHost) ...[
-                            const SizedBox(width: 6),
-                            _AudioFollowButton(hostId: room.hostId),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Right: Row 1 (LIVE, soundwave, settings, close) + Row 2 (Timer, Members pill) + Row 3 (Gallery)
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          // ── Row 1: [ 🟡 Jk ] on Left, [ 🔴 LIVE ||| ✕ ] on Right ──
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              // Left: Yellow icon + Host Name
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // LIVE badge
+                  const Text('🟡', style: TextStyle(fontSize: 14)),
+                  const SizedBox(width: 5),
+                  Text(
+                    room.hostName ?? 'Host',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.3,
+                      shadows: [
+                        Shadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 1)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+
+              // Right: 🔴 LIVE badge + Soundwave + ✕ Close button
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 7, vertical: 2.5),
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                     decoration: BoxDecoration(
                       color: const Color(0xFFE53935),
                       borderRadius: BorderRadius.circular(12),
@@ -763,67 +659,129 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                         color: Colors.white,
                         fontSize: 9.5,
                         fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
                       ),
                     ),
                   ),
                   const SizedBox(width: 5),
                   const _AudioHeaderSoundwave(),
-                  const SizedBox(width: 6),
-                  // Settings gear
-                  GestureDetector(
-                    onTap: () => _showMoreSheet(controller),
-                    child: const Icon(Icons.settings_outlined,
-                        color: Colors.white, size: 18),
-                  ),
-                  const SizedBox(width: 6),
-                  // Close
+                  const SizedBox(width: 8),
                   GestureDetector(
                     onTap: () => _handleBackOrClose(context, controller),
-                    child: const Icon(Icons.close_rounded,
-                        color: Colors.white, size: 20),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              // Row 2: Live timer + Members count pill (👤+ 0)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _AudioTimer(createdAt: room.createdAt),
-                  const SizedBox(width: 6),
-                  GestureDetector(
-                    onTap: () => _showRequestsSheet(controller),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3.5),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.person_add_alt_1_rounded,
-                              color: Colors.white, size: 13),
-                          const SizedBox(width: 4),
-                          Obx(() => Text(
-                                '${controller.participantIds.length}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              )),
-                        ],
-                      ),
+                    child: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                      size: 22,
                     ),
                   ),
                 ],
               ),
-              if (isHost) ...[
-                const SizedBox(height: 6),
-                _buildGalleryThemeButton(controller),
-              ],
+            ],
+          ),
+
+          const SizedBox(height: 6),
+
+          // ── Row 2: [ 🎁 0 | ⭐ 0 ] on Left, [ 00:00:18  👥 0 ] on Right ──
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Left: 🎁 0 | ⭐ 0
+              _headerPill(children: [
+                const Text('🎁', style: TextStyle(fontSize: 11)),
+                const SizedBox(width: 3),
+                Obx(() => Text(
+                      '${controller.hostGiftCount.value}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    )),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 6),
+                  child: Text('|',
+                      style: TextStyle(color: Colors.white38, fontSize: 11)),
+                ),
+                const Text('⭐', style: TextStyle(fontSize: 11)),
+                const SizedBox(width: 3),
+                Obx(() => Text(
+                      '${controller.hostStarTotal.value}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    )),
+              ]),
+
+              // Right: Timer + Members Count Pill
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _AudioTimer(createdAt: room.createdAt),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => _showRequestsSheet(controller),
+                    child: _headerPill(children: [
+                      const Icon(Icons.person_add_alt_1_rounded,
+                          color: Colors.white, size: 13),
+                      const SizedBox(width: 4),
+                      Obx(() => Text(
+                            '${controller.participantIds.length}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          )),
+                    ]),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 6),
+
+          // ── Row 3: [ 💎 Target: ✏ ] on Left, [ 🖼️ ] Wallpaper Button on Right ──
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Left: 💎 Target: ✏
+              GestureDetector(
+                onTap: isHost ? () => _showSetTargetDialog(controller) : null,
+                child: Obx(() => _headerPill(children: [
+                      const Text('💎', style: TextStyle(fontSize: 11)),
+                      const SizedBox(width: 4),
+                      Text(
+                        controller.targetDiamonds.value > 0
+                            ? 'Target: ${controller.hostStarTotal.value}/${controller.targetDiamonds.value}'
+                            : 'Target:',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (isHost) ...[
+                        const SizedBox(width: 4),
+                        Container(
+                          padding: const EdgeInsets.all(2.5),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.25),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.edit,
+                              color: Colors.white, size: 9.5),
+                        ),
+                      ],
+                    ])),
+              ),
+
+              // Right: Wallpaper button
+              if (isHost) _buildGalleryThemeButton(controller),
             ],
           ),
         ],
@@ -833,8 +791,22 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
 
   Widget _headerPill({required List<Widget> children}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(20)),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
+      decoration: BoxDecoration(
+        color: const Color(0xFF14203D).withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.15),
+          width: 0.8,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
       child: Row(mainAxisSize: MainAxisSize.min, children: children),
     );
   }
@@ -853,19 +825,20 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
             ? () => _showFavouriteGiftSheet(controller)
             : () => _showCategoryGiftsSheet(controller),
         child: Container(
-          width: 56,
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          width: 58,
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.45),
-            borderRadius: BorderRadius.circular(12),
+            color: const Color(0xFF14203D).withValues(alpha: 0.75),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.15),
+              color: Colors.white.withValues(alpha: 0.18),
               width: 1,
             ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.35),
-                blurRadius: 6,
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -873,45 +846,52 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                 margin: const EdgeInsets.only(bottom: 4),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFFB300), Color(0xFFFF8F00)],
-                  ),
+                  color: const Color(0xFFFFD54F),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: const Text('Target',
-                    style: TextStyle(
-                        color: Colors.black,
-                        fontSize: 8,
-                        fontWeight: FontWeight.w800)),
+                child: const Text(
+                  'Target',
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 7.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
               if (image != null && image.isNotEmpty)
                 CustomImage(
-                    size: const Size(30, 30),
-                    image: image,
-                    fullName: gift?.title,
-                    radius: 6)
+                  size: const Size(32, 32),
+                  image: image,
+                  fullName: gift?.title,
+                  radius: 6,
+                )
               else
-                const Icon(Icons.card_giftcard_rounded,
-                    color: Color(0xFFFF4081), size: 28),
+                const Icon(
+                  Icons.favorite_rounded,
+                  color: Color(0xFFFF4081),
+                  size: 30,
+                ),
               const SizedBox(height: 3),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.diamond,
-                      color: ColorRes.primaryColor, size: 11),
+                  const Text('💎', style: TextStyle(fontSize: 10)),
                   const SizedBox(width: 2),
                   Flexible(
-                    child: Text('$price',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700)),
+                    child: Text(
+                      '$price',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -920,6 +900,64 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
         ),
       );
     });
+  }
+
+  Widget _buildTopicPill(AudioRoomController controller) {
+    final topicName = room.chatRoomField?.isNotEmpty == true
+        ? room.chatRoomField!
+        : (room.roomName?.isNotEmpty == true ? room.roomName! : 'Classroom');
+    final hostName = room.hostName ?? 'Host';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.18),
+          width: 0.8,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 6,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CustomImage(
+            size: const Size(18, 18),
+            image: room.hostPhoto,
+            radius: 9,
+            fullName: hostName,
+          ),
+          const SizedBox(width: 6),
+          const Text('🟡', style: TextStyle(fontSize: 10)),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              topicName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          const Icon(
+            Icons.keyboard_arrow_down_rounded,
+            color: Colors.white70,
+            size: 16,
+          ),
+        ],
+      ),
+    );
   }
 
   void _showSetTargetDialog(AudioRoomController controller) {
@@ -1726,7 +1764,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
           : controller.mutedSpeakerIds.contains(room.hostId);
 
       final Color borderColor =
-          isSpeaking ? const Color(0xFF00FF7F) : const Color(0xFFFFB300);
+          isSpeaking ? const Color(0xFF00FF7F) : const Color(0xFF00E676);
 
       return Column(
         mainAxisSize: MainAxisSize.min,
@@ -1742,17 +1780,17 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: isSpeaking
-                        ? const Color(0xFF00FF7F).withValues(alpha: 0.6)
-                        : const Color(0xFFFFB300).withValues(alpha: 0.4),
-                    width: isSpeaking ? 3.5 : 3.0,
+                        ? const Color(0xFF00FF7F).withValues(alpha: 0.85)
+                        : const Color(0xFF00E676).withValues(alpha: 0.7),
+                    width: isSpeaking ? 3.5 : 2.8,
                   ),
                   boxShadow: [
                     BoxShadow(
                       color: isSpeaking
                           ? const Color(0xFF00FF7F).withValues(alpha: 0.85)
-                          : const Color(0xFFFFB300).withValues(alpha: 0.3),
-                      blurRadius: isSpeaking ? 16 : 12,
-                      spreadRadius: isSpeaking ? 3 : 2,
+                          : const Color(0xFF00E676).withValues(alpha: 0.45),
+                      blurRadius: isSpeaking ? 16 : 10,
+                      spreadRadius: isSpeaking ? 3 : 1.5,
                     ),
                   ],
                 ),
@@ -1762,34 +1800,39 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                     shape: BoxShape.circle,
                     border: Border.all(
                       color: borderColor,
-                      width: 2.5,
+                      width: 2.0,
                     ),
                   ),
                   child: CustomImage(
-                    size: const Size(80, 80),
+                    size: const Size(72, 72),
                     image: room.hostPhoto,
-                    radius: 40,
+                    radius: 36,
                     fullName: room.hostName,
                   ),
                 ),
               ),
-              // Mic status badge at bottom-right (green if unmuted, red if muted)
+              // Mic status badge at bottom-right (white circular badge with green mic icon, red if muted)
               Positioned(
-                bottom: 2,
-                right: 2,
+                bottom: 0,
+                right: 0,
                 child: Container(
                   padding: const EdgeInsets.all(3),
                   decoration: BoxDecoration(
-                    color: isMuted
-                        ? const Color(0xFFE53935)
-                        : const Color(0xFF00C853),
+                    color: Colors.white,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        blurRadius: 4,
+                      ),
+                    ],
                   ),
                   child: Icon(
                     isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
-                    size: 11,
-                    color: Colors.white,
+                    size: 12,
+                    color: isMuted
+                        ? const Color(0xFFE53935)
+                        : const Color(0xFF00C853),
                   ),
                 ),
               ),
@@ -1801,29 +1844,21 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                 ),
             ],
           ),
-          const SizedBox(height: 6),
-          // Host name pill with yellow badge
+          const SizedBox(height: 5),
+          // Host name with yellow badge (matching "🟡 Jk")
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                padding: const EdgeInsets.all(2),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFFFD54F),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.stars_rounded,
-                    color: Colors.black, size: 12),
-              ),
-              const SizedBox(width: 4),
+              const Text('🟡', style: TextStyle(fontSize: 10)),
+              const SizedBox(width: 3),
               Text(
                 room.hostName ?? 'Host',
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 13,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.bold,
                   shadows: [
-                    Shadow(color: Colors.black, blurRadius: 4),
+                    Shadow(color: Colors.black87, blurRadius: 4),
                   ],
                 ),
               ),
