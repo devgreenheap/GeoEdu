@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:figma_squircle_updated/figma_squircle.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
@@ -31,36 +31,47 @@ class CreateAudioRoomController extends BaseController {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   Rx<User?> myUser = Rx(SessionManager.instance.getUser());
 
-  final chatRoomController = TextEditingController();
+  // Input Controllers
+  late final TextEditingController nameController;
+  final TextEditingController chatRoomController = TextEditingController();
 
-  // Language/hashtag/auto-call shared with the Video tab of Go-Live setup screen
+  // Shared state with LiveStream video setup
   GoLiveSharedState get _shared => Get.find<GoLiveSharedState>();
   RxList<Language> get languageList => _shared.languageList;
   Rx<Language?> get selectedLanguage => _shared.selectedLanguage;
   RxList<Hashtag> get selectedHashtags => _shared.selectedHashtags;
   RxBool get isAutoMode => _shared.isAutoMode;
 
-  // Real-time categories fetched from CommonService
+  // Real-time hashtags loaded from backend
+  RxList<Hashtag> realTimeHashtags = <Hashtag>[].obs;
+  RxBool isLoadingHashtags = false.obs;
+
+  // Real-time categories
   RxList<Category> categoryList = <Category>[].obs;
   Rx<Category?> selectedCategory = Rx(null);
   Rx<SubCategory?> selectedSubCategory = Rx(null);
   Rx<Topic?> selectedTopic = Rx(null);
 
-  // Host cover thumbnail card
+  // Host Avatar Edit
   Rx<XFile?> thumbnailFile = Rx(null);
   RxString thumbnailPreviewPath = ''.obs;
 
-  // Video OFF/ON switch (audio defaults to OFF)
-  RxBool isVideoOn = false.obs;
+  // Music Player selection from device
+  RxString selectedMusicPath = ''.obs;
+  RxString selectedMusicName = ''.obs;
 
-  // Room type selection
-  RxString selectedRoomType = 'audio_pk'.obs;
-  final List<Map<String, String>> roomTypes = [
-    {'value': 'audio_pk', 'label': 'Audio Room + PK'},
-    {'value': 'audio_room', 'label': 'Audio Room'},
+  // Preset Theme / Wallpaper Banners
+  final List<String> presetBanners = [
+    'https://images.unsplash.com/photo-1532375810709-75b1da00537c?w=800', // Indian flag
+    'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800', // Sunset city aesthetic
+    'https://images.unsplash.com/photo-1509062522246-3755977927d7?w=800', // Modern classroom
+    'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?w=800', // Library study
+    'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800', // Tech & Coding
   ];
+  late final RxString selectedBackgroundPath;
+  Rx<XFile?> customBackgroundFile = Rx(null);
 
-  // Join Call seats selection for host (audience view is unlimited)
+  // Join Call seats selection for host
   RxInt maxParticipants = 8.obs;
   final List<int> seatOptions = [2, 4, 6, 8];
   Rx<int?> selectedThemeIndex = Rx(0);
@@ -68,8 +79,20 @@ class CreateAudioRoomController extends BaseController {
   @override
   void onInit() {
     super.onInit();
+    final user = myUser.value;
+    nameController = TextEditingController(text: user?.fullname ?? 'Host');
+    selectedBackgroundPath = presetBanners.first.obs;
+
     if (!Get.isRegistered<GoLiveSharedState>()) Get.put(GoLiveSharedState());
     fetchCategories();
+    fetchRealTimeHashtags();
+  }
+
+  @override
+  void onClose() {
+    nameController.dispose();
+    chatRoomController.dispose();
+    super.onClose();
   }
 
   Future<void> fetchCategories() async {
@@ -85,19 +108,33 @@ class CreateAudioRoomController extends BaseController {
     }
   }
 
-  void onCategoryChanged(Category? value) {
-    selectedCategory.value = value;
-    selectedSubCategory.value = null;
-    selectedTopic.value = null;
+  Future<void> fetchRealTimeHashtags() async {
+    isLoadingHashtags.value = true;
+    try {
+      final tags = await SearchService.instance.searchHashtags(keyword: '');
+      if (tags.isNotEmpty) {
+        realTimeHashtags.value = tags;
+      } else {
+        _setFallbackHashtags();
+      }
+    } catch (e) {
+      Loggers.error('fetchRealTimeHashtags error: $e');
+      _setFallbackHashtags();
+    } finally {
+      isLoadingHashtags.value = false;
+    }
   }
 
-  void onSubCategoryChanged(SubCategory? value) {
-    selectedSubCategory.value = value;
-    selectedTopic.value = null;
-  }
-
-  void onTopicChanged(Topic? value) {
-    selectedTopic.value = value;
+  void _setFallbackHashtags() {
+    realTimeHashtags.value = [
+      Hashtag(id: 1, hashtag: 'SpokenEnglish'),
+      Hashtag(id: 2, hashtag: 'MathsDoubt'),
+      Hashtag(id: 3, hashtag: 'ScienceQuiz'),
+      Hashtag(id: 4, hashtag: 'GovtExamPrep'),
+      Hashtag(id: 5, hashtag: 'CodingTech'),
+      Hashtag(id: 6, hashtag: 'GroupStudy'),
+      Hashtag(id: 7, hashtag: 'DailyDoubt'),
+    ];
   }
 
   void onLanguageChanged(Language? value) {
@@ -108,8 +145,36 @@ class CreateAudioRoomController extends BaseController {
     _shared.toggleHashtag(hashtag);
   }
 
-  void toggleVideoOn(bool value) {
-    isVideoOn.value = value;
+  void selectPresetBackground(String url) {
+    customBackgroundFile.value = null;
+    selectedBackgroundPath.value = url;
+  }
+
+  Future<void> pickCustomBackground() async {
+    final image =
+        await MediaPickerHelper.shared.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      customBackgroundFile.value = image;
+      selectedBackgroundPath.value = image.path;
+    }
+  }
+
+  Future<void> pickDeviceMusic() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.audio);
+      if (result != null && result.files.single.path != null) {
+        selectedMusicPath.value = result.files.single.path!;
+        selectedMusicName.value = result.files.single.name;
+      }
+    } catch (e) {
+      Loggers.error('pickDeviceMusic error: $e');
+      showSnackBar('Could not pick audio file: $e');
+    }
+  }
+
+  void clearSelectedMusic() {
+    selectedMusicPath.value = '';
+    selectedMusicName.value = '';
   }
 
   void pickThumbnail() async {
@@ -146,21 +211,42 @@ class CreateAudioRoomController extends BaseController {
         }
       }
 
+      String? backgroundUrl;
+      if (customBackgroundFile.value != null) {
+        final res = await CommonService.instance
+            .uploadFileGivePath(customBackgroundFile.value!);
+        if (res.data != null && res.data!.isNotEmpty) {
+          backgroundUrl = res.data!;
+        }
+      } else if (selectedBackgroundPath.value.startsWith('http')) {
+        backgroundUrl = selectedBackgroundPath.value;
+      }
+
       final now = DateTime.now().millisecondsSinceEpoch;
       final roomId = 'room_${user.id}_$now';
+
+      final enteredName = nameController.text.trim();
+      final hostDisplayName =
+          enteredName.isNotEmpty ? enteredName : (user.fullname ?? 'Host');
+
       final roomTitle = chatRoomController.text.trim().isNotEmpty
           ? chatRoomController.text.trim()
           : (selectedCategory.value?.name != null
-              ? "${user.fullname ?? 'Host'}'s ${selectedCategory.value!.name} Room"
-              : "${user.fullname ?? 'Host'}'s Live Show");
+              ? "$hostDisplayName's ${selectedCategory.value!.name} Classroom"
+              : "$hostDisplayName's Classroom");
 
       final hashtagString =
           selectedHashtags.map((h) => '#${h.hashtag}').join(' ');
 
+      List<String> musicList = [];
+      if (selectedMusicPath.value.isNotEmpty) {
+        musicList.add(selectedMusicPath.value);
+      }
+
       final room = AudioRoom(
         roomId: roomId,
         hostId: user.id,
-        hostName: user.fullname ?? '',
+        hostName: hostDisplayName,
         hostPhoto: hostPhotoUrl,
         roomName: roomTitle,
         maxParticipants: maxParticipants.value,
@@ -174,17 +260,19 @@ class CreateAudioRoomController extends BaseController {
         isAutoMode: isAutoMode.value,
         chatRoomField: roomTitle,
         hashtag: hashtagString,
-        musicUrls: [],
-        backgroundImage: null,
+        musicUrls: musicList,
+        backgroundImage: backgroundUrl,
         themeIndex: selectedThemeIndex.value ?? 0,
         categoryId: selectedCategory.value?.id,
         categoryName: selectedCategory.value?.name,
       );
 
-      // Purge leftover comments & gifts from any previous live so the new room starts fresh
+      // Purge leftover comments & gifts from any previous live
       try {
-        final hostDocRef = _db.collection(FirebaseConst.audioRooms).doc(user.id.toString());
-        final oldComments = await hostDocRef.collection('comments').limit(300).get();
+        final hostDocRef =
+            _db.collection(FirebaseConst.audioRooms).doc(user.id.toString());
+        final oldComments =
+            await hostDocRef.collection('comments').limit(300).get();
         if (oldComments.docs.isNotEmpty) {
           final batchDelete = _db.batch();
           for (final doc in oldComments.docs) {
@@ -227,512 +315,799 @@ class CreateAudioRoomScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = Get.put(CreateAudioRoomController());
 
-    return Scaffold(
-      backgroundColor: ColorRes.blackPure,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Top App Bar: Back button + "Host Live Show" + Language selector pill
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
+    return Obx(() {
+      final bgPath = controller.selectedBackgroundPath.value;
+      final isNetwork = bgPath.startsWith('http');
+      final isLocal = bgPath.isNotEmpty && !isNetwork && File(bgPath).existsSync();
+
+      return Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          color: ColorRes.blackPure,
+          image: isNetwork
+              ? DecorationImage(
+                  image: NetworkImage(bgPath),
+                  fit: BoxFit.cover,
+                  colorFilter: ColorFilter.mode(
+                    Colors.black.withValues(alpha: 0.38),
+                    BlendMode.darken,
+                  ),
+                )
+              : (isLocal
+                  ? DecorationImage(
+                      image: FileImage(File(bgPath)),
+                      fit: BoxFit.cover,
+                      colorFilter: ColorFilter.mode(
+                        Colors.black.withValues(alpha: 0.38),
+                        BlendMode.darken,
+                      ),
+                    )
+                  : null),
+        ),
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: SafeArea(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  GestureDetector(
-                    onTap: () => Get.back(),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.arrow_back_ios_new,
-                        color: Colors.white,
-                        size: 16,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Host Live Show',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const Spacer(),
-                  Obx(() => _CompactDarkPill(
-                        icon: null,
-                        label: controller.selectedLanguage.value?.title ?? 'Language',
-                        onTap: () => _showLanguagePicker(context, controller),
-                      )),
+                  // 1. Top App Bar: Back button + "Host Live Show" + Language Pill
+                  _buildTopBar(context, controller),
+
+                  const SizedBox(height: 12),
+
+                  // 2. Avatar & Auto Call Row
+                  _buildAvatarAndAutoCall(controller),
+
+                  const SizedBox(height: 16),
+
+                  // 3. "Enter your name" input
+                  _buildNameInput(controller),
+
+                  const SizedBox(height: 14),
+
+                  // 4. "Classroom Name" input with educational helper guide
+                  _buildClassroomInput(controller),
+
+                  const SizedBox(height: 14),
+
+                  // 5. "Select Hashtag" horizontal tags
+                  _buildHashtagSelector(context, controller),
+
+                  const SizedBox(height: 10),
+
+                  // 6. Join Call Seats selector (Host controls seat count)
+                  _buildSeatSelector(controller),
+
+                  const SizedBox(height: 12),
+
+                  // 7. Educational Quote / Music Status
+                  _buildMusicQuoteLine(controller),
+
+                  const SizedBox(height: 6),
+
+                  // 8. "🎵 Music Player" + "See more >"
+                  _buildMusicPlayerRow(controller),
+
+                  const SizedBox(height: 10),
+
+                  // 9. Wallpaper / Theme Banners Horizontal List
+                  _buildBannerSelector(controller),
+
+                  const SizedBox(height: 18),
+
+                  // 10. Large Orange "Go Live" Button
+                  _buildGoLiveButton(controller),
+
+                  const SizedBox(height: 12),
                 ],
               ),
             ),
+          ),
+        ),
+      );
+    });
+  }
 
-            // Top section: Left thumbnail card + glowing pink circular avatar + right settings stack
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Left: Host cover photo thumbnail card
-                    _buildThumbnailCard(context, controller),
+  // ─── Sub-widgets ───
 
-                    // Center: Glowing Neon Pink Circular Avatar
-                    Expanded(
-                      child: Center(
-                        child: _buildGlowingAvatar(controller),
+  Widget _buildTopBar(
+      BuildContext context, CreateAudioRoomController controller) {
+    return Row(
+      children: [
+        GestureDetector(
+          onTap: () => Get.back(),
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.arrow_back_ios_new,
+              color: Colors.white,
+              size: 16,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        const Text(
+          'Host Live Show',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const Spacer(),
+        // Language Selector White Pill (as in reference: [ বাংলা ▾ ])
+        Obx(() {
+          final langTitle =
+              controller.selectedLanguage.value?.title ?? 'English';
+          return GestureDetector(
+            onTap: () => _showLanguagePicker(context, controller),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6.5),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    langTitle,
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(
+                    Icons.arrow_drop_down,
+                    color: Colors.black87,
+                    size: 18,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildAvatarAndAutoCall(CreateAudioRoomController controller) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // Dummy placeholder to balance the row so avatar is centered
+        const SizedBox(width: 100),
+
+        // Centered circular host avatar with "✏ Edit" badge
+        Obx(() {
+          final user = controller.myUser.value;
+          final previewPath = controller.thumbnailPreviewPath.value;
+          final hasLocalPreview =
+              previewPath.isNotEmpty && File(previewPath).existsSync();
+
+          return GestureDetector(
+            onTap: controller.pickThumbnail,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 82,
+                  height: 82,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        blurRadius: 10,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: ClipOval(
+                    child: hasLocalPreview
+                        ? Image.file(
+                            File(previewPath),
+                            width: 82,
+                            height: 82,
+                            fit: BoxFit.cover,
+                          )
+                        : CustomImage(
+                            size: const Size(82, 82),
+                            image: user?.profilePhoto?.addBaseURL(),
+                            fullName: user?.fullname,
+                          ),
+                  ),
+                ),
+                Positioned(
+                  bottom: -6,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.65),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.3),
+                        width: 0.8,
                       ),
                     ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.edit, color: Colors.white, size: 10),
+                        SizedBox(width: 3),
+                        Text(
+                          'Edit',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
 
-                    // Right: Edit Interest, Video OFF, Auto Call
-                    _buildTopRightSettings(context, controller),
+        // Right side: Auto Call switch
+        SizedBox(
+          width: 100,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              const Text(
+                'Auto Call',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Obx(() => Transform.scale(
+                    scale: 0.75,
+                    child: Switch(
+                      value: controller.isAutoMode.value,
+                      onChanged: (v) => controller.isAutoMode.value = v,
+                      activeThumbColor: ColorRes.primaryColor,
+                      inactiveTrackColor: Colors.white24,
+                    ),
+                  )),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNameInput(CreateAudioRoomController controller) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Enter your name',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          height: 48,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.28),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.45),
+              width: 1.2,
+            ),
+          ),
+          child: Row(
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(left: 12, right: 8),
+                child: Text('😎', style: TextStyle(fontSize: 18)),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: controller.nameController,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    hintText: 'Enter your name',
+                    hintStyle: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.45),
+                      fontSize: 14,
+                    ),
+                    contentPadding:
+                        const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildClassroomInput(CreateAudioRoomController controller) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Classroom Name',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.28),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.45),
+              width: 1.2,
+            ),
+          ),
+          child: TextField(
+            controller: controller.chatRoomController,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              hintText: 'Enter classroom name',
+              hintStyle: TextStyle(
+                color: Colors.white.withValues(alpha: 0.45),
+                fontSize: 14,
+              ),
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          'Examples: Spoken English, Math Doubt Clearing, Science Quiz, UPSC & Govt Exam Prep, Coding & Tech Talk, Group Study',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.68),
+            fontSize: 11,
+            height: 1.35,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHashtagSelector(
+      BuildContext context, CreateAudioRoomController controller) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Select Hashtag',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 7),
+        SizedBox(
+          height: 38,
+          child: Obx(() {
+            if (controller.isLoadingHashtags.value &&
+                controller.realTimeHashtags.isEmpty) {
+              return const Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: ColorRes.primaryColor,
+                  ),
+                ),
+              );
+            }
+
+            return ListView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              children: [
+                ...controller.realTimeHashtags.map((h) {
+                  return Obx(() {
+                    final isSelected = controller.selectedHashtags
+                        .any((element) => element.hashtag == h.hashtag);
+                    return GestureDetector(
+                      onTap: () => controller.toggleHashtag(h),
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? ColorRes.primaryColor.withValues(alpha: 0.22)
+                              : Colors.white.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isSelected
+                                ? ColorRes.primaryColor
+                                : Colors.white.withValues(alpha: 0.25),
+                            width: isSelected ? 1.5 : 1,
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '#${h.hashtag ?? ''}',
+                            style: TextStyle(
+                              color: isSelected
+                                  ? ColorRes.primaryColor
+                                  : Colors.white,
+                              fontSize: 12.5,
+                              fontWeight: isSelected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  });
+                }),
+                GestureDetector(
+                  onTap: () => _showHashtagPickerSheet(context, controller),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add, size: 14, color: Colors.white),
+                        SizedBox(width: 4),
+                        Text(
+                          'More',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSeatSelector(CreateAudioRoomController controller) {
+    return Row(
+      children: [
+        Text(
+          'Join Call Seats:',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.8),
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Obx(() => Row(
+                children: controller.seatOptions.map((seats) {
+                  final isSelected = controller.maxParticipants.value == seats;
+                  return GestureDetector(
+                    onTap: () => controller.maxParticipants.value = seats,
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? ColorRes.primaryColor.withValues(alpha: 0.25)
+                            : Colors.white.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isSelected
+                              ? ColorRes.primaryColor
+                              : Colors.white.withValues(alpha: 0.2),
+                          width: isSelected ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Text(
+                        '$seats Seats',
+                        style: TextStyle(
+                          color: isSelected
+                              ? ColorRes.primaryColor
+                              : Colors.white70,
+                          fontSize: 11.5,
+                          fontWeight: isSelected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              )),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMusicQuoteLine(CreateAudioRoomController controller) {
+    return Obx(() {
+      final musicName = controller.selectedMusicName.value;
+      if (musicName.isNotEmpty) {
+        return Row(
+          children: [
+            const Icon(Icons.music_note_rounded,
+                color: ColorRes.primaryColor, size: 14),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                'Selected: $musicName',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: ColorRes.primaryColor,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            GestureDetector(
+              onTap: controller.clearSelectedMusic,
+              child: const Icon(Icons.close, color: Colors.white70, size: 16),
+            ),
+          ],
+        );
+      }
+      return Text(
+        '“Education is the passport to the future, for tomorrow belongs to those who prepare for it today. 🎓”',
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.8),
+          fontSize: 11.5,
+          fontStyle: FontStyle.italic,
+          height: 1.3,
+        ),
+      );
+    });
+  }
+
+  Widget _buildMusicPlayerRow(CreateAudioRoomController controller) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.music_note_rounded, color: Colors.white, size: 18),
+            SizedBox(width: 6),
+            Text(
+              'Music Player',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        GestureDetector(
+          onTap: controller.pickDeviceMusic,
+          child: Text(
+            'See more >',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.85),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBannerSelector(CreateAudioRoomController controller) {
+    return SizedBox(
+      height: 104,
+      child: Obx(() {
+        final activeBg = controller.selectedBackgroundPath.value;
+        final customFile = controller.customBackgroundFile.value;
+
+        return ListView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          children: [
+            // Card 1: "[ + ] Add from Device"
+            GestureDetector(
+              onTap: controller.pickCustomBackground,
+              child: Container(
+                width: 74,
+                height: 100,
+                margin: const EdgeInsets.only(right: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.35),
+                    width: 1.2,
+                  ),
+                ),
+                child: const Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add, color: Colors.white, size: 28),
+                    SizedBox(height: 4),
+                    Text(
+                      'Add from\nDevice',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        height: 1.2,
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
 
-            // Bottom section: Host Live Show Card
-            _buildHostLiveShowCard(context, controller),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGlowingAvatar(CreateAudioRoomController controller) {
-    return Obx(() {
-      final user = controller.myUser.value;
-      return Container(
-        width: 104,
-        height: 104,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: const Color(0xFFFF2A85), width: 3.5),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFFF2A85).withValues(alpha: 0.65),
-              blurRadius: 18,
-              spreadRadius: 3,
-            ),
-            BoxShadow(
-              color: const Color(0xFFFF2A85).withValues(alpha: 0.25),
-              blurRadius: 36,
-              spreadRadius: 6,
-            ),
-          ],
-        ),
-        child: ClipOval(
-          child: CustomImage(
-            size: const Size(104, 104),
-            image: user?.profilePhoto?.addBaseURL(),
-            fullName: user?.fullname,
-          ),
-        ),
-      );
-    });
-  }
-
-  Widget _buildThumbnailCard(
-      BuildContext context, CreateAudioRoomController controller) {
-    return Obx(() {
-      final user = controller.myUser.value;
-      final hasPreview = controller.thumbnailPreviewPath.value.isNotEmpty;
-      return InkWell(
-        onTap: controller.pickThumbnail,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: 88,
-          height: 122,
-          clipBehavior: Clip.antiAlias,
-          decoration: ShapeDecoration(
-            color: Colors.white.withValues(alpha: 0.12),
-            shape: SmoothRectangleBorder(
-              borderRadius: SmoothBorderRadius(
-                cornerRadius: 16,
-                cornerSmoothing: 1,
-              ),
-            ),
-            image: hasPreview
-                ? DecorationImage(
-                    image:
-                        FileImage(File(controller.thumbnailPreviewPath.value)),
-                    fit: BoxFit.cover,
-                  )
-                : (user?.profilePhoto != null && user!.profilePhoto!.isNotEmpty
-                    ? DecorationImage(
-                        image: NetworkImage(user.profilePhoto!.addBaseURL()),
-                        fit: BoxFit.cover,
-                      )
-                    : null),
-          ),
-          child: Stack(
-            children: [
-              if (!hasPreview &&
-                  (user?.profilePhoto == null || user!.profilePhoto!.isEmpty))
-                const Center(
-                  child: Icon(Icons.add_a_photo_outlined,
-                      color: Colors.white70, size: 24),
-                ),
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 5),
-                  color: Colors.black.withValues(alpha: 0.6),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.edit, color: Colors.white, size: 11),
-                      SizedBox(width: 4),
-                      Text(
-                        'Edit',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+            // If user uploaded a custom file from device, show it with preview
+            if (customFile != null) ...[
+              _buildWallpaperCard(
+                imageProvider: FileImage(File(customFile.path)),
+                isSelected: activeBg == customFile.path,
+                onTap: () => controller.selectedBackgroundPath.value = customFile.path,
               ),
             ],
-          ),
-        ),
-      );
-    });
-  }
 
-  Widget _buildTopRightSettings(
-      BuildContext context, CreateAudioRoomController controller) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Edit Interest
-        Obx(() {
-          final parts = [
-            controller.selectedCategory.value?.name,
-            controller.selectedSubCategory.value?.name,
-            controller.selectedTopic.value?.name,
-          ].whereType<String>().toList();
-          return _CompactDarkPill(
-            icon: Icons.edit_outlined,
-            label: parts.isEmpty ? 'Edit Interest' : parts.join(' · '),
-            onTap: () => Get.bottomSheet(
-              _InterestPickerSheet(controller: controller),
-              isScrollControlled: true,
-              ignoreSafeArea: false,
-            ),
-          );
-        }),
-        const SizedBox(height: 12),
-
-        // Video OFF / ON
-        Obx(() => _ToggleRow(
-              label: controller.isVideoOn.value ? 'Video ON' : 'Video OFF',
-              value: controller.isVideoOn.value,
-              onChanged: controller.toggleVideoOn,
-            )),
-        const SizedBox(height: 8),
-
-        // Auto Call
-        Obx(() => _ToggleRow(
-              label: 'Auto Call',
-              value: controller.isAutoMode.value,
-              onChanged: (v) => controller.isAutoMode.value = v,
-            )),
-      ],
-    );
-  }
-
-  Widget _buildHostLiveShowCard(
-      BuildContext context, CreateAudioRoomController controller) {
-    return Container(
-      width: double.infinity,
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.62,
-      ),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF161922).withValues(alpha: 0.95),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Title: Host Live Show + Soundwave Equalizer
-            Row(
-              children: [
-                Text(
-                  'Host Live Show',
-                  style: TextStyleCustom.unboundedMedium500(
-                    color: Colors.white,
-                    fontSize: 17,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const _AudioSoundwaveIcon(),
-              ],
-            ),
-          const SizedBox(height: 12),
-
-          // Room Type
-          Text(
-            'Room Type',
-            style: TextStyleCustom.outFitLight300(
-              fontSize: 12.5,
-              color: Colors.white.withValues(alpha: 0.7),
-            ),
-          ),
-          const SizedBox(height: 7),
-          Obx(() => Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: controller.roomTypes.map((mode) {
-                  final isSelected =
-                      controller.selectedRoomType.value == mode['value'];
-                  return GestureDetector(
-                    onTap: () =>
-                        controller.selectedRoomType.value = mode['value']!,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isSelected
-                              ? ColorRes.primaryColor
-                              : Colors.white.withValues(alpha: 0.25),
-                          width: isSelected ? 1.5 : 1,
-                        ),
-                      ),
-                      child: Text(
-                        mode['label']!,
-                        style: TextStyleCustom.outFitRegular400(
-                          fontSize: 13.5,
-                          color: isSelected
-                              ? ColorRes.primaryColor
-                              : Colors.white,
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              )),
-          const SizedBox(height: 14),
-
-          // Join Call Seats
-          Row(
-            children: [
-              Text(
-                'Join Call Seats',
-                style: TextStyleCustom.outFitLight300(
-                  fontSize: 12.5,
-                  color: Colors.white.withValues(alpha: 0.7),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '(Audience views unlimited)',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.white.withValues(alpha: 0.45),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 7),
-          Obx(() => Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: controller.seatOptions.map((seats) {
-                  final isSelected =
-                      controller.maxParticipants.value == seats;
-                  return GestureDetector(
-                    onTap: () =>
-                        controller.maxParticipants.value = seats,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 7),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        color: isSelected
-                            ? ColorRes.primaryColor.withValues(alpha: 0.15)
-                            : Colors.transparent,
-                        border: Border.all(
-                          color: isSelected
-                              ? ColorRes.primaryColor
-                              : Colors.white.withValues(alpha: 0.25),
-                          width: isSelected ? 1.5 : 1,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.mic_none_rounded,
-                            size: 14,
-                            color: isSelected
-                                ? ColorRes.primaryColor
-                                : Colors.white70,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '$seats Seats',
-                            style: isSelected
-                                ? TextStyleCustom.outFitSemiBold600(
-                                    fontSize: 13,
-                                    color: ColorRes.primaryColor,
-                                  )
-                                : TextStyleCustom.outFitRegular400(
-                                    fontSize: 13,
-                                    color: Colors.white,
-                                  ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
-              )),
-          const SizedBox(height: 14),
-
-          // Choose Category
-          Text(
-            'Choose Category',
-            style: TextStyleCustom.outFitLight300(
-              fontSize: 12.5,
-              color: Colors.white.withValues(alpha: 0.7),
-            ),
-          ),
-          const SizedBox(height: 7),
-          SizedBox(
-            height: 76,
-            child: Obx(() {
-              if (controller.categoryList.isEmpty) {
-                return const Center(
-                  child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: ColorRes.primaryColor,
-                    ),
-                  ),
-                );
-              }
-              return ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: controller.categoryList.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 10),
-                itemBuilder: (context, index) {
-                  final category = controller.categoryList[index];
-                  final isSelected =
-                      controller.selectedCategory.value?.id == category.id;
-                  return _CategoryTile3D(
-                    name: category.name ?? '',
-                    isSelected: isSelected,
-                    onTap: () => controller.onCategoryChanged(category),
-                  );
-                },
+            // Preset sample banners
+            ...controller.presetBanners.map((url) {
+              return _buildWallpaperCard(
+                imageProvider: NetworkImage(url),
+                isSelected: activeBg == url,
+                onTap: () => controller.selectPresetBackground(url),
               );
             }),
-          ),
-          const SizedBox(height: 14),
+          ],
+        );
+      }),
+    );
+  }
 
-          // Select Hashtag
-          Text(
-            'Select Hashtag',
-            style: TextStyleCustom.outFitLight300(
-              fontSize: 12.5,
-              color: Colors.white.withValues(alpha: 0.7),
-            ),
+  Widget _buildWallpaperCard({
+    required ImageProvider imageProvider,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 74,
+        height: 100,
+        margin: const EdgeInsets.only(right: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? ColorRes.primaryColor : Colors.transparent,
+            width: isSelected ? 2.5 : 1,
           ),
-          const SizedBox(height: 7),
-          Obx(() => Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _HashtagChip(
-                    label: 'None',
-                    isSelected: controller.selectedHashtags.isEmpty,
-                    onTap: () {
-                      for (final h in List.of(controller.selectedHashtags)) {
-                        controller.toggleHashtag(h);
-                      }
-                    },
-                  ),
-                  ...controller.selectedHashtags.map((h) => _HashtagChip(
-                        label: '#${h.hashtag}',
-                        isSelected: true,
-                        onTap: () => controller.toggleHashtag(h),
-                      )),
-                  GestureDetector(
-                    onTap: () => _showHashtagPickerSheet(context, controller),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.25),
-                        ),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.add, size: 14, color: Colors.white),
-                          SizedBox(width: 4),
-                          Text(
-                            'More',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              )),
-          const SizedBox(height: 16),
-
-          // Go Live Button
-          InkWell(
-            onTap: controller.onGoLive,
-            child: Container(
-              height: 48,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                gradient: ColorRes.primaryGradient,
-                borderRadius: BorderRadius.circular(24),
+          image: DecorationImage(
+            image: imageProvider,
+            fit: BoxFit.cover,
+          ),
+          boxShadow: [
+            if (isSelected)
+              BoxShadow(
+                color: ColorRes.primaryColor.withValues(alpha: 0.5),
+                blurRadius: 8,
+                spreadRadius: 1,
               ),
-              alignment: Alignment.center,
-              child: Text(
-                'Go Live',
-                style: TextStyleCustom.unboundedMedium500(
-                  color: Colors.white,
-                  fontSize: 16.5,
+          ],
+        ),
+        child: isSelected
+            ? Align(
+                alignment: Alignment.topRight,
+                child: Container(
+                  margin: const EdgeInsets.all(4),
+                  padding: const EdgeInsets.all(2),
+                  decoration: const BoxDecoration(
+                    color: ColorRes.primaryColor,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check,
+                    color: Colors.white,
+                    size: 13,
+                  ),
                 ),
-              ),
-            ),
-          ),
-        ],
+              )
+            : null,
       ),
-    ),
-  );
-}
+    );
+  }
+
+  Widget _buildGoLiveButton(CreateAudioRoomController controller) {
+    return InkWell(
+      onTap: controller.onGoLive,
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        height: 48,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: ColorRes.primaryColor,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: ColorRes.primaryColor.withValues(alpha: 0.45),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          'Go Live',
+          style: TextStyleCustom.unboundedMedium500(
+            color: Colors.white,
+            fontSize: 16.5,
+          ),
+        ),
+      ),
+    );
+  }
 
   void _showHashtagPickerSheet(
       BuildContext context, CreateAudioRoomController controller) {
@@ -761,11 +1136,14 @@ class CreateAudioRoomScreen extends StatelessWidget {
                 final isSelected =
                     controller.selectedLanguage.value?.id == lang.id;
                 return ListTile(
-                  title: Text(lang.title ?? '',
-                      style: TextStyle(
-                          color: isSelected
-                              ? ColorRes.primaryColor
-                              : Colors.white)),
+                  title: Text(
+                    lang.title ?? '',
+                    style: TextStyle(
+                      color: isSelected ? ColorRes.primaryColor : Colors.white,
+                      fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
                   trailing: isSelected
                       ? const Icon(Icons.check, color: ColorRes.primaryColor)
                       : null,
@@ -778,398 +1156,6 @@ class CreateAudioRoomScreen extends StatelessWidget {
             )),
       ),
       isScrollControlled: true,
-    );
-  }
-}
-
-// ─── Soundwave Equalizer Bars ───
-
-class _AudioSoundwaveIcon extends StatelessWidget {
-  const _AudioSoundwaveIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    const bars = [8.0, 16.0, 24.0, 18.0, 10.0];
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: bars
-          .map((h) => Container(
-                width: 3.5,
-                height: h,
-                margin: const EdgeInsets.symmetric(horizontal: 1.5),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFB5E853),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ))
-          .toList(),
-    );
-  }
-}
-
-// ─── Top-Right Pill & Switch Helpers ───
-
-class _CompactDarkPill extends StatelessWidget {
-  final IconData? icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _CompactDarkPill({
-    this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 160),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.55),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 14, color: Colors.white),
-              const SizedBox(width: 5),
-            ],
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            const SizedBox(width: 3),
-            const Icon(Icons.keyboard_arrow_down,
-                size: 14, color: Colors.white70),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ToggleRow extends StatelessWidget {
-  final String label;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  const _ToggleRow({
-    required this.label,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        Transform.scale(
-          scale: 0.75,
-          child: Switch(
-            value: value,
-            onChanged: onChanged,
-            activeThumbColor: ColorRes.primaryColor,
-            inactiveTrackColor: Colors.white24,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ─── Category & Hashtag Widgets ───
-
-class _CategoryTile3D extends StatelessWidget {
-  final String name;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _CategoryTile3D({
-    required this.name,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  static const _iconsByKeyword = <String, IconData>{
-    'live': Icons.videocam_rounded,
-    'show': Icons.videocam_rounded,
-    'party': Icons.celebration_rounded,
-    'sing': Icons.mic_rounded,
-    'music': Icons.music_note_rounded,
-    'dance': Icons.nightlife_rounded,
-    'comedy': Icons.sentiment_very_satisfied_rounded,
-    'funny': Icons.sentiment_very_satisfied_rounded,
-    'astro': Icons.public_rounded,
-    'room': Icons.meeting_room_rounded,
-    'chat': Icons.chat_bubble_rounded,
-    'game': Icons.sports_esports_rounded,
-    'educat': Icons.school_rounded,
-  };
-
-  IconData get _icon {
-    final lower = name.toLowerCase();
-    for (final entry in _iconsByKeyword.entries) {
-      if (lower.contains(entry.key)) return entry.value;
-    }
-    return Icons.category_rounded;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: 62,
-        child: Column(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color:
-                      isSelected ? ColorRes.primaryColor : Colors.transparent,
-                  width: 2,
-                ),
-              ),
-              alignment: Alignment.center,
-              child: Icon(_icon, color: Colors.white, size: 24),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: isSelected ? ColorRes.primaryColor : Colors.white70,
-                fontSize: 10,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _HashtagChip extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _HashtagChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? ColorRes.primaryColor : Colors.white24,
-            width: isSelected ? 1.5 : 1,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? ColorRes.primaryColor : Colors.white,
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Interest (Category / Sub-Category / Topic) Picker Sheet ───
-
-class _InterestPickerSheet extends StatelessWidget {
-  final CreateAudioRoomController controller;
-
-  const _InterestPickerSheet({required this.controller});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.75,
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E2130),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 12, bottom: 8),
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white38,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Edit Interest',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () => Get.back(),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: ColorRes.primaryColor,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text(
-                      'Done',
-                      style: TextStyle(
-                        color: Colors.black,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: Obx(() {
-              final category = controller.selectedCategory.value;
-              final subCategory = controller.selectedSubCategory.value;
-              return ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                  _section('Category'),
-                  _tiles<Category>(
-                    items: controller.categoryList,
-                    label: (c) => c.name ?? '',
-                    isSelected: (c) => c.id == category?.id,
-                    onTap: controller.onCategoryChanged,
-                  ),
-                  if ((category?.subCategories ?? []).isNotEmpty) ...[
-                    _section('Sub Category'),
-                    _tiles<SubCategory>(
-                      items: category!.subCategories!,
-                      label: (s) => s.name ?? '',
-                      isSelected: (s) => s.id == subCategory?.id,
-                      onTap: controller.onSubCategoryChanged,
-                    ),
-                  ],
-                  if ((subCategory?.topics ?? []).isNotEmpty) ...[
-                    _section('Topic'),
-                    _tiles<Topic>(
-                      items: subCategory!.topics!,
-                      label: (t) => t.name ?? '',
-                      isSelected: (t) =>
-                          t.id == controller.selectedTopic.value?.id,
-                      onTap: controller.onTopicChanged,
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                ],
-              );
-            }),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _section(String title) => Padding(
-        padding: const EdgeInsets.only(top: 8, bottom: 10),
-        child: Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      );
-
-  Widget _tiles<T>({
-    required List<T> items,
-    required String Function(T) label,
-    required bool Function(T) isSelected,
-    required ValueChanged<T?> onTap,
-  }) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: items.map((item) {
-        final selected = isSelected(item);
-        return GestureDetector(
-          onTap: () => onTap(item),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: selected
-                  ? ColorRes.primaryColor
-                  : Colors.white.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: selected
-                    ? ColorRes.primaryColor
-                    : Colors.white.withValues(alpha: 0.15),
-              ),
-            ),
-            child: Text(
-              label(item),
-              style: TextStyle(
-                color: selected ? Colors.black : Colors.white,
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-              ),
-            ),
-          ),
-        );
-      }).toList(),
     );
   }
 }
@@ -1194,6 +1180,12 @@ class _HashtagPickerSheetState extends State<_HashtagPickerSheet> {
   void initState() {
     super.initState();
     _fetchHashtags();
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchHashtags({bool reset = false}) async {
@@ -1249,8 +1241,8 @@ class _HashtagPickerSheetState extends State<_HashtagPickerSheet> {
                 GestureDetector(
                   onTap: () => Get.back(),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
                       color: ColorRes.primaryColor,
                       borderRadius: BorderRadius.circular(20),
