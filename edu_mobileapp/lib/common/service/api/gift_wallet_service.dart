@@ -180,23 +180,49 @@ class GiftWalletService {
     return response;
   }
 
+  Future<Map<String, dynamic>> startAudioRoomApi({
+    required String roomId,
+    String? roomName,
+    int? languageId,
+    bool force = false,
+  }) async {
+    try {
+      final dynamic response = await ApiService.instance.call(
+          url: WebService.giftWallet.startAudioRoom,
+          fromJson: (json) => json,
+          param: {
+            Params.roomId: roomId,
+            Params.roomName: roomName,
+            Params.languageId: languageId,
+            if (force) Params.force: 1,
+          });
+      if (response is Map<String, dynamic>) {
+        return response;
+      }
+      return {'status': false, 'message': 'Invalid server response'};
+    } catch (e) {
+      Loggers.error('startAudioRoomApi error: $e');
+      return {'status': false, 'message': e.toString()};
+    }
+  }
+
   Future<int?> startAudioRoom({
     required String roomId,
     String? roomName,
     int? languageId,
     bool force = false,
   }) async {
-    final Map<String, dynamic> response = await ApiService.instance.call(
-        url: WebService.giftWallet.startAudioRoom,
-        fromJson: (json) => json,
-        param: {
-          Params.roomId: roomId,
-          Params.roomName: roomName,
-          Params.languageId: languageId,
-          if (force) Params.force: 1,
-        });
-    if (response['status'] == true) {
-      return response['data']?['id'];
+    final res = await startAudioRoomApi(
+      roomId: roomId,
+      roomName: roomName,
+      languageId: languageId,
+      force: force,
+    );
+    if (res['status'] == true) {
+      final idVal = res['data']?['id'];
+      if (idVal != null) {
+        return int.tryParse(idVal.toString());
+      }
     }
     return null;
   }

@@ -11,6 +11,7 @@ import 'package:geoedu/common/functions/media_picker_helper.dart';
 import 'package:geoedu/common/manager/logger.dart';
 import 'package:geoedu/common/manager/session_manager.dart';
 import 'package:geoedu/common/service/api/common_service.dart';
+import 'package:geoedu/common/service/api/gift_wallet_service.dart';
 import 'package:geoedu/common/service/api/search_service.dart';
 import 'package:geoedu/common/widget/custom_image.dart';
 import 'package:geoedu/model/audio_call/audio_room.dart';
@@ -190,7 +191,10 @@ class CreateAudioRoomController extends BaseController {
 
   Future<void> onGoLive() async {
     final user = myUser.value;
-    if (user?.id == null) return;
+    if (user?.id == null) {
+      showSnackBar('Please log in to start an audio live room');
+      return;
+    }
     if (isStartingLive.value) return;
 
     if (selectedLanguage.value == null && languageList.isNotEmpty) {
@@ -246,6 +250,33 @@ class CreateAudioRoomController extends BaseController {
         musicList.add(selectedMusicPath.value);
       }
 
+      // 1. Call backend API to record the audio live room session (matching Video Call flow)
+      var apiResult = await GiftWalletService.instance.startAudioRoomApi(
+        roomId: roomId,
+        roomName: roomTitle,
+        languageId: selectedLanguage.value?.id,
+      );
+
+      // Auto-recover if already marked running server-side (same as Video Call flow)
+      if (apiResult['status'] != true && apiResult['message'] == 'Audio room already running') {
+        apiResult = await GiftWalletService.instance.startAudioRoomApi(
+          roomId: roomId,
+          roomName: roomTitle,
+          languageId: selectedLanguage.value?.id,
+          force: true,
+        );
+      }
+
+      if (apiResult['status'] != true) {
+        isStartingLive.value = false;
+        showSnackBar(apiResult['message']?.toString() ?? 'Failed to start audio live');
+        return;
+      }
+
+      final int? apiAudioRoomId = apiResult['data']?['id'] != null
+          ? int.tryParse(apiResult['data']['id'].toString())
+          : null;
+
       final room = AudioRoom(
         roomId: roomId,
         hostId: user.id,
@@ -270,27 +301,29 @@ class CreateAudioRoomController extends BaseController {
         categoryName: selectedCategory.value?.name,
       );
 
-      // Purge leftover comments & gifts from any previous live
+      // 2. Clear old live room subcollections in background (do NOT block navigation)
       try {
         final hostDocRef =
             _db.collection(FirebaseConst.audioRooms).doc(user.id.toString());
-        final oldComments =
-            await hostDocRef.collection('comments').limit(300).get();
-        if (oldComments.docs.isNotEmpty) {
-          final batchDelete = _db.batch();
-          for (final doc in oldComments.docs) {
-            batchDelete.delete(doc.reference);
+        hostDocRef.collection('comments').limit(100).get().then((oldComments) {
+          if (oldComments.docs.isNotEmpty) {
+            final batchDelete = _db.batch();
+            for (final doc in oldComments.docs) {
+              batchDelete.delete(doc.reference);
+            }
+            batchDelete.commit();
           }
-          await batchDelete.commit();
-        }
-        final oldGifts = await hostDocRef.collection('gifts').limit(100).get();
-        if (oldGifts.docs.isNotEmpty) {
-          final batchGifts = _db.batch();
-          for (final doc in oldGifts.docs) {
-            batchGifts.delete(doc.reference);
+        }).catchError((_) {});
+
+        hostDocRef.collection('gifts').limit(100).get().then((oldGifts) {
+          if (oldGifts.docs.isNotEmpty) {
+            final batchGifts = _db.batch();
+            for (final doc in oldGifts.docs) {
+              batchGifts.delete(doc.reference);
+            }
+            batchGifts.commit();
           }
-          await batchGifts.commit();
-        }
+        }).catchError((_) {});
       } catch (e) {
         Loggers.error('Error clearing old live room subcollections: $e');
       }
@@ -299,15 +332,25 @@ class CreateAudioRoomController extends BaseController {
         Get.delete<AudioRoomController>(force: true);
       }
 
-      await _db
-          .collection(FirebaseConst.audioRooms)
-          .doc(user.id.toString())
-          .set(room.toJson());
+      // 3. Write room to Firestore using non-blocking batch.commit() (matching Video Call flow)
+      final WriteBatch batch = _db.batch();
+      final DocumentReference roomRef =
+          _db.collection(FirebaseConst.audioRooms).doc(user.id.toString());
+      batch.set(roomRef, room.toJson());
+      batch.commit();
 
+      Loggers.success('Audio live room started successfully!');
+
+      // 4. Immediately stop loading state and navigate to AudioRoomScreen
       isStartingLive.value = false;
-      Get.to(() => AudioRoomScreen(room: room, isHost: true));
+      Get.to(() => AudioRoomScreen(
+            room: room,
+            isHost: true,
+            apiAudioRoomId: apiAudioRoomId,
+          ));
     } catch (e) {
       isStartingLive.value = false;
+      Loggers.error('Audio onGoLive error: $e');
       showSnackBar('Failed to create room: $e');
     }
   }

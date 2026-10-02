@@ -36,8 +36,9 @@ import 'package:geoedu/screen/live_stream/livestream_screen/widget/entry_effects
 class AudioRoomController extends BaseController {
   final AudioRoom room;
   final bool isHost;
+  int? apiAudioRoomId;
 
-  AudioRoomController({required this.room, required this.isHost});
+  AudioRoomController({required this.room, required this.isHost, this.apiAudioRoomId});
 
   int get maxSpeakerSeats =>
       (room.maxParticipants != null && room.maxParticipants! > 0)
@@ -159,7 +160,6 @@ class AudioRoomController extends BaseController {
   StreamSubscription? _roomDocSubscription;
   bool _isCleaningUp = false;
 
-  int? apiAudioRoomId;
   int peakListenerCount = 0;
 
   // Real running totals for this session, accumulated as gifts actually
@@ -248,7 +248,7 @@ class AudioRoomController extends BaseController {
     _startBackgroundMusic();
     _listenGifts();
     _listenComments();
-    if (isHost) _startRoomHistory();
+    if (isHost && (apiAudioRoomId == null || apiAudioRoomId! <= 0)) _startRoomHistory();
     fetchDiamondBalanceIfNeeded(force: true);
   }
 

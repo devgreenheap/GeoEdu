@@ -37,11 +37,13 @@ import 'package:geoedu/screen/live_stream/livestream_screen/audience/live_stream
 class AudioRoomScreen extends StatefulWidget {
   final AudioRoom room;
   final bool isHost;
+  final int? apiAudioRoomId;
 
   const AudioRoomScreen({
     super.key,
     required this.room,
     required this.isHost,
+    this.apiAudioRoomId,
   });
 
   // Kept as an alias so existing call sites in this file don't need to
@@ -71,7 +73,11 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
       Get.delete<AudioRoomController>(force: true);
     }
     controller = Get.put(
-      AudioRoomController(room: widget.room, isHost: widget.isHost),
+      AudioRoomController(
+        room: widget.room,
+        isHost: widget.isHost,
+        apiAudioRoomId: widget.apiAudioRoomId,
+      ),
     );
     controller.onPkInviteReceived = (inviterHostId) =>
         _showPkInviteDialog(controller, inviterHostId);
