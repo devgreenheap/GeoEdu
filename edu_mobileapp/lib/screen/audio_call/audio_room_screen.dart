@@ -67,6 +67,9 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
   @override
   void initState() {
     super.initState();
+    if (Get.isRegistered<AudioRoomController>()) {
+      Get.delete<AudioRoomController>(force: true);
+    }
     controller = Get.put(
       AudioRoomController(room: widget.room, isHost: widget.isHost),
     );
@@ -5213,6 +5216,14 @@ class _AudioFollowButtonState extends State<_AudioFollowButton> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    if (Get.isRegistered<AudioRoomController>()) {
+      Get.delete<AudioRoomController>(force: true);
+    }
+    super.dispose();
   }
 }
 

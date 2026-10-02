@@ -75,6 +75,7 @@ class CreateAudioRoomController extends BaseController {
   RxInt maxParticipants = 8.obs;
   final List<int> seatOptions = [2, 4, 6, 8];
   Rx<int?> selectedThemeIndex = Rx(0);
+  RxBool isStartingLive = false.obs;
 
   @override
   void onInit() {
@@ -189,6 +190,7 @@ class CreateAudioRoomController extends BaseController {
   Future<void> onGoLive() async {
     final user = myUser.value;
     if (user?.id == null) return;
+    if (isStartingLive.value) return;
 
     if (selectedLanguage.value == null && languageList.isNotEmpty) {
       selectedLanguage.value = languageList.first;
@@ -200,7 +202,7 @@ class CreateAudioRoomController extends BaseController {
       return;
     }
 
-    showLoader();
+    isStartingLive.value = true;
     try {
       String hostPhotoUrl = user!.profilePhoto ?? '';
       if (thumbnailFile.value != null) {
@@ -297,10 +299,14 @@ class CreateAudioRoomController extends BaseController {
           .doc(user.id.toString())
           .set(room.toJson());
 
-      stopLoader();
+      if (Get.isRegistered<AudioRoomController>()) {
+        Get.delete<AudioRoomController>(force: true);
+      }
+
+      isStartingLive.value = false;
       Get.off(() => AudioRoomScreen(room: room, isHost: true));
     } catch (e) {
-      stopLoader();
+      isStartingLive.value = false;
       showSnackBar('Failed to create room: $e');
     }
   }
@@ -489,13 +495,9 @@ class CreateAudioRoomScreen extends StatelessWidget {
   }
 
   Widget _buildAvatarAndAutoCall(CreateAudioRoomController controller) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.center,
+    return Stack(
+      alignment: Alignment.center,
       children: [
-        // Dummy placeholder to balance the row so avatar is centered
-        const SizedBox(width: 100),
-
         // Centered circular host avatar with "✏ Edit" badge
         Obx(() {
           final user = controller.myUser.value;
@@ -573,28 +575,32 @@ class CreateAudioRoomScreen extends StatelessWidget {
           );
         }),
 
-        // Right side: Auto Call switch
-        SizedBox(
-          width: 100,
+        // Right side: Auto Call switch with zero overflow
+        Positioned(
+          right: 0,
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
                 'Auto Call',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 12.5,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(width: 2),
-              Obx(() => Transform.scale(
-                    scale: 0.75,
-                    child: Switch(
-                      value: controller.isAutoMode.value,
-                      onChanged: (v) => controller.isAutoMode.value = v,
-                      activeThumbColor: ColorRes.primaryColor,
-                      inactiveTrackColor: Colors.white24,
+              const SizedBox(width: 4),
+              Obx(() => SizedBox(
+                    width: 38,
+                    height: 24,
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      child: Switch(
+                        value: controller.isAutoMode.value,
+                        onChanged: (v) => controller.isAutoMode.value = v,
+                        activeThumbColor: ColorRes.primaryColor,
+                        inactiveTrackColor: Colors.white24,
+                      ),
                     ),
                   )),
             ],
@@ -840,43 +846,47 @@ class CreateAudioRoomScreen extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: Obx(() => Row(
-                children: controller.seatOptions.map((seats) {
-                  final isSelected = controller.maxParticipants.value == seats;
-                  return GestureDetector(
-                    onTap: () => controller.maxParticipants.value = seats,
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 6),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? ColorRes.primaryColor.withValues(alpha: 0.25)
-                            : Colors.white.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Obx(() => Row(
+                  children: controller.seatOptions.map((seats) {
+                    final isSelected = controller.maxParticipants.value == seats;
+                    return GestureDetector(
+                      onTap: () => controller.maxParticipants.value = seats,
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
                           color: isSelected
-                              ? ColorRes.primaryColor
-                              : Colors.white.withValues(alpha: 0.2),
-                          width: isSelected ? 1.5 : 1,
+                              ? ColorRes.primaryColor.withValues(alpha: 0.25)
+                              : Colors.white.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isSelected
+                                ? ColorRes.primaryColor
+                                : Colors.white.withValues(alpha: 0.2),
+                            width: isSelected ? 1.5 : 1,
+                          ),
+                        ),
+                        child: Text(
+                          '$seats Seats',
+                          style: TextStyle(
+                            color: isSelected
+                                ? ColorRes.primaryColor
+                                : Colors.white70,
+                            fontSize: 11.5,
+                            fontWeight: isSelected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                          ),
                         ),
                       ),
-                      child: Text(
-                        '$seats Seats',
-                        style: TextStyle(
-                          color: isSelected
-                              ? ColorRes.primaryColor
-                              : Colors.white70,
-                          fontSize: 11.5,
-                          fontWeight: isSelected
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              )),
+                    );
+                  }).toList(),
+                )),
+          ),
         ),
       ],
     );
@@ -1080,33 +1090,45 @@ class CreateAudioRoomScreen extends StatelessWidget {
   }
 
   Widget _buildGoLiveButton(CreateAudioRoomController controller) {
-    return InkWell(
-      onTap: controller.onGoLive,
-      borderRadius: BorderRadius.circular(24),
-      child: Container(
-        height: 48,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: ColorRes.primaryColor,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: ColorRes.primaryColor.withValues(alpha: 0.45),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          'Go Live',
-          style: TextStyleCustom.unboundedMedium500(
-            color: Colors.white,
-            fontSize: 16.5,
+    return Obx(() {
+      final isLoading = controller.isStartingLive.value;
+      return InkWell(
+        onTap: isLoading ? null : controller.onGoLive,
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          height: 48,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: ColorRes.primaryColor,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: ColorRes.primaryColor.withValues(alpha: 0.45),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
+          alignment: Alignment.center,
+          child: isLoading
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2.2,
+                  ),
+                )
+              : Text(
+                  'Go Live',
+                  style: TextStyleCustom.unboundedMedium500(
+                    color: Colors.white,
+                    fontSize: 16.5,
+                  ),
+                ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   void _showHashtagPickerSheet(

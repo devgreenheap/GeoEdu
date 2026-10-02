@@ -164,7 +164,7 @@ class DashboardScreenController extends BaseController with GetSingleTickerProvi
             if (Get.isRegistered<AudioCallListController>()) {
               Get.find<AudioCallListController>().joinAudioRoom(room);
             } else {
-              Get.to(() => AudioRoomScreen(room: room, isHost: false));
+              Get.to(() => AudioRoomScreen(room: room, isHost: room.hostId == user?.id));
             }
             return;
           }

@@ -46,6 +46,7 @@ class AudioCallListController extends BaseController {
         .listen((snapshot) {
       final rooms = snapshot.docs
           .map((doc) => AudioRoom.fromJson(doc.data()))
+          .where((r) => r.hostId != myUser?.id)
           .toList();
       audioRooms.value = rooms;
     }, onError: (e) {
@@ -144,6 +145,12 @@ class AudioCallListController extends BaseController {
 
   void joinAudioRoom(AudioRoom room) async {
     if (myUser?.id == null) return;
+
+    final isHost = room.hostId == myUser!.id;
+    if (isHost) {
+      Get.to(() => AudioRoomScreen(room: room, isHost: true));
+      return;
+    }
 
     final currentParticipants = room.participantIds ?? [];
     if (currentParticipants.contains(myUser!.id)) {
