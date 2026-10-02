@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geoedu/common/controller/base_controller.dart';
+import 'package:geoedu/common/manager/logger.dart';
 import 'package:geoedu/common/manager/session_manager.dart';
+import 'package:geoedu/common/service/api/common_service.dart';
 import 'package:geoedu/common/service/api/user_service.dart';
 import 'package:geoedu/model/user_model/user_model.dart' as user;
 import 'package:geoedu/screen/auth_screen/interest_category_screen.dart';
@@ -56,13 +58,46 @@ class _PhotoVerificationScreenState extends State<PhotoVerificationScreen> {
     });
 
     try {
+      // 1. Upload photo to server storage to get permanent path
+      String? uploadedPath;
+      try {
+        final uploadRes = await CommonService.instance.uploadFileGivePath(_capturedPhoto!);
+        if (uploadRes.status == true && uploadRes.data != null && uploadRes.data!.isNotEmpty) {
+          uploadedPath = uploadRes.data;
+        }
+      } catch (uploadErr) {
+        Loggers.error('Upload verification photo file error: $uploadErr');
+      }
+
+      // 2. Call updateUserDetails with both the file and the server path (if available)
       final user.User? updated = await UserService.instance.updateUserDetails(
         verificationPhoto: _capturedPhoto,
+        verificationPhotoPath: uploadedPath,
       );
 
-      user.User? finalUser = updated ?? widget.userData;
-      if (finalUser != null && _capturedPhoto != null) {
-        finalUser.verificationPhoto = _capturedPhoto!.path;
+      // 3. Confirm we have a valid updated user or fetch fresh user from server
+      user.User? finalUser = updated;
+      if (finalUser == null || (finalUser.verificationPhoto ?? '').isEmpty) {
+        final freshUser = await UserService.instance.fetchUserDetails();
+        if (freshUser != null) {
+          finalUser = freshUser;
+        }
+      }
+
+      // If still missing, fallback to session user with the server uploaded path
+      if (finalUser == null) {
+        finalUser = SessionManager.instance.getUser() ?? widget.userData;
+      }
+      if (finalUser != null && (finalUser.verificationPhoto == null || (finalUser.verificationPhoto ?? '').isEmpty)) {
+        if (uploadedPath != null && uploadedPath.isNotEmpty) {
+          finalUser.verificationPhoto = uploadedPath;
+        }
+      }
+
+      // Validate that verification photo is indeed set before allowing through
+      if (finalUser?.verificationPhoto == null || (finalUser?.verificationPhoto ?? '').isEmpty) {
+        BaseController.share.showSnackBar('Failed to save verification photo. Please try again.');
+        return;
       }
 
       SessionManager.instance.setUser(finalUser);

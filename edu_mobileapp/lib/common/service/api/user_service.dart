@@ -167,6 +167,8 @@ class UserService {
   Future<User?> updateUserDetails(
       {XFile? profilePhoto,
       XFile? verificationPhoto,
+      String? profilePhotoPath,
+      String? verificationPhotoPath,
       String? fullname,
       String? userName,
       String? bio,
@@ -227,6 +229,8 @@ class UserService {
           if (verificationPhoto != null) Params.verificationPhoto: [verificationPhoto],
         },
         param: {
+          if (profilePhotoPath != null) Params.profilePhoto: profilePhotoPath,
+          if (verificationPhotoPath != null) Params.verificationPhoto: verificationPhotoPath,
           Params.fullname: fullname,
           Params.username: userName,
           Params.bio: bio,

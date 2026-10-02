@@ -185,6 +185,12 @@ class ApiService {
     });
 
     request.fields.addAll(params);
+
+    final authToken = SessionManager.instance.getAuthToken();
+    if (authToken.isNotEmpty && authToken != 'AUTH TOKEN EMPTY') {
+      header[Params.authToken] = authToken;
+      request.headers[Params.authToken] = authToken;
+    }
     request.headers.addAll(header);
 
     filesMap.forEach((keyName, files) {

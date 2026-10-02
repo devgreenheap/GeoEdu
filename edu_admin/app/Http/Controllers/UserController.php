@@ -654,17 +654,22 @@ class UserController extends Controller
                 return GlobalFunction::sendSimpleResponse(false, 'Selected agent is invalid');
             }
         }
-        if($request->has('profile_photo')){
+        if($request->hasFile('profile_photo')){
             if($user->profile_photo != null){
                 GlobalFunction::deleteFile($user->profile_photo);
             }
-            $user->profile_photo = GlobalFunction::saveFileAndGivePath($request->profile_photo);
+            $user->profile_photo = GlobalFunction::saveFileAndGivePath($request->file('profile_photo'));
+        } elseif ($request->filled('profile_photo') && is_string($request->profile_photo)) {
+            $user->profile_photo = $request->profile_photo;
         }
-        if($request->has('verification_photo')){
+
+        if($request->hasFile('verification_photo')){
             if($user->verification_photo != null){
                 GlobalFunction::deleteFile($user->verification_photo);
             }
-            $user->verification_photo = GlobalFunction::saveFileAndGivePath($request->verification_photo);
+            $user->verification_photo = GlobalFunction::saveFileAndGivePath($request->file('verification_photo'));
+        } elseif ($request->filled('verification_photo') && is_string($request->verification_photo)) {
+            $user->verification_photo = $request->verification_photo;
         }
         $user->username = $request->username;
         $user->fullname = $request->fullname;
@@ -2618,19 +2623,29 @@ class UserController extends Controller
         }
 
         // Handle profile photo separately
-        if ($request->has('profile_photo')) {
+        if ($request->hasFile('profile_photo')) {
             if ($user->profile_photo) {
                 GlobalFunction::deleteFile($user->profile_photo);
             }
-            $user->profile_photo = GlobalFunction::saveFileAndGivePath($request->profile_photo);
+            $user->profile_photo = GlobalFunction::saveFileAndGivePath($request->file('profile_photo'));
+        } elseif ($request->filled('profile_photo') && is_string($request->profile_photo)) {
+            if ($user->profile_photo && $user->profile_photo !== $request->profile_photo) {
+                GlobalFunction::deleteFile($user->profile_photo);
+            }
+            $user->profile_photo = $request->profile_photo;
         }
 
         // Handle verification photo separately (Admin verification only)
-        if ($request->has('verification_photo')) {
+        if ($request->hasFile('verification_photo')) {
             if ($user->verification_photo) {
                 GlobalFunction::deleteFile($user->verification_photo);
             }
-            $user->verification_photo = GlobalFunction::saveFileAndGivePath($request->verification_photo);
+            $user->verification_photo = GlobalFunction::saveFileAndGivePath($request->file('verification_photo'));
+        } elseif ($request->filled('verification_photo') && is_string($request->verification_photo)) {
+            if ($user->verification_photo && $user->verification_photo !== $request->verification_photo) {
+                GlobalFunction::deleteFile($user->verification_photo);
+            }
+            $user->verification_photo = $request->verification_photo;
         }
         // Handle Username
         if ($request->has('username')) {
