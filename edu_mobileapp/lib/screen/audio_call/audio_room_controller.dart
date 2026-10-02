@@ -62,6 +62,14 @@ class AudioRoomController extends BaseController {
   RxBool isSpeaker = false.obs;
   RxBool hasRequested = false.obs;
 
+  // Speaking indicator tracking for glowing border highlight
+  RxSet<int> speakingUserIds = <int>{}.obs;
+
+  bool isUserSpeaking(int? userId) {
+    if (userId == null) return false;
+    return speakingUserIds.contains(userId);
+  }
+
   // Real-time top gifter tracking
   final RxMap<String, int> gifterTotals = <String, int>{}.obs;
   final RxString topGifterName = ''.obs;
@@ -549,6 +557,37 @@ class AudioRoomController extends BaseController {
       ZegoExpressEngine.onRoomStreamUpdate = _onRoomStreamUpdate;
       ZegoExpressEngine.onRoomUserUpdate = _onRoomUserUpdate;
 
+      try {
+        await ZegoExpressEngine.instance.startSoundLevelMonitor();
+        ZegoExpressEngine.onCapturedSoundLevelUpdate = (double soundLevel) {
+          final uid = myUser?.id;
+          if (uid != null) {
+            if (soundLevel > 5.0 && !isMuted.value) {
+              speakingUserIds.add(uid);
+            } else {
+              speakingUserIds.remove(uid);
+            }
+          }
+        };
+        ZegoExpressEngine.onRemoteSoundLevelUpdate = (Map<String, double> soundLevels) {
+          soundLevels.forEach((streamId, level) {
+            final parts = streamId.split('_');
+            if (parts.isNotEmpty) {
+              final uid = int.tryParse(parts.last);
+              if (uid != null) {
+                if (level > 5.0 && !mutedSpeakerIds.contains(uid)) {
+                  speakingUserIds.add(uid);
+                } else {
+                  speakingUserIds.remove(uid);
+                }
+              }
+            }
+          });
+        };
+      } catch (e) {
+        Loggers.error('AudioRoom: startSoundLevelMonitor error: $e');
+      }
+
       final userId = myUser?.id?.toString() ?? '0';
       final userName = myUser?.fullname ?? '';
       final zegoUser = ZegoUser(userId, userName);
@@ -838,6 +877,10 @@ class AudioRoomController extends BaseController {
     // Clean up Zego immediately — don't wait for onClose()
     ZegoExpressEngine.onRoomStreamUpdate = null;
     ZegoExpressEngine.onRoomUserUpdate = null;
+    try {
+      ZegoExpressEngine.onCapturedSoundLevelUpdate = null;
+      ZegoExpressEngine.onRemoteSoundLevelUpdate = null;
+    } catch (_) {}
     _leaveZegoRoom();
 
     showSnackBar(message);
@@ -1745,6 +1788,11 @@ class AudioRoomController extends BaseController {
         await ZegoExpressEngine.instance.stopPlayingStream(sId);
       }
       _playingStreamIds.clear();
+      try {
+        await ZegoExpressEngine.instance.stopSoundLevelMonitor();
+        ZegoExpressEngine.onCapturedSoundLevelUpdate = null;
+        ZegoExpressEngine.onRemoteSoundLevelUpdate = null;
+      } catch (_) {}
       await ZegoExpressEngine.instance.logoutRoom(room.roomId ?? '');
     } catch (e) {
       Loggers.error('AudioRoom: leave zego room error: $e');
