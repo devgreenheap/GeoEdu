@@ -539,103 +539,104 @@ class CreateAudioRoomScreen extends StatelessWidget {
   }
 
   Widget _buildAvatarAndAutoCall(CreateAudioRoomController controller) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // Centered circular host avatar with "✏ Edit" badge
-        Obx(() {
-          final user = controller.myUser.value;
-          final previewPath = controller.thumbnailPreviewPath.value;
-          final hasLocalPreview =
-              previewPath.isNotEmpty && File(previewPath).existsSync();
+    return SizedBox(
+      width: double.infinity,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Left: circular host avatar with "✏ Edit" badge
+          Obx(() {
+            final user = controller.myUser.value;
+            final previewPath = controller.thumbnailPreviewPath.value;
+            final hasLocalPreview =
+                previewPath.isNotEmpty && File(previewPath).existsSync();
 
-          return GestureDetector(
-            onTap: controller.pickThumbnail,
-            child: Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.center,
-              children: [
-                Container(
-                  width: 82,
-                  height: 82,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.35),
-                        blurRadius: 10,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: ClipOval(
-                    child: hasLocalPreview
-                        ? Image.file(
-                            File(previewPath),
-                            width: 82,
-                            height: 82,
-                            fit: BoxFit.cover,
-                          )
-                        : CustomImage(
-                            size: const Size(82, 82),
-                            image: user?.profilePhoto?.addBaseURL(),
-                            fullName: user?.fullname,
-                          ),
-                  ),
-                ),
-                Positioned(
-                  bottom: -6,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            return GestureDetector(
+              onTap: controller.pickThumbnail,
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 82,
+                    height: 82,
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.65),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.3),
-                        width: 0.8,
-                      ),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.edit, color: Colors.white, size: 10),
-                        SizedBox(width: 3),
-                        Text(
-                          'Edit',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w600,
-                          ),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          blurRadius: 10,
+                          spreadRadius: 2,
                         ),
                       ],
                     ),
+                    child: ClipOval(
+                      child: hasLocalPreview
+                          ? Image.file(
+                              File(previewPath),
+                              width: 82,
+                              height: 82,
+                              fit: BoxFit.cover,
+                            )
+                          : CustomImage(
+                              size: const Size(82, 82),
+                              image: user?.profilePhoto?.addBaseURL(),
+                              fullName: user?.fullname,
+                            ),
+                    ),
                   ),
-                ),
-              ],
-            ),
-          );
-        }),
+                  Positioned(
+                    bottom: -6,
+                    child: Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.edit, color: Colors.white, size: 10),
+                          SizedBox(width: 3),
+                          Text(
+                            'Edit',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
 
-        // Right side: Auto Call switch with zero overflow
-        Positioned(
-          right: 0,
-          child: Row(
+          // Right side: Auto Call switch placed cleanly under the English language section
+          Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
                 'Auto Call',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 6),
               Obx(() => SizedBox(
-                    width: 38,
+                    width: 40,
                     height: 24,
                     child: FittedBox(
                       fit: BoxFit.contain,
@@ -649,8 +650,8 @@ class CreateAudioRoomScreen extends StatelessWidget {
                   )),
             ],
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
