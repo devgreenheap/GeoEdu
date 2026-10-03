@@ -4,6 +4,7 @@ class AudioRoom {
   String? hostName;
   String? hostPhoto;
   String? roomName;
+  String? description;
   int? maxParticipants;
   List<int>? participantIds;
   List<int>? speakerIds;
@@ -41,6 +42,7 @@ class AudioRoom {
     this.hostName,
     this.hostPhoto,
     this.roomName,
+    this.description,
     this.maxParticipants,
     this.participantIds,
     this.speakerIds,
@@ -77,6 +79,7 @@ class AudioRoom {
     hostName = json['host_name'];
     hostPhoto = json['host_photo'];
     roomName = json['room_name'];
+    description = json['description'];
     maxParticipants = json['max_participants'];
     participantIds = json['participant_ids'] != null
         ? List<int>.from(json['participant_ids'].map((x) => x))
@@ -130,6 +133,7 @@ class AudioRoom {
       'host_name': hostName,
       'host_photo': hostPhoto,
       'room_name': roomName,
+      'description': description,
       'max_participants': maxParticipants,
       'participant_ids': participantIds,
       'speaker_ids': speakerIds,

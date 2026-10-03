@@ -10,7 +10,6 @@ import 'package:geoedu/common/widget/black_gradient_shadow.dart';
 import 'package:geoedu/common/widget/custom_back_button.dart';
 import 'package:geoedu/common/widget/custom_image.dart';
 import 'package:geoedu/languages/languages_keys.dart';
-import 'package:geoedu/model/general/category_sub_category_topic_model.dart';
 import 'package:geoedu/model/post_story/hashtag_model.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/screen/live_stream/create_live_stream_screen/create_live_stream_screen_controller.dart';
@@ -145,10 +144,10 @@ class CreateLiveStreamScreen extends StatelessWidget {
                                                       vertical: 6),
                                               color: Colors.black
                                                   .withValues(alpha: 0.55),
-                                              child: Row(
+                                              child: const Row(
                                                 mainAxisAlignment:
                                                     MainAxisAlignment.center,
-                                                children: const [
+                                                children: [
                                                   Icon(Icons.edit,
                                                       color: Colors.white,
                                                       size: 12),
@@ -174,36 +173,60 @@ class CreateLiveStreamScreen extends StatelessWidget {
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
-                                  Obx(() => _CompactDarkPill(
-                                        icon: null,
-                                        label:
-                                            controller.selectedLanguage.value
-                                                    ?.title ??
-                                                'Language',
-                                        onTap: () => _showLanguagePicker(
-                                            context, controller),
-                                      )),
-                                  const SizedBox(height: 8),
                                   Obx(() {
-                                    final parts = [
-                                      controller.selectedCategory.value?.name,
-                                      controller
-                                          .selectedSubCategory.value?.name,
-                                      controller.selectedTopic.value?.name,
-                                    ].whereType<String>().toList();
-                                    return _CompactDarkPill(
-                                      icon: Icons.edit_outlined,
-                                      label: parts.isEmpty
-                                          ? 'Edit Interest'
-                                          : parts.join(' · '),
-                                      onTap: () => Get.bottomSheet(
-                                        _InterestPickerSheet(
-                                            controller: controller),
-                                        isScrollControlled: true,
-                                        ignoreSafeArea: false,
+                                    final hasError = controller.languageHasError.value;
+                                    final lang = controller.selectedLanguage.value;
+                                    return GestureDetector(
+                                      onTap: () {
+                                        controller.languageHasError.value = false;
+                                        _showLanguagePicker(context, controller);
+                                      },
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 250),
+                                        constraints: const BoxConstraints(maxWidth: 160),
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: hasError
+                                              ? Colors.red.withValues(alpha: 0.25)
+                                              : Colors.black.withValues(alpha: 0.55),
+                                          borderRadius: BorderRadius.circular(20),
+                                          border: hasError
+                                              ? Border.all(color: Colors.redAccent, width: 1.5)
+                                              : null,
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            if (hasError)
+                                              const Icon(Icons.warning_amber_rounded,
+                                                  size: 13, color: Colors.redAccent)
+                                            else
+                                              const SizedBox.shrink(),
+                                            if (hasError) const SizedBox(width: 4),
+                                            Flexible(
+                                              child: Text(
+                                                lang?.title ?? 'Language',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  color: hasError ? Colors.redAccent : Colors.white,
+                                                  fontSize: 12.5,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 3),
+                                            Icon(
+                                              Icons.keyboard_arrow_down,
+                                              size: 14,
+                                              color: hasError ? Colors.redAccent : Colors.white70,
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     );
                                   }),
+
                                   const SizedBox(height: 14),
                                   Obx(() => _ToggleRow(
                                         label: 'Video ON',
@@ -333,63 +356,79 @@ class CreateLiveStreamScreen extends StatelessWidget {
                                         color: whitePure(context)
                                             .withValues(alpha: .7))),
                                 const SizedBox(height: 8),
-                                Obx(() => Wrap(
-                                      spacing: 8,
-                                      runSpacing: 8,
-                                      children: [
+                                Obx(() {
+                                  // Show admin preloaded hashtags (up to 5)
+                                  // as quick-pick chips so the section is
+                                  // never empty. If none are loaded yet, fall
+                                  // back to the 'None' placeholder.
+                                  final available = controller.availableHashtags;
+                                  final selected = controller.selectedHashtags;
+
+                                  final quickPicks = available
+                                      .where((h) => !selected.any((s) => s.id == h.id))
+                                      .take(5)
+                                      .toList();
+
+                                  return Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      // Selected hashtags always shown first
+                                      ...selected.map((h) => _HashtagChip(
+                                            label: '#${h.hashtag}',
+                                            isSelected: true,
+                                            onTap: () =>
+                                                controller.toggleHashtag(h),
+                                          )),
+                                      // Quick-pick from admin list (not yet selected)
+                                      ...quickPicks.map((h) => _HashtagChip(
+                                            label: '#${h.hashtag}',
+                                            isSelected: false,
+                                            onTap: () =>
+                                                controller.toggleHashtag(h),
+                                          )),
+                                      // If nothing is loaded yet, show 'None'
+                                      if (available.isEmpty && selected.isEmpty)
                                         _HashtagChip(
                                           label: 'None',
-                                          isSelected:
-                                              controller.selectedHashtags.isEmpty,
-                                          onTap: () {
-                                            for (final h
-                                                in List.of(controller
-                                                    .selectedHashtags)) {
-                                              controller.toggleHashtag(h);
-                                            }
-                                          },
+                                          isSelected: true,
+                                          onTap: () {},
                                         ),
-                                        ...controller.selectedHashtags
-                                            .map((h) => _HashtagChip(
-                                                  label: '#${h.hashtag}',
-                                                  isSelected: true,
-                                                  onTap: () =>
-                                                      controller
-                                                          .toggleHashtag(h),
-                                                )),
-                                        GestureDetector(
-                                          onTap: () => _showHashtagPickerSheet(
-                                              context, controller),
-                                          child: Container(
-                                            padding: const EdgeInsets
-                                                .symmetric(
-                                                horizontal: 14, vertical: 8),
-                                            decoration: BoxDecoration(
-                                              borderRadius:
-                                                  BorderRadius.circular(20),
-                                              border: Border.all(
-                                                  color: whitePure(context)
-                                                      .withValues(alpha: .25)),
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(Icons.add,
-                                                    size: 14,
-                                                    color: whitePure(context)),
-                                                const SizedBox(width: 4),
-                                                Text('More',
-                                                    style: TextStyleCustom
-                                                        .outFitRegular400(
-                                                            fontSize: 13,
-                                                            color: whitePure(
-                                                                context))),
-                                              ],
-                                            ),
+                                      // + More always last
+                                      GestureDetector(
+                                        onTap: () => _showHashtagPickerSheet(
+                                            context, controller),
+                                        child: Container(
+                                          padding: const EdgeInsets
+                                              .symmetric(
+                                              horizontal: 14, vertical: 8),
+                                          decoration: BoxDecoration(
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                            border: Border.all(
+                                                color: whitePure(context)
+                                                    .withValues(alpha: .25)),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.add,
+                                                  size: 14,
+                                                  color: whitePure(context)),
+                                              const SizedBox(width: 4),
+                                              Text('More',
+                                                  style: TextStyleCustom
+                                                      .outFitRegular400(
+                                                          fontSize: 13,
+                                                          color: whitePure(
+                                                              context))),
+                                            ],
                                           ),
                                         ),
-                                      ],
-                                    )),
+                                      ),
+                                    ],
+                                  );
+                                }),
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [
@@ -498,48 +537,6 @@ class CreateLiveStreamScreen extends StatelessWidget {
   }
 }
 
-/// Compact dark pill used for the language + Edit Interest controls
-/// stacked at top-right of the Video tab.
-class _CompactDarkPill extends StatelessWidget {
-  final IconData? icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _CompactDarkPill({this.icon, required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 160),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.55),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 14, color: Colors.white),
-              const SizedBox(width: 5),
-            ],
-            Flexible(
-              child: Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(width: 3),
-            const Icon(Icons.keyboard_arrow_down, size: 14, color: Colors.white70),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// Label + Switch row used for Video ON / Auto Call on the Video tab.
 class _ToggleRow extends StatelessWidget {
   final String label;
@@ -560,7 +557,7 @@ class _ToggleRow extends StatelessWidget {
           child: Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: ColorRes.primaryColor,
+            activeThumbColor: ColorRes.primaryColor,
             inactiveTrackColor: Colors.white24,
           ),
         ),
@@ -580,13 +577,48 @@ class _CategoryTile3D extends StatelessWidget {
   const _CategoryTile3D({required this.name, required this.isSelected, required this.onTap});
 
   static const _iconsByKeyword = <String, IconData>{
+    // Education
+    'engineering': Icons.construction_rounded,
+    'school': Icons.school_rounded,
+    'education': Icons.school_rounded,
+    'study': Icons.menu_book_rounded,
+    'math': Icons.calculate_rounded,
+    'science': Icons.science_rounded,
+    'chemistry': Icons.science_rounded,
+    'physics': Icons.bolt_rounded,
+    'biology': Icons.biotech_rounded,
+    'medical': Icons.local_hospital_rounded,
+    'health': Icons.health_and_safety_rounded,
+    'doctor': Icons.medical_services_rounded,
+    'law': Icons.gavel_rounded,
+    'business': Icons.business_center_rounded,
+    'finance': Icons.account_balance_rounded,
+    'tech': Icons.computer_rounded,
+    'coding': Icons.code_rounded,
+    'program': Icons.terminal_rounded,
+    'language': Icons.translate_rounded,
+    'english': Icons.abc_rounded,
+    // Entertainment
     'live': Icons.videocam_rounded,
     'show': Icons.videocam_rounded,
+    'video': Icons.play_circle_rounded,
     'party': Icons.celebration_rounded,
     'sing': Icons.mic_rounded,
+    'music': Icons.music_note_rounded,
     'dance': Icons.nightlife_rounded,
     'comedy': Icons.sentiment_very_satisfied_rounded,
     'funny': Icons.sentiment_very_satisfied_rounded,
+    'game': Icons.sports_esports_rounded,
+    'sport': Icons.sports_soccer_rounded,
+    'fitness': Icons.fitness_center_rounded,
+    'cook': Icons.restaurant_rounded,
+    'food': Icons.fastfood_rounded,
+    'travel': Icons.flight_rounded,
+    'art': Icons.palette_rounded,
+    'fashion': Icons.checkroom_rounded,
+    'news': Icons.newspaper_rounded,
+    'religion': Icons.self_improvement_rounded,
+    'spiritual': Icons.self_improvement_rounded,
   };
 
   IconData get _icon {
@@ -664,154 +696,6 @@ class _HashtagChip extends StatelessWidget {
   }
 }
 
-// ─── Interest (Category / Sub-Category / Topic) Picker Sheet ───
-
-class _InterestPickerSheet extends StatelessWidget {
-  final CreateLiveStreamScreenController controller;
-
-  const _InterestPickerSheet({required this.controller});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.75,
-      decoration: const BoxDecoration(
-        color: Color(0xFF2C2F48),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 12, bottom: 8),
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white38,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Edit Interest',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600)),
-                GestureDetector(
-                  onTap: () => Get.back(),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: ColorRes.primaryColor,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text('Done',
-                        style: TextStyle(
-                            color: Colors.black,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: Obx(() {
-              final category = controller.selectedCategory.value;
-              final subCategory = controller.selectedSubCategory.value;
-              return ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                  _section('Category'),
-                  _tiles<Category>(
-                    items: controller.categoryList,
-                    label: (c) => c.name ?? '',
-                    isSelected: (c) => c.id == category?.id,
-                    onTap: controller.onCategoryChanged,
-                  ),
-                  if ((category?.subCategories ?? []).isNotEmpty) ...[
-                    _section('Sub Category'),
-                    _tiles<SubCategory>(
-                      items: category!.subCategories!,
-                      label: (s) => s.name ?? '',
-                      isSelected: (s) => s.id == subCategory?.id,
-                      onTap: controller.onSubCategoryChanged,
-                    ),
-                  ],
-                  if ((subCategory?.topics ?? []).isNotEmpty) ...[
-                    _section('Topic'),
-                    _tiles<Topic>(
-                      items: subCategory!.topics!,
-                      label: (t) => t.name ?? '',
-                      isSelected: (t) =>
-                          t.id == controller.selectedTopic.value?.id,
-                      onTap: controller.onTopicChanged,
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                ],
-              );
-            }),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _section(String title) => Padding(
-        padding: const EdgeInsets.only(top: 8, bottom: 10),
-        child: Text(title,
-            style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
-                fontWeight: FontWeight.w600)),
-      );
-
-  Widget _tiles<T>({
-    required List<T> items,
-    required String Function(T) label,
-    required bool Function(T) isSelected,
-    required ValueChanged<T?> onTap,
-  }) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: items.map((item) {
-        final selected = isSelected(item);
-        return GestureDetector(
-          onTap: () => onTap(item),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: selected
-                  ? ColorRes.primaryColor
-                  : Colors.white.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: selected
-                      ? ColorRes.primaryColor
-                      : Colors.white.withValues(alpha: 0.15)),
-            ),
-            child: Text(
-              label(item),
-              style: TextStyle(
-                  color: selected ? Colors.black : Colors.white,
-                  fontSize: 14,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-}
 
 // ─── Hashtag Picker Bottom Sheet ───
 

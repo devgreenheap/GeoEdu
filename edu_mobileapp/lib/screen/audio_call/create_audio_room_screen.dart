@@ -36,6 +36,7 @@ class CreateAudioRoomController extends BaseController {
   // Input Controllers
   late final TextEditingController nameController;
   final TextEditingController chatRoomController = TextEditingController();
+  final TextEditingController descriptionController = TextEditingController();
 
   // Shared state with LiveStream video setup
   GoLiveSharedState get _shared => Get.find<GoLiveSharedState>();
@@ -75,7 +76,7 @@ class CreateAudioRoomController extends BaseController {
 
   // Join Call seats selection for host
   RxInt maxParticipants = 8.obs;
-  final List<int> seatOptions = [2, 4, 6, 8];
+  final List<int> seatOptions = [2, 4, 6, 8, 10, 12];
   Rx<int?> selectedThemeIndex = Rx(0);
   RxBool isStartingLive = false.obs;
 
@@ -95,6 +96,7 @@ class CreateAudioRoomController extends BaseController {
   void onClose() {
     nameController.dispose();
     chatRoomController.dispose();
+    descriptionController.dispose();
     super.onClose();
   }
 
@@ -283,6 +285,7 @@ class CreateAudioRoomController extends BaseController {
         hostName: hostDisplayName,
         hostPhoto: hostPhotoUrl,
         roomName: roomTitle,
+        description: descriptionController.text.trim(),
         maxParticipants: maxParticipants.value,
         participantIds: [user.id!],
         speakerIds: [user.id!],
@@ -424,32 +427,47 @@ class CreateAudioRoomScreen extends StatelessWidget {
 
                   const SizedBox(height: 14),
 
-                  // 5. "Select Hashtag" horizontal tags
+                  // 5. "Classroom Description" input
+                  _buildDescriptionInput(controller),
+
+                  const SizedBox(height: 14),
+
+                  // 6. "Select Hashtag" horizontal tags
                   _buildHashtagSelector(context, controller),
 
                   const SizedBox(height: 10),
 
-                  // 6. Join Call Seats selector (Host controls seat count)
+                  // 7. Join Call Seats selector (Host controls seat count)
                   _buildSeatSelector(controller),
 
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
 
-                  // 7. Educational Quote / Music Status
-                  _buildMusicQuoteLine(controller),
+                  // 8. "Select Image / Banner" Header
+                  _buildBannerHeader(controller),
 
-                  const SizedBox(height: 6),
-
-                  // 8. "🎵 Music Player" + "See more >"
-                  _buildMusicPlayerRow(controller),
-
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
 
                   // 9. Wallpaper / Theme Banners Horizontal List
                   _buildBannerSelector(controller),
 
+                  const SizedBox(height: 14),
+
+                  // 10. "🎵 Music Player" + "Add Music" Header
+                  _buildMusicPlayerHeader(controller),
+
+                  const SizedBox(height: 8),
+
+                  // 11. Dedicated Music Player Card / Selection
+                  _buildMusicPlayerContent(controller),
+
+                  const SizedBox(height: 12),
+
+                  // 12. Educational Quote Line
+                  _buildEducationalQuote(),
+
                   const SizedBox(height: 18),
 
-                  // 10. Large Orange "Go Live" Button
+                  // 13. Large Orange "Go Live" Button
                   _buildGoLiveButton(controller),
 
                   const SizedBox(height: 12),
@@ -766,6 +784,53 @@ class CreateAudioRoomScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildDescriptionInput(CreateAudioRoomController controller) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Classroom Description',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.28),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.45),
+              width: 1.2,
+            ),
+          ),
+          child: TextField(
+            controller: controller.descriptionController,
+            maxLines: 2,
+            minLines: 1,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              hintText: 'Enter classroom description or agenda (optional)',
+              hintStyle: TextStyle(
+                color: Colors.white.withValues(alpha: 0.45),
+                fontSize: 13,
+              ),
+              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildHashtagSelector(
       BuildContext context, CreateAudioRoomController controller) {
     return Column(
@@ -937,62 +1002,37 @@ class CreateAudioRoomScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildMusicQuoteLine(CreateAudioRoomController controller) {
-    return Obx(() {
-      final musicName = controller.selectedMusicName.value;
-      if (musicName.isNotEmpty) {
-        return Row(
-          children: [
-            const Icon(Icons.music_note_rounded,
-                color: ColorRes.primaryColor, size: 14),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Text(
-                'Selected: $musicName',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: ColorRes.primaryColor,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            GestureDetector(
-              onTap: controller.clearSelectedMusic,
-              child: const Icon(Icons.close, color: Colors.white70, size: 16),
-            ),
-          ],
-        );
-      }
-      return Text(
-        '“Education is the passport to the future, for tomorrow belongs to those who prepare for it today. 🎓”',
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.8),
-          fontSize: 11.5,
-          fontStyle: FontStyle.italic,
-          height: 1.3,
+  Widget _buildBannerHeader(CreateAudioRoomController controller) {
+    return const Row(
+      children: [
+        Icon(Icons.photo_library_outlined, color: Colors.white, size: 17),
+        SizedBox(width: 6),
+        Text(
+          'Select Image / Banner',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 13.5,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-      );
-    });
+      ],
+    );
   }
 
-  Widget _buildMusicPlayerRow(CreateAudioRoomController controller) {
+  Widget _buildMusicPlayerHeader(CreateAudioRoomController controller) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.music_note_rounded, color: Colors.white, size: 18),
+            Icon(Icons.music_note_rounded, color: Colors.white, size: 17),
             SizedBox(width: 6),
             Text(
               'Music Player',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 14,
+                fontSize: 13.5,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -1000,16 +1040,203 @@ class CreateAudioRoomScreen extends StatelessWidget {
         ),
         GestureDetector(
           onTap: controller.pickDeviceMusic,
-          child: Text(
-            'See more >',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.85),
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
+            decoration: BoxDecoration(
+              color: ColorRes.primaryColor.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: ColorRes.primaryColor,
+                width: 1,
+              ),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.add, color: ColorRes.primaryColor, size: 13),
+                SizedBox(width: 3),
+                Text(
+                  'Add Music',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildMusicPlayerContent(CreateAudioRoomController controller) {
+    return Obx(() {
+      final musicName = controller.selectedMusicName.value;
+      if (musicName.isNotEmpty) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.32),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: ColorRes.primaryColor.withValues(alpha: 0.65),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: ColorRes.primaryColor.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.audiotrack_rounded,
+                  color: ColorRes.primaryColor,
+                  size: 16,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      musicName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Ready to stream as classroom background music',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.6),
+                        fontSize: 10.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: controller.pickDeviceMusic,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'Change',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: controller.clearSelectedMusic,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child:
+                      const Icon(Icons.close, color: Colors.white70, size: 14),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      return GestureDetector(
+        onTap: controller.pickDeviceMusic,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.22),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.22),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.library_music_rounded,
+                  color: Colors.white70,
+                  size: 16,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Background Music (Optional)',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      'Tap "+ Add Music" to select audio from your device',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.55),
+                        fontSize: 10.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.add_circle_outline_rounded,
+                color: ColorRes.primaryColor,
+                size: 18,
+              ),
+            ],
+          ),
+        ),
+      );
+    });
+  }
+
+  Widget _buildEducationalQuote() {
+    return Text(
+      '“Education is the passport to the future, for tomorrow belongs to those who prepare for it today. 🎓”',
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: Colors.white.withValues(alpha: 0.8),
+        fontSize: 11.5,
+        fontStyle: FontStyle.italic,
+        height: 1.3,
+      ),
     );
   }
 

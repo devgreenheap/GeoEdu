@@ -1,6 +1,7 @@
 import 'package:get/get.dart';
 import 'package:geoedu/common/manager/logger.dart';
 import 'package:geoedu/common/service/api/common_service.dart';
+import 'package:geoedu/common/service/api/search_service.dart';
 import 'package:geoedu/model/general/settings_model.dart';
 import 'package:geoedu/model/post_story/hashtag_model.dart';
 
@@ -14,12 +15,18 @@ class GoLiveSharedState extends GetxController {
   RxList<Language> languageList = <Language>[].obs;
   Rx<Language?> selectedLanguage = Rx(null);
   RxList<Hashtag> selectedHashtags = <Hashtag>[].obs;
+
+  /// All hashtags available from the admin/backend — preloaded so they
+  /// show inline in the Setup screen without opening the full picker.
+  RxList<Hashtag> availableHashtags = <Hashtag>[].obs;
+
   RxBool isAutoMode = false.obs;
 
   @override
   void onInit() {
     super.onInit();
     fetchLanguages();
+    fetchHashtags();
   }
 
   Future<void> fetchLanguages() async {
@@ -28,6 +35,15 @@ class GoLiveSharedState extends GetxController {
       languageList.value = result.data ?? [];
     } catch (e) {
       Loggers.error('GoLiveSharedState fetchLanguages error: $e');
+    }
+  }
+
+  Future<void> fetchHashtags() async {
+    try {
+      final tags = await SearchService.instance.searchHashtags(keyword: '');
+      availableHashtags.value = tags;
+    } catch (e) {
+      Loggers.error('GoLiveSharedState fetchHashtags error: $e');
     }
   }
 

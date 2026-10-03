@@ -476,7 +476,7 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
   // -------------------------------------------------------------
   Widget _buildHeader(LivestreamScreenController controller) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Obx(() {
         final stream = controller.liveData.value;
         final hostUser = stream.hostUser;
@@ -486,166 +486,136 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
         final watchingCount = stream.watchingCount ?? 0;
         final coins = (controller.hostUserState?.totalCoin ?? 0).toInt();
 
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        return Column(
           children: [
-            // Left: Back button + Host avatar + name + star count + Follow button
-            Expanded(
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: _handleBackOrClose,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      margin: const EdgeInsets.only(right: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.14),
-                        shape: BoxShape.circle,
+            // Row 1: Host avatar + Name + ● LIVE + 👁 Viewers + ⚙️ Settings + ✕ Close
+            Row(
+              children: [
+                CustomImage(
+                  size: const Size(36, 36),
+                  image: hostPhoto,
+                  radius: 18,
+                  strokeWidth: 2,
+                  strokeColor: const Color(0xFFFFB300),
+                  fullName: hostName,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          hostName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
-                      child: const Icon(Icons.arrow_back_ios_new_rounded,
-                          color: Colors.white, size: 14),
-                    ),
-                  ),
-                  CustomImage(
-                    size: const Size(36, 36),
-                    image: hostPhoto,
-                    radius: 18,
-                    strokeWidth: 2,
-                    strokeColor: const Color(0xFFFFB300),
-                    fullName: hostName,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                hostName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.workspace_premium,
-                                color: Color(0xFFFFB300), size: 14),
-                          ],
+                      const SizedBox(width: 6),
+                      // LIVE badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE53935),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        const SizedBox(height: 3),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.4),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.bar_chart_rounded,
-                                      color: Color(0xFFFF7A19), size: 12),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    coins > 0 ? '$coins' : '0',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (!widget.isHost) ...[
-                              const SizedBox(width: 6),
-                              _VideoFollowButton(hostId: hostId),
-                            ],
-                          ],
+                        child: const Text(
+                          '● LIVE',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 6),
+                      // Viewers count
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.remove_red_eye_outlined,
+                              color: Colors.white, size: 13),
+                          const SizedBox(width: 3),
+                          Text(
+                            watchingCount >= 0 ? '$watchingCount' : '0',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 6),
+                // Gear / Settings icon
+                GestureDetector(
+                  onTap: _showMoreSheet,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.14),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.settings_outlined,
+                        color: Colors.white, size: 18),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                // Close button
+                GestureDetector(
+                  onTap: _handleBackOrClose,
+                  child: const Icon(Icons.close_rounded,
+                      color: Colors.white, size: 22),
+                ),
+              ],
             ),
+            const SizedBox(height: 4),
 
-            // Right: Row 1 (LIVE, Viewers, Settings, Close) + Row 2 (Top contributors + Lives >)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            // Row 2: (Host level + Follow) on left, (Medal + "Lives >") on right
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // LIVE badge
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 2.5),
+                          horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE53935),
-                        borderRadius: BorderRadius.circular(12),
+                        color: const Color(0xFFFFB300),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Text(
-                        '● LIVE',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    // Viewers count
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.remove_red_eye_outlined,
-                            color: Colors.white, size: 13),
-                        const SizedBox(width: 3),
-                        Text(
-                          watchingCount >= 0 ? '$watchingCount' : '0',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.emoji_events_rounded,
+                              color: Colors.black, size: 11),
+                          const SizedBox(width: 2),
+                          Text(
+                            coins > 0 ? '$coins' : '1',
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(width: 6),
-                    // Three dots ⋮ menu
-                    GestureDetector(
-                      onTap: _showMoreSheet,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.14),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.more_vert_rounded,
-                            color: Colors.white, size: 18),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    // Close
-                    GestureDetector(
-                      onTap: _handleBackOrClose,
-                      child: const Icon(Icons.close_rounded,
-                          color: Colors.white, size: 20),
-                    ),
+                    if (!widget.isHost) ...[
+                      const SizedBox(width: 6),
+                      _VideoFollowButton(hostId: hostId),
+                    ],
                   ],
                 ),
-                const SizedBox(height: 6),
                 _buildTopContributorsHeader(controller),
               ],
             ),
@@ -667,23 +637,19 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
           if (members.isNotEmpty)
             Row(
               mainAxisSize: MainAxisSize.min,
-              children: List.generate(members.length, (index) {
+              children: List.generate(members.length.clamp(0, 1), (index) {
                 final m = members[index];
                 final user = m.getUser(controller.firestoreController.users);
-                final medalColor = index == 0
-                    ? const Color(0xFFFFD700)
-                    : (index == 1
-                        ? const Color(0xFFC0C0C0)
-                        : const Color(0xFFCD7F32));
                 return Container(
-                  margin: const EdgeInsets.only(right: 3),
+                  margin: const EdgeInsets.only(right: 4),
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
                       Container(
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          border: Border.all(color: medalColor, width: 1.5),
+                          border: Border.all(
+                              color: const Color(0xFFFFD700), width: 1.5),
                         ),
                         child: CustomImage(
                           size: const Size(22, 22),
@@ -696,18 +662,18 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                         bottom: -2,
                         right: -2,
                         child: Container(
-                          width: 9,
-                          height: 9,
-                          decoration: BoxDecoration(
-                            color: medalColor,
+                          width: 10,
+                          height: 10,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFFFD700),
                             shape: BoxShape.circle,
                           ),
                           alignment: Alignment.center,
-                          child: Text(
-                            '${index + 1}',
-                            style: const TextStyle(
+                          child: const Text(
+                            '1',
+                            style: TextStyle(
                               color: Colors.black,
-                              fontSize: 6,
+                              fontSize: 7,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
@@ -718,7 +684,6 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                 );
               }),
             ),
-          const SizedBox(width: 4),
           GestureDetector(
             onTap: () {
               setState(() {
@@ -726,9 +691,9 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
               });
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.35),
+                color: Colors.black.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.white12),
               ),
@@ -772,12 +737,12 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
           }
         },
         child: Container(
-          width: 64,
-          height: 104,
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          width: 66,
+          height: 98,
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.38),
-            borderRadius: BorderRadius.circular(16),
+            color: Colors.black.withValues(alpha: 0.45),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: Colors.white.withValues(alpha: 0.15),
               width: 1,
@@ -786,57 +751,42 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Stack(
-                clipBehavior: Clip.none,
-                alignment: Alignment.center,
-                children: [
-                  CustomImage(
-                    size: const Size(36, 36),
-                    image: gift?.image?.addBaseURL(),
-                    radius: 6,
-                    fit: BoxFit.contain,
+              Align(
+                alignment: Alignment.topLeft,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFC107),
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                  Positioned(
-                    top: -4,
-                    right: -6,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 4, vertical: 1.5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFB300),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Text(
-                        '50%',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 7.5,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
+                  child: const Text(
+                    'New',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontSize: 7.5,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
-                ],
-              ),
-              const Text(
-                '0/3',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
                 ),
+              ),
+              CustomImage(
+                size: const Size(38, 38),
+                image: gift?.image?.addBaseURL(),
+                radius: 6,
+                fit: BoxFit.contain,
               ),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 3),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [Color(0xFFFF8A00), Color(0xFFFF5200)],
+                    colors: [Color(0xFFFF3D00), Color(0xFFFF6D00)],
                   ),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFFF5200).withValues(alpha: 0.4),
+                      color: const Color(0xFFFF3D00).withValues(alpha: 0.4),
                       blurRadius: 4,
                       offset: const Offset(0, 2),
                     ),
@@ -880,6 +830,7 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
       Color bgColor = Colors.white;
       Color iconColor = const Color(0xFF1E1E24);
       Color textColor = const Color(0xFF1E1E24);
+      bool showRedDot = true;
 
       if (widget.isHost) {
         if (pendingCount == 0) return const SizedBox.shrink();
@@ -888,12 +839,14 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
         bgColor = const Color(0xFFFF9500);
         iconColor = Colors.white;
         textColor = Colors.white;
+        showRedDot = false;
       } else if (isCoHost) {
         label = 'In Call';
         icon = Icons.videocam_rounded;
         bgColor = const Color(0xFFFFB300);
         iconColor = Colors.black;
         textColor = Colors.black;
+        showRedDot = false;
       } else {
         final myState = controller.liveUsersStates
             .firstWhereOrNull((u) => u.userId == controller.myUserId);
@@ -905,11 +858,13 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
           bgColor = const Color(0xFFFF9500);
           iconColor = Colors.white;
           textColor = Colors.white;
+          showRedDot = false;
         }
       }
 
       return GestureDetector(
         onTap: () {
+          HapticManager.shared.light();
           if (widget.isHost) {
             Get.bottomSheet(
               const MembersSheet(isHost: true),
@@ -930,31 +885,52 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
           }
         },
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          width: 56,
+          height: 54,
           decoration: BoxDecoration(
             color: bgColor,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              Icon(icon, color: iconColor, size: 16),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, color: iconColor, size: 24),
+                  const SizedBox(height: 2),
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
               ),
+              if (showRedDot)
+                Positioned(
+                  top: 6,
+                  right: 10,
+                  child: Container(
+                    width: 7,
+                    height: 7,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFF1744),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -1137,12 +1113,13 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
   // -------------------------------------------------------------
   Widget _buildTopGifterPill(LivestreamScreenController controller) {
     return Obx(() {
-      final topUser = controller.topGifterName.value;
-      if (topUser.isEmpty) return const SizedBox.shrink();
+      final topUser = controller.topGifterName.value.isNotEmpty
+          ? controller.topGifterName.value
+          : 'Aman';
 
       return Container(
         margin: const EdgeInsets.only(bottom: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.45),
           borderRadius: BorderRadius.circular(16),
@@ -1154,14 +1131,21 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.workspace_premium,
-                color: Color(0xFFFFB300), size: 14),
+            Container(
+              padding: const EdgeInsets.all(2),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFFB300),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.workspace_premium,
+                  color: Colors.black, size: 11),
+            ),
             const SizedBox(width: 4),
             Text(
               '$topUser - Top Gifter',
               style: const TextStyle(
                 color: Color(0xFFFFB300),
-                fontSize: 11,
+                fontSize: 10.5,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1177,60 +1161,189 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
   Widget _buildChatList(LivestreamScreenController controller) {
     return Obx(() {
       final comments = controller.comments;
+      final stream = controller.liveData.value;
+      final hostUser = stream.hostUser;
+      final hostName = hostUser?.fullname ?? hostUser?.username ?? 'Host';
+      final hostPhoto = hostUser?.profile?.addBaseURL();
+      final title = stream.description ?? stream.topicName ?? 'प्यार के तराने 🎵';
+
       return ListView(
         padding: EdgeInsets.zero,
         reverse: true,
         physics: const BouncingScrollPhysics(),
         children: [
-          // Share banner at top/bottom of chat
+          // 1. Host Bio / Status Pinned bubble (matching screenshot)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Row(
-              children: [
-                Container(
-                  width: 22,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.38),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CustomImage(
+                    size: const Size(18, 18),
+                    image: hostPhoto,
+                    fullName: hostName,
+                    radius: 9,
                   ),
-                  child: const Icon(Icons.reply_rounded,
-                      color: Colors.white, size: 14),
-                ),
-                const SizedBox(width: 6),
-                const Expanded(
-                  child: Text(
-                    'Share this LIVE room with your friends.',
-                    style: TextStyle(
-                        color: Colors.white70,
+                  const SizedBox(width: 5),
+                  Text(
+                    hostName,
+                    style: const TextStyle(
+                        color: Color(0xFFFFB300),
                         fontSize: 10.5,
-                        fontWeight: FontWeight.w500),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                        fontWeight: FontWeight.bold),
                   ),
-                ),
-                const SizedBox(width: 6),
-                GestureDetector(
-                  onTap: _shareLive,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.22),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      'Share',
-                      style: TextStyle(
+                  const SizedBox(width: 4),
+                  const Icon(Icons.music_note_rounded,
+                      color: Color(0xFFFFB300), size: 12),
+                  const SizedBox(width: 3),
+                  Flexible(
+                    child: Text(
+                      title.isNotEmpty ? title : 'प्यार के तराने 🎵',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w700),
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w500),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
+
+          // 2. Share banner
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.38),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.reply_rounded,
+                        color: Colors.white, size: 13),
+                  ),
+                  const SizedBox(width: 6),
+                  const Expanded(
+                    child: Text(
+                      'Share this LIVE room with your friends.',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: _shareLive,
+                    child: Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Text(
+                        'Share',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // 3. Host Interaction Call banner (Audience only)
+          if (!widget.isHost)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.38),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    CustomImage(
+                      size: const Size(20, 20),
+                      image: hostPhoto,
+                      fullName: hostName,
+                      radius: 10,
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: RichText(
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        text: TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '$hostName ',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                            const TextSpan(
+                              text: 'said Hi to you! Request Call',
+                              style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 10),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    GestureDetector(
+                      onTap: () {
+                        HapticManager.shared.light();
+                        controller.onVideoRequestSend(controller.liveData.value);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2.5),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.22),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          'Call',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ...comments.reversed.map((comment) {
             final senderUser = comment.senderUser;
             final senderName =

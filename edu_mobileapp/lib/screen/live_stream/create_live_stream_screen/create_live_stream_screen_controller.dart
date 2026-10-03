@@ -43,6 +43,7 @@ class CreateLiveStreamScreenController extends BaseController {
   RxList<Language> get languageList => _shared.languageList;
   Rx<Language?> get selectedLanguage => _shared.selectedLanguage;
   RxList<Hashtag> get selectedHashtags => _shared.selectedHashtags;
+  RxList<Hashtag> get availableHashtags => _shared.availableHashtags;
   RxBool get isAutoMode => _shared.isAutoMode;
 
   // Category / SubCategory / Topic selection state
@@ -59,6 +60,10 @@ class CreateLiveStreamScreenController extends BaseController {
   // Video ON/OFF on the setup screen — off stops the camera preview here
   // and shows the host's avatar instead, matching the reference toggle.
   RxBool isVideoOn = true.obs;
+
+  // Language validation — set true when Start Live is tapped without a language;
+  // the language pill in the UI animates red to prompt the host to select one.
+  RxBool languageHasError = false.obs;
 
   // Stream mode: video_room, direct_call, pk_battle
   RxString selectedStreamMode = 'video_room'.obs;
@@ -247,7 +252,13 @@ class CreateLiveStreamScreenController extends BaseController {
     }
 
     if (selectedLanguage.value == null) {
-      return showSnackBar('Please select a language');
+      // Flash the language pill red and auto-clear after 2 seconds
+      languageHasError.value = true;
+      Future.delayed(const Duration(seconds: 2), () {
+        languageHasError.value = false;
+      });
+      showSnackBar('Please select a language from the top right');
+      return;
     }
 
     User? user = myUser.value;

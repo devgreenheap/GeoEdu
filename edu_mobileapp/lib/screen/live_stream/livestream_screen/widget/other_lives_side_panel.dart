@@ -165,7 +165,7 @@ class OtherLivesSidePanel extends StatelessWidget {
       onTap: () async {
         onClose();
         if (Get.isRegistered<AudioRoomController>()) {
-          await Get.find<AudioRoomController>().leaveRoom(shouldPop: false);
+          Get.find<AudioRoomController>().leaveRoom(shouldPop: false);
         }
         Get.off(() => LiveStreamAudienceScreen(
               livestream: stream,
@@ -365,7 +365,7 @@ class OtherLivesSidePanel extends StatelessWidget {
       onTap: () async {
         onClose();
         if (Get.isRegistered<AudioRoomController>()) {
-          await Get.find<AudioRoomController>().leaveRoom(shouldPop: false);
+          Get.find<AudioRoomController>().leaveRoom(shouldPop: false);
         }
         Get.off(() => AudioRoomScreen(
               room: room,

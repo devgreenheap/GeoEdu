@@ -4,9 +4,11 @@ import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/common/widget/live_summary_dialog.dart';
 import 'package:geoedu/screen/audio_call/audio_call_list_controller.dart';
 import 'package:geoedu/utilities/color_res.dart';
@@ -52,6 +54,7 @@ class AudioRoomController extends BaseController {
   RxBool isMuted = false.obs;
   RxBool isSpeakerOn = true.obs;
   RxString roomName = ''.obs;
+  RxString roomDescription = ''.obs;
   RxList<int> participantIds = <int>[].obs;
   RxList<OnlineUser> participants = <OnlineUser>[].obs;
   RxBool isRoomActive = true.obs;
@@ -98,6 +101,14 @@ class AudioRoomController extends BaseController {
   RxBool isMusicPlaying = false.obs;
   RxList<String> musicUrls = <String>[].obs;
   String _currentPlaylistKey = '';
+
+  // Incoming request alert sound & notification toast
+  final AudioPlayer _requestAlertPlayer = AudioPlayer();
+  final Rx<OnlineUser?> latestRequestUser = Rx<OnlineUser?>(null);
+  final RxBool showRequestToast = false.obs;
+  Timer? _requestToastTimer;
+  Set<int> _seenRequestIds = {};
+  bool _initialRoomDocLoaded = false;
 
   // Inline gift bar (EloTV-style tap-to-send row, replaces the full-screen
   // gift sheet for this screen).
@@ -228,6 +239,7 @@ class AudioRoomController extends BaseController {
     comments.clear();
     room.createdAt ??= DateTime.now().millisecondsSinceEpoch;
     roomName.value = room.roomName ?? 'Audio Room';
+    roomDescription.value = room.description ?? '';
     _lastSeenLikeCount = room.likeCount ?? 0;
     likeCount.value = room.likeCount ?? 0;
     participantIds.value = List<int>.from(room.participantIds ?? []);
@@ -252,20 +264,6 @@ class AudioRoomController extends BaseController {
     fetchDiamondBalanceIfNeeded(force: true);
   }
 
-  Future<void> _purgeSubcollection(CollectionReference coll, {int limit = 300}) async {
-    try {
-      final snap = await coll.limit(limit).get();
-      if (snap.docs.isNotEmpty) {
-        final batch = _db.batch();
-        for (final doc in snap.docs) {
-          batch.delete(doc.reference);
-        }
-        await batch.commit();
-      }
-    } catch (e) {
-      Loggers.error('Error purging subcollection: $e');
-    }
-  }
 
   Future<void> _purgeHostSubcollections() async {
     try {
@@ -511,6 +509,9 @@ class AudioRoomController extends BaseController {
     _giftEffectSubscription?.cancel();
     _commentsSubscription?.cancel();
     _pkTimer?.cancel();
+    _requestToastTimer?.cancel();
+    _requestAlertPlayer.stop();
+    _requestAlertPlayer.dispose();
     if (isHost && pkOpponentId.value != null) {
       _clearPkFields(room.hostId);
       _clearPkFields(pkOpponentId.value);
@@ -724,6 +725,7 @@ class AudioRoomController extends BaseController {
         connectedCallsCount.value = newSpeakerCount;
       }
       roomName.value = updatedRoom.roomName ?? 'Audio Room';
+      roomDescription.value = updatedRoom.description ?? '';
       backgroundImage.value = updatedRoom.backgroundImage ?? '';
       isRoomActive.value = updatedRoom.isActive ?? false;
       isAutoMode.value = updatedRoom.isAutoMode ?? false;
@@ -773,6 +775,18 @@ class AudioRoomController extends BaseController {
       final newRequestIds = List<int>.from(updatedRoom.requestIds ?? []);
       speakerIds.value = newSpeakerIds;
       requestIds.value = newRequestIds;
+
+      if (isHost) {
+        if (_initialRoomDocLoaded) {
+          final newlyAdded =
+              newRequestIds.where((id) => !_seenRequestIds.contains(id)).toList();
+          if (newlyAdded.isNotEmpty) {
+            _handleIncomingRequest(newlyAdded.first);
+          }
+        }
+        _seenRequestIds = Set<int>.from(newRequestIds);
+        _initialRoomDocLoaded = true;
+      }
 
       // Ensure every remote speaker's stream is playing on this device
       for (final spkId in newSpeakerIds) {
@@ -1137,16 +1151,92 @@ class AudioRoomController extends BaseController {
 
   // ─── PK Battle (audio host vs audio host) ───
 
-  /// Other currently-live audio hosts, for the invite list.
+  /// Stream other currently-live audio hosts in real-time, filtering out stale/dead rooms.
+  Stream<List<AudioRoom>> streamOtherLiveHosts() {
+    return _db
+        .collection(FirebaseConst.audioRooms)
+        .where('is_active', isEqualTo: true)
+        .snapshots()
+        .map((snapshot) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final liveHosts = <AudioRoom>[];
+      for (final doc in snapshot.docs) {
+        final r = AudioRoom.fromJson(doc.data());
+        if (r.hostId == null || r.hostId == room.hostId) continue;
+        if (r.isActive != true) continue;
+        // Stale test cleanup: if older than 4 hours, mark inactive in background
+        final createdAt = r.createdAt ?? 0;
+        if (createdAt == 0 || (now - createdAt) > 4 * 3600 * 1000) {
+          doc.reference.update({'is_active': false}).catchError((_) {});
+          continue;
+        }
+        liveHosts.add(r);
+      }
+      return liveHosts;
+    });
+  }
+
+  /// Other currently-live audio hosts, filtering out stale rooms.
   Future<List<AudioRoom>> fetchOtherLiveHosts() async {
     final snapshot = await _db
         .collection(FirebaseConst.audioRooms)
         .where('is_active', isEqualTo: true)
         .get();
-    return snapshot.docs
-        .map((doc) => AudioRoom.fromJson(doc.data()))
-        .where((r) => r.hostId != null && r.hostId != room.hostId)
-        .toList();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final liveHosts = <AudioRoom>[];
+    for (final doc in snapshot.docs) {
+      final r = AudioRoom.fromJson(doc.data());
+      if (r.hostId == null || r.hostId == room.hostId) continue;
+      if (r.isActive != true) continue;
+      final createdAt = r.createdAt ?? 0;
+      if (createdAt == 0 || (now - createdAt) > 4 * 3600 * 1000) {
+        doc.reference.update({'is_active': false}).catchError((_) {});
+        continue;
+      }
+      liveHosts.add(r);
+    }
+    return liveHosts;
+  }
+
+  Future<void> _handleIncomingRequest(int userId) async {
+    if (!isHost) return;
+    try {
+      await _requestAlertPlayer.stop();
+      await _requestAlertPlayer.setAsset(AssetRes.chatNotification);
+      await _requestAlertPlayer.play();
+    } catch (_) {
+      try {
+        await _requestAlertPlayer.setAsset('assets/audios/ring audio.mp3');
+        await _requestAlertPlayer.play();
+      } catch (_) {}
+    }
+    try {
+      SystemSound.play(SystemSoundType.alert);
+      HapticFeedback.mediumImpact();
+    } catch (_) {}
+
+    OnlineUser? user = participants.firstWhereOrNull((p) => p.userId == userId);
+    if (user == null || user.fullname == null || user.fullname!.isEmpty) {
+      try {
+        final doc =
+            await _db.collection(FirebaseConst.users).doc(userId.toString()).get();
+        if (doc.exists) {
+          final data = doc.data();
+          user = OnlineUser(
+            userId: userId,
+            fullname: data?['fullname'] ?? data?['name'] ?? 'User $userId',
+            username: data?['username'],
+            profilePhoto: data?['profile_photo'] ?? data?['photo'],
+          );
+        }
+      } catch (_) {}
+    }
+    latestRequestUser.value = user ?? OnlineUser(userId: userId, fullname: 'User $userId');
+    showRequestToast.value = true;
+    _requestToastTimer?.cancel();
+    _requestToastTimer = Timer(const Duration(seconds: 6), () {
+      showRequestToast.value = false;
+    });
   }
 
   /// Invite another live host to a PK battle.
@@ -1685,17 +1775,19 @@ class AudioRoomController extends BaseController {
     }
   }
 
-  void endRoom() async {
+  void endRoom() {
     if (!isHost || _isCleaningUp) return;
     _isCleaningUp = true;
 
+    // ── 1. Capture summary stats immediately (synchronous) ──────────────────
     final startTime = DateTime.fromMillisecondsSinceEpoch(
         room.createdAt ?? DateTime.now().millisecondsSinceEpoch);
     final durationMinutes = math.max(
         1,
         ((DateTime.now().millisecondsSinceEpoch -
                 (room.createdAt ?? DateTime.now().millisecondsSinceEpoch)) /
-            60000).ceil());
+            60000)
+            .ceil());
     final viewers = math.max(peakListenerCount, participantIds.length);
     final followers = sessionFollowersGained.value;
     final calls = connectedCallsCount.value;
@@ -1703,52 +1795,57 @@ class AudioRoomController extends BaseController {
     final gifts = hostGiftCount.value;
     final stars = hostStarTotal.value;
 
+    // ── 2. Cancel all subscriptions and stop music synchronously ────────────
     _roomDocSubscription?.cancel();
-    _musicPlayer.stop();
-    _musicPlayer.dispose();
-    await _leaveZegoRoom();
+    _opponentDocSubscription?.cancel();
+    _giftEffectSubscription?.cancel();
+    _commentsSubscription?.cancel();
+    _pkTimer?.cancel();
+    ZegoExpressEngine.onRoomStreamUpdate = null;
+    ZegoExpressEngine.onRoomUserUpdate = null;
+    GiftAudioPlayer.stop();
+    try { _musicPlayer.stop(); } catch (_) {}
+    try { _musicPlayer.dispose(); } catch (_) {}
 
+    // ── 3. Fire-and-forget all async cleanup (never block the UI) ────────────
+    // Zego leave
+    _leaveZegoRoom().catchError((_) {});
+
+    // Backend end-room API
     if (apiAudioRoomId != null) {
-      try {
-        await GiftWalletService.instance.endAudioRoom(
-          audioRoomId: apiAudioRoomId!,
-          peakListenerCount: viewers,
-        );
-      } catch (e) {
+      GiftWalletService.instance.endAudioRoom(
+        audioRoomId: apiAudioRoomId!,
+        peakListenerCount: viewers,
+      ).catchError((e) {
         Loggers.error('AudioRoom: end history error: $e');
-      }
+      });
     }
 
-    try {
-      await _db
-          .collection(FirebaseConst.audioRooms)
-          .doc(room.hostId.toString())
-          .update({'is_active': false});
-    } catch (_) {}
-
-    try {
-      await _db
-          .collection(FirebaseConst.audioRooms)
-          .doc(room.hostId.toString())
-          .delete();
-    } catch (_) {}
+    // Firestore: mark inactive then delete room doc(s)
+    final hostDocRef = _db
+        .collection(FirebaseConst.audioRooms)
+        .doc(room.hostId.toString());
+    hostDocRef
+        .update({'is_active': false})
+        .catchError((_) {})
+        .then((_) => hostDocRef.delete().catchError((_) {}));
 
     if (room.roomId != null && room.roomId!.isNotEmpty) {
-      try {
-        await _db
-            .collection(FirebaseConst.audioRooms)
-            .doc(room.roomId!)
-            .delete();
-      } catch (_) {}
+      _db
+          .collection(FirebaseConst.audioRooms)
+          .doc(room.roomId!)
+          .delete()
+          .catchError((_) {});
     }
 
-    // Instantly remove from AudioCallListController so it vanishes from Home Page
+    // Remove from live list immediately so home page no longer shows it
     if (Get.isRegistered<AudioCallListController>()) {
       Get.find<AudioCallListController>().audioRooms.removeWhere(
             (r) => r.hostId == room.hostId || r.roomId == room.roomId,
           );
     }
 
+    // ── 4. Immediately show the LiveSummaryDialog — no awaiting needed ──────
     Get.dialog(
       LiveSummaryDialog(
         title: 'Audio Live Show',
@@ -1762,45 +1859,68 @@ class AudioRoomController extends BaseController {
         starsEarned: stars,
         endedBy: 'Host',
         onClose: () {
-          Get.back(); // close summary dialog
-          Get.back(); // exit AudioRoomScreen to home
-          Get.delete<AudioRoomController>();
+          // Close the summary dialog first
+          Get.back();
+          // Navigate all the way back to the root (dashboard/home)
+          try {
+            Navigator.of(Get.context!, rootNavigator: true)
+                .popUntil((route) => route.isFirst);
+          } catch (_) {
+            // Fallback: pop twice (dialog already closed above)
+            try { Get.back(); } catch (_) {}
+          }
+          // Clean up controller after navigation
+          Future.microtask(() {
+            if (Get.isRegistered<AudioRoomController>()) {
+              Get.delete<AudioRoomController>(force: true);
+            }
+          });
         },
       ),
       barrierDismissible: false,
     );
   }
 
-  Future<void> leaveRoom({bool shouldPop = true}) async {
+  void leaveRoom({bool shouldPop = true}) {
     if (_isCleaningUp || myUser?.id == null) return;
     _isCleaningUp = true;
-    _roomDocSubscription?.cancel();
-    _musicPlayer.stop();
-    _musicPlayer.dispose();
-    await _leaveZegoRoom();
-    try {
-      if (isHost) {
-        final hostRoomRef = _db
-            .collection(FirebaseConst.audioRooms)
-            .doc(room.hostId.toString());
-        await _purgeSubcollection(hostRoomRef.collection('comments'));
-        await _purgeSubcollection(hostRoomRef.collection('gifts'));
-        await hostRoomRef.delete();
-      } else {
-        await _db
-            .collection(FirebaseConst.audioRooms)
-            .doc(room.hostId.toString())
-            .update({
-          'participant_ids': FieldValue.arrayRemove([myUser!.id]),
-        });
-      }
-    } catch (e) {
-      Loggers.error('AudioRoom: leave room update error: $e');
+
+    // If host accidentally calls leaveRoom, redirect to the proper endRoom flow
+    if (isHost) {
+      endRoom();
+      return;
     }
+
+    // Cancel subscriptions and stop audio synchronously
+    _roomDocSubscription?.cancel();
+    _opponentDocSubscription?.cancel();
+    _commentsSubscription?.cancel();
+    GiftAudioPlayer.stop();
+    try { _musicPlayer.stop(); } catch (_) {}
+    try { _musicPlayer.dispose(); } catch (_) {}
+
+    // Fire-and-forget Zego and Firestore cleanup — never block navigation
+    _leaveZegoRoom().catchError((_) {});
+
+    // Guest: remove self from participant list (non-blocking)
+    _db
+        .collection(FirebaseConst.audioRooms)
+        .doc(room.hostId.toString())
+        .update({
+      'participant_ids': FieldValue.arrayRemove([myUser!.id]),
+    }).catchError((e) {
+      Loggers.error('AudioRoom: leave room update error: \$e');
+    });
+
+    // Navigate immediately without waiting for async cleanup
     if (shouldPop) {
       Get.back();
     }
-    Get.delete<AudioRoomController>();
+    Future.microtask(() {
+      if (Get.isRegistered<AudioRoomController>()) {
+        Get.delete<AudioRoomController>(force: true);
+      }
+    });
   }
 
   Future<void> _leaveZegoRoom() async {

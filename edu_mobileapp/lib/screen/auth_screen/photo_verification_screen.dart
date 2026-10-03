@@ -85,9 +85,7 @@ class _PhotoVerificationScreenState extends State<PhotoVerificationScreen> {
       }
 
       // If still missing, fallback to session user with the server uploaded path
-      if (finalUser == null) {
-        finalUser = SessionManager.instance.getUser() ?? widget.userData;
-      }
+      finalUser ??= SessionManager.instance.getUser() ?? widget.userData;
       if (finalUser != null && (finalUser.verificationPhoto == null || (finalUser.verificationPhoto ?? '').isEmpty)) {
         if (uploadedPath != null && uploadedPath.isNotEmpty) {
           finalUser.verificationPhoto = uploadedPath;
@@ -159,7 +157,7 @@ class _PhotoVerificationScreenState extends State<PhotoVerificationScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Identity Verification',
+                            'Profile Verification',
                             style: TextStyle(
                               fontSize: 18,
                               fontFamily: FontRes.outFitSemiBold600,
@@ -366,7 +364,7 @@ class _PhotoVerificationScreenState extends State<PhotoVerificationScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Text(
                           _capturedPhoto == null
-                              ? 'Make sure you are in a well-lit area with your face fully visible to complete admin identity verification.'
+                              ? 'Make sure you are in a well-lit area with your face fully visible to complete profile verification.'
                               : 'Review your photo. If it is clear and well-lit, tap Submit to proceed.',
                           textAlign: TextAlign.center,
                           style: TextStyle(

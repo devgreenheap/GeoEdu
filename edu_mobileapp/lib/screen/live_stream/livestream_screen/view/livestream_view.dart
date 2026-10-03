@@ -12,6 +12,7 @@ import 'package:geoedu/model/livestream/livestream.dart';
 import 'package:geoedu/model/livestream/livestream_user_state.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/audience/widget/live_stream_user_info_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requested_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/members_sheet.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/text_style_custom.dart';
@@ -36,7 +37,6 @@ class LivestreamView extends StatelessWidget {
         final hostView = views.removeAt(hostIndex);
         views.insert(0, hostView);
       }
-      int coHostCount = views.length;
       List<AppUser> liveUsers = controller.firestoreController.users;
       List<AppUser> allUsers = stream.getAllUsers(liveUsers);
 
@@ -57,22 +57,12 @@ class LivestreamView extends StatelessWidget {
       //  );
       // }
 
-      return switch (coHostCount) {
-        2 => OneAndTwoUserView(controller: controller, streamViews: views,),
-        3 => ThreeUserView(controller: controller, streamViews: views),
-        4 => FourUserView(controller: controller, streamViews: views),
-        1 => Stack(
-            children: [
-              LiveStreamUserView(isNameAndSpeakerVisible: false, streamingView: views.first, controller: controller,),
-              if (controller.isHost) const _AcceptCallSlot(),
-            ],
-          ),
-        _ => MultiUserGridView(controller: controller, streamViews: views),
-      };
+      return EloeloStyleLayout(
+        controller: controller,
+        streamViews: views,
+      );
     });
   }
-
-
 
   Widget _buildEmptyView() {
     return Center(
@@ -80,56 +70,6 @@ class LivestreamView extends StatelessWidget {
       'No users in livestream',
       style: TextStyleCustom.unboundedMedium500(color: Colors.white),
     ));
-  }
-}
-
-/// Dashed "+ Accept Call" co-host slot shown to the host when solo — opens
-/// the same real pending-requests sheet the "Calls"/"Requests" buttons use
-/// (this is a separate co-host invite flow, never PK).
-class _AcceptCallSlot extends StatelessWidget {
-  const _AcceptCallSlot();
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = Get.find<LivestreamScreenController>();
-    return Positioned(
-      right: 12,
-      bottom: 160,
-      child: GestureDetector(
-        onTap: () => Get.bottomSheet(
-            const MembersSheet(isHost: true),
-            isScrollControlled: true),
-        child: Obx(() => Container(
-              width: 90,
-              height: 120,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Colors.white54,
-                  width: 1.5,
-                  strokeAlign: BorderSide.strokeAlignInside,
-                ),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.add_circle_outline, color: Colors.white70, size: 26),
-                  const SizedBox(height: 6),
-                  const Text('Accept Call',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
-                  if (controller.requestList.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text('${controller.requestList.length} pending',
-                          style: const TextStyle(color: Colors.orange, fontSize: 9)),
-                    ),
-                ],
-              ),
-            )),
-      ),
-    );
   }
 }
 
@@ -150,6 +90,7 @@ class EloeloStyleLayout extends StatelessWidget {
 
     return Stack(
       children: [
+        // 1. Full-screen host video background
         Positioned.fill(
           child: LiveStreamUserView(
             isNameAndSpeakerVisible: false,
@@ -157,28 +98,31 @@ class EloeloStyleLayout extends StatelessWidget {
             streamingView: host,
           ),
         ),
+
+        // 2. Vertical Call Slots column under "Lives >" at top-right
         Positioned(
-          right: 12,
-          top: MediaQuery.of(context).padding.top + 100,
-          bottom: 100,
-          child: SizedBox(
-            width: 110,
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Column(
-                children: [
-                  ...List.generate(
-                    members.length,
-                        (index) => SidebarMemberTile(
-                      controller: controller,
-                      streamingView: members[index],
-                    ),
+          right: 10,
+          top: MediaQuery.of(context).padding.top + 80,
+          child: Obx(() {
+            final liveData = controller.liveData.value;
+            final isRestricted = liveData.isRestrictToJoin != 0;
+            final showJoinSlot = !isRestricted && members.length < 3;
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ...List.generate(
+                  members.length,
+                  (index) => SidebarMemberTile(
+                    controller: controller,
+                    streamingView: members[index],
                   ),
-                  _buildJoinPlaceholder(context),
-                ],
-              ),
-            ),
-          ),
+                ),
+                if (showJoinSlot)
+                  _JoinCallSlot(controller: controller),
+              ],
+            );
+          }),
         ),
       ],
     );
@@ -198,46 +142,103 @@ class SidebarMemberTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      height: 130,
-      width: 110,
+      margin: const EdgeInsets.only(bottom: 6),
+      height: 78,
+      width: 78,
       decoration: BoxDecoration(
+        color: const Color(0xFF1B1E28),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          )
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: Stack(
           children: [
+            // Video stream or avatar
+            Positioned.fill(
+              child: LiveStreamUserView(
+                isNameAndSpeakerVisible: false,
+                controller: controller,
+                streamingView: streamingView,
+              ),
+            ),
 
+            // Top-right chevron / minimize icon
+            Positioned(
+              top: 3,
+              right: 3,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: Colors.white,
+                  size: 14,
+                ),
+              ),
+            ),
+
+            // Bottom-left mic status badge
+            Obx(() {
+              final state = controller.liveUsersStates.firstWhereOrNull(
+                  (element) =>
+                      element.userId == int.tryParse(streamingView.streamId));
+              final isAudioOn = state?.audioStatus == VideoAudioStatus.on;
+
+              return Positioned(
+                bottom: 4,
+                left: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    isAudioOn ? Icons.mic_rounded : Icons.mic_off_rounded,
+                    color: isAudioOn ? Colors.white : const Color(0xFFFF1744),
+                    size: 11,
+                  ),
+                ),
+              );
+            }),
+
+            // Bottom user name gradient strip
             Align(
               alignment: Alignment.bottomCenter,
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 2),
+                padding: const EdgeInsets.symmetric(vertical: 1.5, horizontal: 2),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.black.withValues(alpha: 0.7)],
+                    colors: [Colors.transparent, Colors.black.withValues(alpha: 0.75)],
                   ),
                 ),
                 child: Text(
-                  // Fetching user name from controller using streamId
                   controller.firestoreController.users
-                      .firstWhereOrNull((u) => u.userId.toString() == streamingView.streamId)
-                      ?.fullname ?? "User",
+                          .firstWhereOrNull((u) => u.userId.toString() == streamingView.streamId)
+                          ?.fullname ??
+                      "User",
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
@@ -248,39 +249,169 @@ class SidebarMemberTile extends StatelessWidget {
   }
 }
 
-Widget _buildJoinPlaceholder(BuildContext context) {
-  return InkWell(
-    onTap: () {
-      print("User requested to join the stage");
-    },
-    child: Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      height: 130,
-      width: 110,
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.2),
-          style: BorderStyle.solid,
-          width: 1,
+class _JoinCallSlot extends StatelessWidget {
+  final LivestreamScreenController controller;
+
+  const _JoinCallSlot({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        HapticManager.shared.light();
+        if (controller.isHost) {
+          Get.bottomSheet(
+            const MembersSheet(isHost: true),
+            isScrollControlled: true,
+          );
+        } else {
+          final isCoHost = (controller.liveData.value.coHostIds ?? [])
+              .contains(controller.myUserId);
+          if (isCoHost) {
+            controller.toggleMic(null);
+          } else {
+            final myState = controller.liveUsersStates
+                .firstWhereOrNull((u) => u.userId == controller.myUserId);
+            final isRequested =
+                myState?.type == LivestreamUserType.requested;
+            if (isRequested) {
+              CallRequestedSheet.show(context);
+            } else {
+              controller.onVideoRequestSend(controller.liveData.value);
+            }
+          }
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        width: 78,
+        height: 78,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: CustomPaint(
+          painter: DashedRRectPainter(
+            color: Colors.white.withValues(alpha: 0.7),
+            strokeWidth: 1.5,
+            radius: 12,
+            dash: 5,
+            gap: 4,
+          ),
+          child: Stack(
+            children: [
+              const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.video_call_rounded,
+                      color: Colors.white,
+                      size: 26,
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Join Call',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Blue badge on top-right corner
+              Positioned(
+                top: 4,
+                right: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF1E88E5),
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
+                  alignment: Alignment.center,
+                  child: Obx(() {
+                    final count = controller.isHost
+                        ? (controller.requestList.isNotEmpty ? controller.requestList.length : 1)
+                        : 1;
+                    return Text(
+                      '$count',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 8.5,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.add_circle_outline, color: Colors.white.withValues(alpha: 0.7), size: 30),
-          const SizedBox(height: 8),
-          Text(
-            "Join",
-            style: TextStyleCustom.unboundedMedium500(
-              color: Colors.white.withValues(alpha: 0.7),
-            ).copyWith(fontSize: 12),
-          ),
-        ],
-      ),
-    ),
-  );
+    );
+  }
+}
+
+class DashedRRectPainter extends CustomPainter {
+  final Color color;
+  final double strokeWidth;
+  final double gap;
+  final double dash;
+  final double radius;
+
+  DashedRRectPainter({
+    this.color = Colors.white,
+    this.strokeWidth = 1.5,
+    this.dash = 5.0,
+    this.gap = 4.0,
+    this.radius = 12.0,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke;
+
+    final path = Path()
+      ..addRRect(RRect.fromRectAndRadius(
+        Rect.fromLTWH(strokeWidth / 2, strokeWidth / 2,
+            size.width - strokeWidth, size.height - strokeWidth),
+        Radius.circular(radius),
+      ));
+
+    final dashPath = Path();
+    for (final metric in path.computeMetrics()) {
+      double distance = 0.0;
+      while (distance < metric.length) {
+        final length = (distance + dash > metric.length)
+            ? metric.length - distance
+            : dash;
+        dashPath.addPath(
+          metric.extractPath(distance, distance + length),
+          Offset.zero,
+        );
+        distance += dash + gap;
+      }
+    }
+    canvas.drawPath(dashPath, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant DashedRRectPainter oldDelegate) =>
+      oldDelegate.color != color ||
+      oldDelegate.strokeWidth != strokeWidth ||
+      oldDelegate.dash != dash ||
+      oldDelegate.gap != gap ||
+      oldDelegate.radius != radius;
 }
 
 class MultiUserGridView extends StatelessWidget {
