@@ -88,6 +88,10 @@ class WalletController extends Controller
                 $start = $now->copy()->startOfMonth();
                 $end = $now->copy()->endOfMonth();
                 break;
+            case 'last_month':
+                $start = $now->copy()->subMonth()->startOfMonth();
+                $end = $now->copy()->subMonth()->endOfMonth();
+                break;
             case 'today':
             default:
                 $start = $now->copy()->startOfDay();
@@ -3820,7 +3824,7 @@ class WalletController extends Controller
         }
 
         $rules = [
-            'period' => 'nullable|in:today,yesterday,this_week,this_month,all_time',
+            'period' => 'nullable|in:today,yesterday,this_week,this_month,last_month,all_time',
             'type' => 'nullable|in:video,audio',
             'language_id' => 'nullable|exists:languages,id',
             'limit' => 'nullable|integer|min:1|max:100',

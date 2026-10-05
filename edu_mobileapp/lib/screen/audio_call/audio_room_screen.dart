@@ -27,6 +27,7 @@ import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/audio_theme_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/utilities/firebase_const.dart';
+import 'package:geoedu/common/widget/room_top_gifters_sheet.dart';
 
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_start_countdown_overlay.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/other_lives_side_panel.dart';
@@ -410,57 +411,60 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (participants.isNotEmpty)
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(participants.length, (index) {
-                final p = participants[index];
-                final medalColor = index == 0
-                    ? const Color(0xFFFFD700)
-                    : (index == 1
-                        ? const Color(0xFFC0C0C0)
-                        : const Color(0xFFCD7F32));
-                return Container(
-                  margin: const EdgeInsets.only(right: 3),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: medalColor, width: 1.5),
-                        ),
-                        child: CustomImage(
-                          size: const Size(22, 22),
-                          image: p.profilePhoto,
-                          radius: 11,
-                          fullName: p.fullname,
-                        ),
-                      ),
-                      Positioned(
-                        bottom: -2,
-                        right: -2,
-                        child: Container(
-                          width: 9,
-                          height: 9,
+            GestureDetector(
+              onTap: () => _showTopGiftersSheet(controller),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: List.generate(participants.length, (index) {
+                  final p = participants[index];
+                  final medalColor = index == 0
+                      ? const Color(0xFFFFD700)
+                      : (index == 1
+                          ? const Color(0xFFC0C0C0)
+                          : const Color(0xFFCD7F32));
+                  return Container(
+                    margin: const EdgeInsets.only(right: 3),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
                           decoration: BoxDecoration(
-                            color: medalColor,
                             shape: BoxShape.circle,
+                            border: Border.all(color: medalColor, width: 1.5),
                           ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            '${index + 1}',
-                            style: const TextStyle(
-                              color: Colors.black,
-                              fontSize: 6,
-                              fontWeight: FontWeight.w900,
+                          child: CustomImage(
+                            size: const Size(22, 22),
+                            image: p.profilePhoto,
+                            radius: 11,
+                            fullName: p.fullname,
+                          ),
+                        ),
+                        Positioned(
+                          bottom: -2,
+                          right: -2,
+                          child: Container(
+                            width: 9,
+                            height: 9,
+                            decoration: BoxDecoration(
+                              color: medalColor,
+                              shape: BoxShape.circle,
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              '${index + 1}',
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontSize: 6,
+                                fontWeight: FontWeight.w900,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
+                      ],
+                    ),
+                  );
+                }),
+              ),
             ),
           const SizedBox(width: 4),
           GestureDetector(
@@ -492,132 +496,12 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
   }
 
   void _showTopGiftersSheet(AudioRoomController controller) {
-    Get.bottomSheet(
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        decoration: const BoxDecoration(
-          color: Color(0xFF1E1E24),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 14),
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Top Contributors',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  '${controller.participantIds.length} viewers',
-                  style: const TextStyle(color: Colors.white60, fontSize: 12),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Obx(() {
-              final list = controller.participants;
-              if (list.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Center(
-                    child: Text('No contributors yet',
-                        style: TextStyle(color: Colors.white54)),
-                  ),
-                );
-              }
-              return ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: list.length > 5 ? 5 : list.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(color: Colors.white12, height: 16),
-                itemBuilder: (context, index) {
-                  final user = list[index];
-                  final rankColor = index == 0
-                      ? const Color(0xFFFFD700)
-                      : (index == 1
-                          ? const Color(0xFFC0C0C0)
-                          : (index == 2
-                              ? const Color(0xFFCD7F32)
-                              : Colors.white54));
-                  return Row(
-                    children: [
-                      Text(
-                        '#${index + 1}',
-                        style: TextStyle(
-                          color: rankColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      CustomImage(
-                        size: const Size(36, 36),
-                        image: user.profilePhoto,
-                        radius: 18,
-                        fullName: user.fullname,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          user.fullname ?? 'User',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Colors.black38,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.workspace_premium,
-                                color: Color(0xFFFFD700), size: 14),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${500 - index * 100}',
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              );
-            }),
-          ],
-        ),
-      ),
-      isScrollControlled: true,
+    RoomTopGiftersSheet.show(
+      context: context,
+      roomId: controller.room.hostId.toString(),
+      hostId: controller.room.hostId,
+      isAudio: true,
+      audioController: controller,
     );
   }
 
@@ -697,33 +581,37 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               // Left: 🎁 0 | ⭐ 0
-              _headerPill(children: [
-                const Text('🎁', style: TextStyle(fontSize: 11)),
-                const SizedBox(width: 3),
-                Obx(() => Text(
-                      '${controller.hostGiftCount.value}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    )),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6),
-                  child: Text('|',
-                      style: TextStyle(color: Colors.white38, fontSize: 11)),
-                ),
-                const Text('⭐', style: TextStyle(fontSize: 11)),
-                const SizedBox(width: 3),
-                Obx(() => Text(
-                      '${controller.hostStarTotal.value}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    )),
-              ]),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _showTopGiftersSheet(controller),
+                child: _headerPill(children: [
+                  const Text('🎁', style: TextStyle(fontSize: 11)),
+                  const SizedBox(width: 3),
+                  Obx(() => Text(
+                        '${controller.hostGiftCount.value}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      )),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6),
+                    child: Text('|',
+                        style: TextStyle(color: Colors.white38, fontSize: 11)),
+                  ),
+                  const Text('⭐', style: TextStyle(fontSize: 11)),
+                  const SizedBox(width: 3),
+                  Obx(() => Text(
+                        '${controller.hostStarTotal.value}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      )),
+                ]),
+              ),
 
               // Right: Timer + Members Count Pill
               Row(
@@ -2034,32 +1922,36 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
       if (topUser.isEmpty) {
         return const SizedBox.shrink();
       }
-      return Container(
-        margin: const EdgeInsets.only(bottom: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.45),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: const Color(0xFFFFB300).withValues(alpha: 0.4),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.workspace_premium,
-                color: Color(0xFFFFB300), size: 14),
-            const SizedBox(width: 4),
-            Text(
-              '$topUser - Top Gifter',
-              style: const TextStyle(
-                color: Color(0xFFFFB300),
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _showTopGiftersSheet(controller),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.45),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFFFFB300).withValues(alpha: 0.4),
+              width: 1,
             ),
-          ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.workspace_premium,
+                  color: Color(0xFFFFB300), size: 14),
+              const SizedBox(width: 4),
+              Text(
+                '$topUser - Top Gifter',
+                style: const TextStyle(
+                  color: Color(0xFFFFB300),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     });

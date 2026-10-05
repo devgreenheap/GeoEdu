@@ -281,4 +281,38 @@ $(document).ready(function () {
         setSubCategoryOptions("#edit_topic_sub_category_id", []);
         setDivisionOptions("#edit_topic_division_id", []);
     });
+
+    $("#importTopicForm").on("submit", function (e) {
+        e.preventDefault();
+        checkUserType(() => {
+            var file = $("#topic_excel_file")[0].files[0];
+            if (!file) {
+                showErrorToast("Please select a file to import");
+                return;
+            }
+            var formId = "#importTopicForm";
+            var url = `${domainUrl}importTopics`;
+            var formdata = collectFormData(formId);
+            showFormSpinner(formId);
+            doAjax(url, formdata).then(function (response) {
+                hideFormSpinner(formId);
+                if (response.status) {
+                    reloadDataTables(["topicsTable"]);
+                    modalHide("#importTopicModal");
+                    resetForm(formId);
+                    showSuccessToast(response.message);
+                } else {
+                    showErrorToast(response.message);
+                }
+            }).catch(function (error) {
+                hideFormSpinner(formId);
+                showErrorToast(error.responseJSON?.message || error.message || 'Import failed');
+            });
+        });
+    });
+
+    $("#importTopicModal").on("hidden.bs.modal", function () {
+        resetForm("#importTopicForm");
+    });
 });
+

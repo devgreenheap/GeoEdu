@@ -128,4 +128,46 @@ $(document).ready(function () {
             });
         });
     });
+
+    $("#addStateModal").on("hidden.bs.modal", function () {
+        resetForm("#addStateForm");
+    });
+
+    $("#editStateModal").on("hidden.bs.modal", function () {
+        resetForm("#editStateForm");
+    });
+
+    $("#importStateForm").on("submit", function (e) {
+        e.preventDefault();
+        checkUserType(() => {
+            var file = $("#state_excel_file")[0].files[0];
+            if (!file) {
+                showErrorToast("Please select a file to import");
+                return;
+            }
+            var formId = "#importStateForm";
+            var url = `${domainUrl}importStates`;
+            var formdata = collectFormData(formId);
+            showFormSpinner(formId);
+            doAjax(url, formdata).then(function (response) {
+                hideFormSpinner(formId);
+                if (response.status) {
+                    reloadDataTables(["statesMasterTable"]);
+                    modalHide("#importStateModal");
+                    resetForm(formId);
+                    showSuccessToast(response.message);
+                } else {
+                    showErrorToast(response.message);
+                }
+            }).catch(function (error) {
+                hideFormSpinner(formId);
+                showErrorToast(error.responseJSON?.message || error.message || 'Import failed');
+            });
+        });
+    });
+
+    $("#importStateModal").on("hidden.bs.modal", function () {
+        resetForm("#importStateForm");
+    });
 });
+

@@ -16,6 +16,7 @@ import 'package:geoedu/screen/star_store_diamond_and_effect/star_store_diamond _
 import 'package:geoedu/common/controller/base_controller.dart';
 import 'package:geoedu/common/extensions/string_extension.dart';
 import 'package:geoedu/common/functions/media_picker_helper.dart';
+import 'package:geoedu/common/manager/haptic_manager.dart';
 import 'package:geoedu/common/manager/logger.dart';
 import 'package:geoedu/common/manager/session_manager.dart';
 import 'package:geoedu/common/service/api/common_service.dart';
@@ -78,6 +79,7 @@ class AudioRoomController extends BaseController {
   final RxMap<String, int> gifterTotals = <String, int>{}.obs;
   final RxString topGifterName = ''.obs;
   final RxInt topGifterDiamonds = 0.obs;
+  final RxList<GiftEffect> receivedGiftsHistory = <GiftEffect>[].obs;
 
   void recordGiftForTopGifter(String username, int coinPrice) {
     if (username.isEmpty || coinPrice <= 0) return;
@@ -108,6 +110,8 @@ class AudioRoomController extends BaseController {
   final RxBool showRequestToast = false.obs;
   Timer? _requestToastTimer;
   Set<int> _seenRequestIds = {};
+  Set<int> _seenSpeakerIds = {};
+  final Set<int> _recentlyNotifiedAudioLeft = <int>{};
   bool _initialRoomDocLoaded = false;
 
   // Inline gift bar (EloTV-style tap-to-send row, replaces the full-screen
@@ -457,6 +461,7 @@ class AudioRoomController extends BaseController {
           }
 
           recordGiftForTopGifter(gift.username, (gift.coinPrice ?? 0).toInt());
+          receivedGiftsHistory.add(gift);
 
           // Sender already played the gift effect immediately locally
           if (gift.userId == myUser?.id) {
@@ -783,8 +788,17 @@ class AudioRoomController extends BaseController {
           if (newlyAdded.isNotEmpty) {
             _handleIncomingRequest(newlyAdded.first);
           }
+
+          // Check if any speaker left the call
+          final leftSpeakers = _seenSpeakerIds
+              .where((id) => !newSpeakerIds.contains(id) && id != room.hostId)
+              .toList();
+          for (final leftId in leftSpeakers) {
+            _notifySpeakerLeft(leftId);
+          }
         }
         _seenRequestIds = Set<int>.from(newRequestIds);
+        _seenSpeakerIds = Set<int>.from(newSpeakerIds);
         _initialRoomDocLoaded = true;
       }
 
@@ -1102,6 +1116,29 @@ class AudioRoomController extends BaseController {
         .update({
       'speaker_ids': FieldValue.arrayRemove([userId]),
     });
+  }
+
+  void _notifySpeakerLeft(int userId) {
+    if (userId == room.hostId) return;
+    if (_recentlyNotifiedAudioLeft.contains(userId)) return;
+    _recentlyNotifiedAudioLeft.add(userId);
+    Future.delayed(const Duration(seconds: 4), () {
+      _recentlyNotifiedAudioLeft.remove(userId);
+    });
+
+    final p = participants.firstWhereOrNull((u) => u.userId == userId);
+    final name = p?.fullname ?? p?.username ?? 'Speaker';
+    HapticManager.shared.medium();
+    showSnackBar('$name has left the call');
+
+    _postComment(AudioComment(
+      senderId: userId,
+      senderName: name,
+      senderPhoto: p?.profilePhoto,
+      type: AudioCommentType.text,
+      text: '📴 left the call',
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+    ));
   }
 
   void toggleMuteParticipant(int userId) async {
@@ -1697,6 +1734,7 @@ class AudioRoomController extends BaseController {
     );
 
     giftQueue.add(giftEffect);
+    receivedGiftsHistory.add(giftEffect);
     _processGiftQueue();
     recordGiftForTopGifter(
         myUser?.fullname ?? myUser?.username ?? 'User', coinPrice);

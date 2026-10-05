@@ -18,6 +18,7 @@ import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/utilities/text_style_custom.dart';
 import 'package:geoedu/utilities/theme_res.dart';
+import 'package:geoedu/common/widget/room_top_gifters_sheet.dart';
 
 class LiveStreamHostTopView extends StatelessWidget {
   final LivestreamScreenController controller;
@@ -96,16 +97,25 @@ class _HostInfoBlock extends StatelessWidget {
         const SizedBox(height: 6),
         Row(
           children: [
-            _Pill(
-              children: [
-                const Text('🎁', style: TextStyle(fontSize: 11)),
-                Text(' ${controller.hostGiftCount}',
-                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
-                const SizedBox(width: 6),
-                const Text('⭐', style: TextStyle(fontSize: 11)),
-                Text(' ${(controller.hostUserState?.totalCoin ?? 0).numberFormat}',
-                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
-              ],
+            GestureDetector(
+              onTap: () => RoomTopGiftersSheet.show(
+                context: context,
+                roomId: controller.liveData.value.roomID,
+                hostId: controller.liveData.value.hostId,
+                isAudio: false,
+                videoController: controller,
+              ),
+              child: _Pill(
+                children: [
+                  const Text('🎁', style: TextStyle(fontSize: 11)),
+                  Text(' ${controller.hostGiftCount}',
+                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                  const SizedBox(width: 6),
+                  const Text('⭐', style: TextStyle(fontSize: 11)),
+                  Text(' ${(controller.hostUserState?.totalCoin ?? 0).numberFormat}',
+                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                ],
+              ),
             ),
             const SizedBox(width: 6),
             if (controller.isHost)

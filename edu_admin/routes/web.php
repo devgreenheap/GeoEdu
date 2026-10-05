@@ -5,6 +5,7 @@ use App\Http\Controllers\CategoryModuleController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\CouponController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ExcelImportController;
 use App\Http\Controllers\FirebaseAudioRoomController;
 use App\Http\Controllers\FirebaseChatController;
 use App\Http\Controllers\FirebasePkBattleController;
@@ -249,6 +250,16 @@ Route::middleware(['checkLogin'])->group(function () {
     Route::post('addStateMaster', [CategoryModuleController::class, 'addStateMaster'])->name('addStateMaster');
     Route::post('editStateMaster', [CategoryModuleController::class, 'editStateMaster'])->name('editStateMaster');
     Route::post('deleteStateMaster', [CategoryModuleController::class, 'deleteStateMaster'])->name('deleteStateMaster');
+
+    // Excel / CSV Import Routes
+    Route::get('downloadImportSample/{type}', [ExcelImportController::class, 'downloadSample'])->name('downloadImportSample');
+    Route::post('importCategories', [ExcelImportController::class, 'importCategories'])->name('importCategories');
+    Route::post('importSubCategories', [ExcelImportController::class, 'importSubCategories'])->name('importSubCategories');
+    Route::post('importDivisions', [ExcelImportController::class, 'importDivisions'])->name('importDivisions');
+    Route::post('importTopics', [ExcelImportController::class, 'importTopics'])->name('importTopics');
+    Route::post('importHashtags', [ExcelImportController::class, 'importHashtags'])->name('importHashtags');
+    Route::post('importCountries', [ExcelImportController::class, 'importCountries'])->name('importCountries');
+    Route::post('importStates', [ExcelImportController::class, 'importStates'])->name('importStates');
 
     // Interests
     Route::get('interests', [InterestController::class, 'interests'])->name('interests');

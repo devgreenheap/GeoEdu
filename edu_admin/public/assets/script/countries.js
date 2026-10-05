@@ -119,4 +119,46 @@ $(document).ready(function () {
             });
         });
     });
+
+    $("#addCountryModal").on("hidden.bs.modal", function () {
+        resetForm("#addCountryForm");
+    });
+
+    $("#editCountryModal").on("hidden.bs.modal", function () {
+        resetForm("#editCountryForm");
+    });
+
+    $("#importCountryForm").on("submit", function (e) {
+        e.preventDefault();
+        checkUserType(() => {
+            var file = $("#country_excel_file")[0].files[0];
+            if (!file) {
+                showErrorToast("Please select a file to import");
+                return;
+            }
+            var formId = "#importCountryForm";
+            var url = `${domainUrl}importCountries`;
+            var formdata = collectFormData(formId);
+            showFormSpinner(formId);
+            doAjax(url, formdata).then(function (response) {
+                hideFormSpinner(formId);
+                if (response.status) {
+                    reloadDataTables(["countriesTable"]);
+                    modalHide("#importCountryModal");
+                    resetForm(formId);
+                    showSuccessToast(response.message);
+                } else {
+                    showErrorToast(response.message);
+                }
+            }).catch(function (error) {
+                hideFormSpinner(formId);
+                showErrorToast(error.responseJSON?.message || error.message || 'Import failed');
+            });
+        });
+    });
+
+    $("#importCountryModal").on("hidden.bs.modal", function () {
+        resetForm("#importCountryForm");
+    });
 });
+

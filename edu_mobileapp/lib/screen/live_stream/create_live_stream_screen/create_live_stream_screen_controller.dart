@@ -92,6 +92,9 @@ class CreateLiveStreamScreenController extends BaseController {
       final result =
           await CommonService.instance.fetchCategorySubCategoryTopic();
       categoryList.value = result.data ?? [];
+      if (categoryList.isNotEmpty && selectedCategory.value == null) {
+        onCategoryChanged(categoryList.first);
+      }
     } catch (e) {
       Loggers.error('fetchCategories error: $e');
     }
@@ -99,13 +102,23 @@ class CreateLiveStreamScreenController extends BaseController {
 
   void onCategoryChanged(Category? value) {
     selectedCategory.value = value;
-    selectedSubCategory.value = null;
-    selectedTopic.value = null;
+    final subs = value?.subCategories;
+    if (subs != null && subs.isNotEmpty) {
+      onSubCategoryChanged(subs.first);
+    } else {
+      selectedSubCategory.value = null;
+      selectedTopic.value = null;
+    }
   }
 
   void onSubCategoryChanged(SubCategory? value) {
     selectedSubCategory.value = value;
-    selectedTopic.value = null;
+    final tops = value?.topics;
+    if (tops != null && tops.isNotEmpty) {
+      selectedTopic.value = tops.first;
+    } else {
+      selectedTopic.value = null;
+    }
   }
 
   void onTopicChanged(Topic? value) {
@@ -240,15 +253,29 @@ class CreateLiveStreamScreenController extends BaseController {
     }
 
     if (selectedCategory.value == null) {
-      return showSnackBar('Please select a category');
+      if (categoryList.isNotEmpty) {
+        onCategoryChanged(categoryList.first);
+      } else {
+        return showSnackBar('Please select a category');
+      }
     }
 
     if (selectedSubCategory.value == null) {
-      return showSnackBar('Please select a sub category');
+      final subs = selectedCategory.value?.subCategories;
+      if (subs != null && subs.isNotEmpty) {
+        onSubCategoryChanged(subs.first);
+      } else {
+        return showSnackBar('Please select a sub category');
+      }
     }
 
     if (selectedTopic.value == null) {
-      return showSnackBar('Please select a topic');
+      final tops = selectedSubCategory.value?.topics;
+      if (tops != null && tops.isNotEmpty) {
+        selectedTopic.value = tops.first;
+      } else {
+        return showSnackBar('Please select a topic');
+      }
     }
 
     if (selectedLanguage.value == null) {
@@ -350,10 +377,19 @@ class CreateLiveStreamScreenController extends BaseController {
       hashtag: hashtagString.isNotEmpty ? hashtagString : null,
       streamMode: selectedStreamMode.value,
       isAutoMode: isAutoMode.value,
-      thumbnailUrl: thumbnailPath,
+      thumbnailUrl: thumbnailPath ?? user.profilePhoto,
     );
 
-    AppUser livestreamUser = user.appUser;
+    AppUser livestreamUser = AppUser(
+      username: user.username,
+      userId: user.id,
+      profile: thumbnailPath ?? user.profilePhoto,
+      fullname: user.fullname,
+      isVerify: user.isVerify,
+      identity: user.identity,
+      categoryId: user.categoryId,
+      level: user.level,
+    );
 
     LivestreamUserState livestreamUserState =
         user.streamState(time: time, stateType: LivestreamUserType.host);
@@ -393,6 +429,7 @@ class CreateLiveStreamScreenController extends BaseController {
       Loggers.success('Livestream started successfully!');
 
       Widget? hostPreview = localView.value;
+      await stopPreview();
       stopLoader();
       Get.to(() => LivestreamHostScreen(
           hostPreview: hostPreview,

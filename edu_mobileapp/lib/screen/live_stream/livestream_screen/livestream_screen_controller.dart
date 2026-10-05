@@ -179,6 +179,45 @@ class LivestreamScreenController extends BaseController {
         expandedBattleUserIndex.value == index ? null : index;
   }
 
+  Set<int> _previousCoHostIds = <int>{};
+  bool _initialLiveDocLoaded = false;
+  final Set<int> _recentlyNotifiedLeft = <int>{};
+
+  void notifyCoHostLeft(int? userId) {
+    if (userId == null || userId == myUserId) return;
+    if (_recentlyNotifiedLeft.contains(userId)) return;
+    _recentlyNotifiedLeft.add(userId);
+    Future.delayed(const Duration(seconds: 4), () {
+      _recentlyNotifiedLeft.remove(userId);
+    });
+
+    // Lookup user display name
+    AppUser? user = firestoreController.users
+        .firstWhereOrNull((u) => u.userId == userId);
+    user ??= liveUsersStates
+        .firstWhereOrNull((u) => u.userId == userId)
+        ?.getUser(firestoreController.users);
+
+    final name = user?.fullname ?? user?.username ?? 'Co-host';
+
+    HapticManager.shared.medium();
+
+    if (isHost) {
+      showSnackBar('$name has left the call', second: 3);
+    }
+
+    // Post to Firestore comments so host & all viewers see it in the chat
+    _sendCommentToFirestore(
+      type: LivestreamCommentType.leftCoHost,
+      comment: '$name left the call',
+    );
+  }
+
+  void leaveCoHostCall() {
+    closeCoHostStream(myUserId);
+    showSnackBar('You have left the video call');
+  }
+
   Rx<User?> get myUser => SessionManager.instance.getUser().obs;
   Rx<Livestream> liveData;
 
@@ -254,8 +293,8 @@ class LivestreamScreenController extends BaseController {
           Duration(minutes: liveData.value.battleDuration).inSeconds;
       remainingBattleSeconds.value = totalBattleSecond;
       ZegoExpressEngine.instance.setAudioDeviceMode(ZegoAudioDeviceMode.General);
-      loginRoom();
       startListenEvent();
+      loginRoom();
       initAudioPlayer();
     }
 
@@ -803,7 +842,23 @@ class LivestreamScreenController extends BaseController {
         return result;
       }
 
-      // For Audience
+      // If streams are already active or announced, onRoomStreamUpdate plays them.
+      // As a safety fallback for audience, if no stream view is playing after a brief delay,
+      // trigger playback for host stream.
+      final hostStreamId = liveData.value.roomID ?? '';
+      if (hostStreamId.isNotEmpty) {
+        Future.delayed(const Duration(milliseconds: 1200), () {
+          final alreadyPlaying = streamViews.any((s) =>
+              s.streamId == hostStreamId ||
+              s.streamId == liveData.value.hostId.toString());
+          if (!alreadyPlaying) {
+            Loggers.info('Fallback starting host stream playback: $hostStreamId');
+            startPlayStream(hostStreamId);
+          }
+        });
+      }
+
+      // For Audience user tracking
       final userRef = liveStreamUsersRef.doc('$myUserId');
       final userStateRef = liveStreamUserStatesRef.doc('$myUserId');
 
@@ -882,16 +937,16 @@ class LivestreamScreenController extends BaseController {
                     watchingCount: -1,
                     coHostId: FieldValue.arrayRemove([element.userID]));
               }
-              int coHostId = int.parse(element.userID);
-              bool isCoHostExist =
-                  stream.coHostIds?.contains(coHostId) ?? false;
-              if (isCoHostExist) {
-                updateUserStateToFirestore(coHostId,
-                    type: LivestreamUserType.audience,
-                    audioStatus: VideoAudioStatus.on,
-                    videoStatus: VideoAudioStatus.on);
-                updateLiveStreamData(
-                    coHostId: FieldValue.arrayRemove([coHostId]));
+              int? coHostId = int.tryParse(element.userID);
+              if (coHostId != null) {
+                bool isCoHostExist =
+                    stream.coHostIds?.contains(coHostId) ?? false;
+                if (isCoHostExist) {
+                  if (isHost) {
+                    notifyCoHostLeft(coHostId);
+                  }
+                  closeCoHostStream(coHostId);
+                }
               }
             }
         }
@@ -914,7 +969,18 @@ class LivestreamScreenController extends BaseController {
       switch (updateType) {
         case ZegoUpdateType.Add:
           for (final stream in streamList) {
-            if (stream.streamID == liveData.value.roomID || stream.streamID == myUserId.toString()) {
+            // Never play our own stream locally from remote (already in local preview)
+            if (stream.streamID == myUserId.toString()) {
+              continue;
+            }
+            // Host never plays their own host stream (already in local host preview)
+            if (isHost &&
+                (stream.streamID == liveData.value.roomID ||
+                    stream.streamID == liveData.value.hostId.toString())) {
+              continue;
+            }
+            // If already playing this stream, don't duplicate
+            if (streamViews.any((s) => s.streamId == stream.streamID)) {
               continue;
             }
             startPlayStream(stream.streamID);
@@ -922,7 +988,8 @@ class LivestreamScreenController extends BaseController {
           break;
         case ZegoUpdateType.Delete:
           for (final stream in streamList) {
-            if (liveData.value.roomID == stream.streamID) {
+            if (liveData.value.roomID == stream.streamID ||
+                liveData.value.hostId.toString() == stream.streamID) {
               if (Get.isBottomSheetOpen == false) {
                 Get.back();
               }
@@ -938,6 +1005,16 @@ class LivestreamScreenController extends BaseController {
             }
             streamViews.removeWhere((element) => element.streamId == stream.streamID);
             stopPlayStream(stream.streamID);
+            int? coHostUserId = int.tryParse(stream.streamID);
+            if (coHostUserId != null &&
+                coHostUserId != myUserId &&
+                coHostUserId != liveData.value.hostId) {
+              if (isHost &&
+                  (liveData.value.coHostIds?.contains(coHostUserId) ?? false)) {
+                notifyCoHostLeft(coHostUserId);
+              }
+              closeCoHostStream(coHostUserId);
+            }
           }
           break;
       }
@@ -952,14 +1029,11 @@ class LivestreamScreenController extends BaseController {
     // Callback for updates on the current user's stream publishing changes.
     ZegoExpressEngine.onPublisherStateUpdate =
         (streamID, state, errorCode, extendedData) {
-      switch (state) {
-        case ZegoPublisherState.NoPublish:
-          streamViews.removeWhere((element) => element.streamId == streamID);
-        case ZegoPublisherState.PublishRequesting:
-        case ZegoPublisherState.Publishing:
-      }
       debugPrint(
           'onPublisherStateUpdate: streamID: $streamID, state: ${state.name}, errorCode: $errorCode, extendedData: $extendedData');
+      if (state == ZegoPublisherState.NoPublish && errorCode != 0) {
+        Loggers.error('Publisher error $errorCode for stream: $streamID');
+      }
     };
   }
 
@@ -977,15 +1051,51 @@ class LivestreamScreenController extends BaseController {
       return Loggers.error('No ID FOUND');
     }
     String streamID = liveData.value.roomID ?? '';
-    if (hostPreview == null) {
+
+    // Ensure camera, mic, and hardware capture devices are enabled and unmuted
+    await ZegoExpressEngine.instance.enableAudioCaptureDevice(true);
+    await ZegoExpressEngine.instance.enableCamera(true);
+    await ZegoExpressEngine.instance.mutePublishStreamAudio(false);
+    await ZegoExpressEngine.instance.mutePublishStreamVideo(false);
+    ZegoExpressEngine.instance.muteMicrophone(false);
+    await ZegoExpressEngine.instance.setCaptureVolume(100);
+
+    // Create a fresh dedicated preview canvas for the host on this screen
+    int canvasViewID = -1;
+    Widget? activePreviewWidget;
+    try {
+      await ZegoExpressEngine.instance.createCanvasView((viewID) async {
+        canvasViewID = viewID;
+        ZegoCanvas previewCanvas =
+            ZegoCanvas(canvasViewID, viewMode: ZegoViewMode.AspectFill);
+        ZegoExpressEngine.instance.startPreview(canvas: previewCanvas);
+      }).then((canvasViewWidget) {
+        activePreviewWidget = canvasViewWidget;
+      });
+    } catch (e) {
+      Loggers.error('createCanvasView on host screen error: $e');
+    }
+
+    final previewToUse = activePreviewWidget ?? hostPreview;
+    if (previewToUse == null) {
       deleteStreamOnFirebase();
       Get.back();
       return;
     }
-    streamViews.add(StreamView(streamID, liveData.value.hostViewID ?? -1, hostPreview!, false));
-    await ZegoExpressEngine.instance.enableCamera(true);
-    await ZegoExpressEngine.instance.mutePublishStreamAudio(false); // Ensure audio is not muted
-    startMinViewerTimeoutCheck(); //  Check time to Min. Viewers Required to continue live
+
+    // Host must always be at index 0 of streamViews
+    streamViews.removeWhere((element) => element.streamId == streamID);
+    streamViews.insert(
+      0,
+      StreamView(
+        streamID,
+        canvasViewID != -1 ? canvasViewID : (liveData.value.hostViewID ?? -1),
+        previewToUse,
+        false,
+      ),
+    );
+
+    startMinViewerTimeoutCheck(); // Check time to Min. Viewers Required to continue live
     pushNotificationToFollowers(liveData.value);
     await ZegoExpressEngine.instance.startPublishingStream(streamID);
     _startLocalRecording();
@@ -1051,7 +1161,6 @@ class LivestreamScreenController extends BaseController {
   }
 
   Future<void> startPlayStream(String streamID) async {
-
     Loggers.info('Starting to play stream: $streamID');
     int streamViewId = -1;
     try {
@@ -1061,15 +1170,23 @@ class LivestreamScreenController extends BaseController {
         ZegoCanvas canvas = ZegoCanvas(viewID, viewMode: ZegoViewMode.AspectFill);
         final config = ZegoPlayerConfig.defaultConfig()
           ..resourceMode = ZegoStreamResourceMode.Default;
-         Loggers.info('StartPlayStream playback: StreamID: $streamID, ViewMode: ${canvas.viewMode}, ResourceMode: ${config.resourceMode}');
+        Loggers.info('StartPlayStream playback: StreamID: $streamID, ViewMode: ${canvas.viewMode}, ResourceMode: ${config.resourceMode}');
         ZegoExpressEngine.instance.startPlayingStream(streamID, canvas: canvas, config: config);
       }).then((canvasViewWidget) async {
         if (canvasViewWidget != null) {
-          streamViews.add(StreamView(streamID, streamViewId, canvasViewWidget, false));
+          final isHostStream = streamID == liveData.value.roomID ||
+              streamID == liveData.value.hostId.toString();
+          streamViews.removeWhere((s) => s.streamId == streamID);
+          if (isHostStream) {
+            streamViews.insert(0, StreamView(streamID, streamViewId, canvasViewWidget, false));
+          } else {
+            streamViews.add(StreamView(streamID, streamViewId, canvasViewWidget, false));
+          }
         }
         try {
           await ZegoExpressEngine.instance.muteAllPlayStreamAudio(false);
           await ZegoExpressEngine.instance.mutePlayStreamAudio(streamID, false);
+          await ZegoExpressEngine.instance.mutePlayStreamVideo(streamID, false);
           await ZegoExpressEngine.instance.setPlayVolume(streamID, 100);
           await ZegoExpressEngine.instance.setAllPlayStreamVolume(100);
           await ZegoExpressEngine.instance.setAudioRouteToSpeaker(true);
@@ -1271,7 +1388,18 @@ class LivestreamScreenController extends BaseController {
               Duration(minutes: stream.battleDuration).inSeconds;
         }
 
-        // Update LiveData
+        // Update LiveData and detect co-host departures
+        final currentCoHostIds = Set<int>.from(stream.coHostIds ?? []);
+        if (isHost && _initialLiveDocLoaded) {
+          final departed = _previousCoHostIds.difference(currentCoHostIds);
+          for (final depId in departed) {
+            notifyCoHostLeft(depId);
+            closeCoHostStream(depId);
+          }
+        }
+        _previousCoHostIds = currentCoHostIds;
+        _initialLiveDocLoaded = true;
+
         liveData.value = stream;
         if (stream.pinnedComment != null) {
           pinnedComment.value = stream.pinnedComment!;
@@ -1343,6 +1471,12 @@ class LivestreamScreenController extends BaseController {
                 break;
 
               case DocumentChangeType.removed:
+                if (state.type == LivestreamUserType.coHost) {
+                  if (isHost) {
+                    notifyCoHostLeft(state.userId);
+                  }
+                  closeCoHostStream(state.userId);
+                }
                 liveUsersStates.removeWhere((u) => u.userId == state.userId);
                 // Loggers.info('➖ User removed: ${state.userId}');
                 break;
@@ -1987,10 +2121,14 @@ class LivestreamScreenController extends BaseController {
   }
 
   void closeCoHostStream(int? streamId) {
-    StreamView? view = streamViews
-        .firstWhereOrNull((element) => element.streamId == '$streamId');
-    if (view != null) {
-      stopPreview(viewId: view.streamViewId);
+    if (streamId == null) return;
+
+    if (streamId == myUserId) {
+      StreamView? view = streamViews
+          .firstWhereOrNull((element) => element.streamId == '$streamId');
+      if (view != null) {
+        stopPreview(viewId: view.streamViewId);
+      }
       stopPublish();
       updateLiveStreamData(coHostId: FieldValue.arrayRemove([streamId]));
       LivestreamComment? comment = comments.firstWhereOrNull((element) =>
@@ -2005,8 +2143,25 @@ class LivestreamScreenController extends BaseController {
           videoStatus: VideoAudioStatus.offByMe,
           battleCoin: 0,
           currentBattleCoin: 0);
+      _sendCommentToFirestore(
+        type: LivestreamCommentType.leftCoHost,
+        comment: 'Left the call',
+      );
       streamViews.removeWhere((element) => element.streamId == '$streamId');
+      streamEnded();
+    } else {
       stopPlayStream(streamId.toString());
+      streamViews.removeWhere((element) => element.streamId == '$streamId');
+      if (isHost) {
+        updateLiveStreamData(coHostId: FieldValue.arrayRemove([streamId]));
+        updateUserStateToFirestore(streamId,
+            type: LivestreamUserType.audience,
+            audioStatus: VideoAudioStatus.offByMe,
+            videoStatus: VideoAudioStatus.offByMe,
+            battleCoin: 0,
+            currentBattleCoin: 0);
+        notifyCoHostLeft(streamId);
+      }
       streamEnded();
     }
   }
@@ -2078,7 +2233,11 @@ class LivestreamScreenController extends BaseController {
         _showJoinStreamSheet(newState);
       }
       if (oldState?.type == LivestreamUserType.coHost &&
-          newState.type == LivestreamUserType.audience) {
+          (newState.type == LivestreamUserType.audience ||
+              newState.type == LivestreamUserType.left)) {
+        if (isHost) {
+          notifyCoHostLeft(newState.userId);
+        }
         closeCoHostStream(newState.userId);
       }
     }

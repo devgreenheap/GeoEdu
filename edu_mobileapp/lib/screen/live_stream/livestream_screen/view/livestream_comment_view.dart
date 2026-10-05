@@ -245,6 +245,9 @@ class LiveStreamCommentView extends StatelessWidget {
       case LivestreamCommentType.joinedCoHost:
         return Text(LKey.joinedAsACoHost.tr,
             style: TextStyleCustom.outFitRegular400(color: whitePure(context).withValues(alpha: .80)));
+      case LivestreamCommentType.leftCoHost:
+        return Text('Left the call',
+            style: TextStyleCustom.outFitRegular400(color: const Color(0xFFFF5252)));
     }
   }
 }

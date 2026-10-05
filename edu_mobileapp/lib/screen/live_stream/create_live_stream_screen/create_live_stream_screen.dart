@@ -97,76 +97,128 @@ class CreateLiveStreamScreen extends StatelessWidget {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Host photo card — persisted cover shown on
-                              // room cards before viewers join, separate
-                              // from the live camera feed behind this screen.
-                              Obx(() => InkWell(
-                                    onTap: controller.pickThumbnail,
-                                    child: Container(
-                                      width: 100,
-                                      height: 140,
-                                      clipBehavior: Clip.antiAlias,
-                                      decoration: ShapeDecoration(
-                                        color: whitePure(context)
-                                            .withValues(alpha: .15),
-                                        shape: SmoothRectangleBorder(
-                                          borderRadius: SmoothBorderRadius(
-                                              cornerRadius: 16,
-                                              cornerSmoothing: 1),
-                                        ),
-                                        image: controller.thumbnailPreviewPath
-                                                .value.isNotEmpty
-                                            ? DecorationImage(
-                                                image: FileImage(File(
-                                                    controller
-                                                        .thumbnailPreviewPath
-                                                        .value)),
-                                                fit: BoxFit.cover,
-                                              )
-                                            : null,
+                              // Host photo card — defaults to host's profile photo.
+                              // Host can tap anywhere or tap Edit to pick a custom
+                              // cover image specifically for this call/stream.
+                              Obx(() {
+                                final user = controller.myUser.value;
+                                final customPath =
+                                    controller.thumbnailPreviewPath.value;
+                                final hasCustom = customPath.isNotEmpty;
+                                final profilePhotoUrl =
+                                    user?.profilePhoto?.addBaseURL();
+
+                                return Container(
+                                  width: 100,
+                                  height: 140,
+                                  clipBehavior: Clip.antiAlias,
+                                  decoration: ShapeDecoration(
+                                    color: Colors.black.withValues(alpha: 0.35),
+                                    shape: SmoothRectangleBorder(
+                                      borderRadius: SmoothBorderRadius(
+                                        cornerRadius: 16,
+                                        cornerSmoothing: 1,
                                       ),
-                                      child: Stack(
-                                        children: [
-                                          if (controller.thumbnailPreviewPath
-                                              .value.isEmpty)
-                                            Center(
-                                              child: Icon(
-                                                  Icons.add_a_photo_outlined,
-                                                  color: whitePure(context),
-                                                  size: 26),
-                                            ),
-                                          Align(
-                                            alignment: Alignment.bottomCenter,
-                                            child: Container(
-                                              width: double.infinity,
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      vertical: 6),
-                                              color: Colors.black
-                                                  .withValues(alpha: 0.55),
-                                              child: const Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.center,
-                                                children: [
-                                                  Icon(Icons.edit,
-                                                      color: Colors.white,
-                                                      size: 12),
-                                                  SizedBox(width: 4),
-                                                  Text('Edit',
-                                                      style: TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 12,
-                                                          fontWeight:
-                                                              FontWeight
-                                                                  .w600)),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ],
+                                      side: BorderSide(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.25),
+                                        width: 1.5,
                                       ),
                                     ),
-                                  )),
+                                  ),
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      // Image display
+                                      InkWell(
+                                        onTap: controller.pickThumbnail,
+                                        child: hasCustom
+                                            ? Image.file(
+                                                File(customPath),
+                                                fit: BoxFit.cover,
+                                              )
+                                            : (profilePhotoUrl != null &&
+                                                    profilePhotoUrl.isNotEmpty)
+                                                ? CustomImage(
+                                                    size: const Size(100, 140),
+                                                    radius: 16,
+                                                    cornerSmoothing: 1,
+                                                    fit: BoxFit.cover,
+                                                    image: profilePhotoUrl,
+                                                    fullName: user?.fullname,
+                                                  )
+                                                : Center(
+                                                    child: Icon(
+                                                      Icons.person_rounded,
+                                                      color: Colors.white
+                                                          .withValues(
+                                                              alpha: 0.6),
+                                                      size: 46,
+                                                    ),
+                                                  ),
+                                      ),
+                                      // If custom thumbnail picked, allow reset back to default profile photo
+                                      if (hasCustom)
+                                        Positioned(
+                                          top: 6,
+                                          right: 6,
+                                          child: GestureDetector(
+                                            onTap: () {
+                                              controller.thumbnailFile.value =
+                                                  null;
+                                              controller.thumbnailPreviewPath
+                                                  .value = '';
+                                            },
+                                            child: Container(
+                                              padding: const EdgeInsets.all(4),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black
+                                                    .withValues(alpha: 0.7),
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(Icons.close,
+                                                  color: Colors.white,
+                                                  size: 13),
+                                            ),
+                                          ),
+                                        ),
+                                      // Edit pill at bottom
+                                      Align(
+                                        alignment: Alignment.bottomCenter,
+                                        child: InkWell(
+                                          onTap: controller.pickThumbnail,
+                                          child: Container(
+                                            width: double.infinity,
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 6),
+                                            color: Colors.black
+                                                .withValues(alpha: 0.65),
+                                            child: const Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                Icon(Icons.edit,
+                                                    color: Colors.white,
+                                                    size: 12),
+                                                SizedBox(width: 4),
+                                                Text(
+                                                  'Edit',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 12,
+                                                    fontWeight:
+                                                        FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
                               const Spacer(),
                               // Right column: language, Edit Interest,
                               // Video ON, Auto Call — top-right stack.
@@ -245,235 +297,364 @@ class CreateLiveStreamScreen extends StatelessWidget {
                             ],
                           ),
                         ),
-                        const Spacer(),
+                        const SizedBox(height: 10),
                         // Bottom sheet — Host Live Show
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.55),
-                            borderRadius: const BorderRadius.vertical(
-                                top: Radius.circular(24)),
-                          ),
-                          child: SingleChildScrollView(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Host Live Show',
-                                    style: TextStyleCustom.unboundedMedium500(
-                                        color: whitePure(context),
-                                        fontSize: 18)),
-                                const SizedBox(height: 14),
-                                Text('Room Type',
-                                    style: TextStyleCustom.outFitLight300(
-                                        fontSize: 13,
-                                        color: whitePure(context)
-                                            .withValues(alpha: .7))),
-                                const SizedBox(height: 8),
-                                // Room Type — outlined pill, not filled, per
-                                // the reference (fixed to the PK-capable
-                                // video room mode; Direct Call / PK Battle
-                                // stream modes remain in the model for other
-                                // entry points that still set them).
-                                Obx(() => Wrap(
-                                      spacing: 8,
-                                      runSpacing: 8,
-                                      children:
-                                          controller.streamModes.map((mode) {
-                                        final isSelected = controller
-                                                .selectedStreamMode.value ==
-                                            mode['value'];
-                                        return GestureDetector(
-                                          onTap: () => controller
-                                              .onStreamModeChanged(
-                                                  mode['value']),
-                                          child: Container(
-                                            padding: const EdgeInsets
-                                                .symmetric(
-                                                horizontal: 16, vertical: 9),
-                                            decoration: BoxDecoration(
-                                              borderRadius:
-                                                  BorderRadius.circular(20),
-                                              border: Border.all(
-                                                  color: isSelected
-                                                      ? ColorRes.primaryColor
-                                                      : whitePure(context)
-                                                          .withValues(
-                                                              alpha: .25),
-                                                  width: isSelected ? 1.5 : 1),
-                                            ),
-                                            child: Text(
-                                              mode['label']!,
-                                              style: TextStyleCustom
-                                                  .outFitRegular400(
-                                                      fontSize: 14,
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.bottomCenter,
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.55),
+                                borderRadius: const BorderRadius.vertical(
+                                    top: Radius.circular(24)),
+                              ),
+                              child: SingleChildScrollView(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Host Live Show',
+                                        style: TextStyleCustom.unboundedMedium500(
+                                            color: whitePure(context),
+                                            fontSize: 18)),
+                                    const SizedBox(height: 14),
+                                    Text('Room Type',
+                                        style: TextStyleCustom.outFitLight300(
+                                            fontSize: 13,
+                                            color: whitePure(context)
+                                                .withValues(alpha: .7))),
+                                    const SizedBox(height: 8),
+                                    // Room Type — outlined pill, not filled, per
+                                    // the reference (fixed to the PK-capable
+                                    // video room mode; Direct Call / PK Battle
+                                    // stream modes remain in the model for other
+                                    // entry points that still set them).
+                                    Obx(() => Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          children:
+                                              controller.streamModes.map((mode) {
+                                            final isSelected = controller
+                                                    .selectedStreamMode.value ==
+                                                mode['value'];
+                                            return GestureDetector(
+                                              onTap: () => controller
+                                                  .onStreamModeChanged(
+                                                      mode['value']),
+                                              child: Container(
+                                                padding: const EdgeInsets
+                                                    .symmetric(
+                                                    horizontal: 16, vertical: 9),
+                                                decoration: BoxDecoration(
+                                                  borderRadius:
+                                                      BorderRadius.circular(20),
+                                                  border: Border.all(
                                                       color: isSelected
-                                                          ? ColorRes
-                                                              .primaryColor
-                                                          : whitePure(
-                                                              context)),
-                                            ),
-                                          ),
-                                        );
-                                      }).toList(),
-                                    )),
-                                const SizedBox(height: 16),
-                                Text('Choose Category',
-                                    style: TextStyleCustom.outFitLight300(
-                                        fontSize: 13,
-                                        color: whitePure(context)
-                                            .withValues(alpha: .7))),
-                                const SizedBox(height: 8),
-                                SizedBox(
-                                  height: 76,
-                                  child: Obx(() => ListView.separated(
-                                        scrollDirection: Axis.horizontal,
-                                        itemCount:
-                                            controller.categoryList.length,
-                                        separatorBuilder: (_, __) =>
-                                            const SizedBox(width: 10),
-                                        itemBuilder: (context, index) {
-                                          final category =
-                                              controller.categoryList[index];
-                                          final isSelected = controller
-                                                  .selectedCategory
-                                                  .value
-                                                  ?.id ==
-                                              category.id;
-                                          return _CategoryTile3D(
-                                            name: category.name ?? '',
-                                            isSelected: isSelected,
-                                            onTap: () => controller
-                                                .onCategoryChanged(category),
-                                          );
-                                        },
-                                      )),
-                                ),
-                                const SizedBox(height: 16),
-                                Text('Select Hashtag',
-                                    style: TextStyleCustom.outFitLight300(
-                                        fontSize: 13,
-                                        color: whitePure(context)
-                                            .withValues(alpha: .7))),
-                                const SizedBox(height: 8),
-                                Obx(() {
-                                  // Show admin preloaded hashtags (up to 5)
-                                  // as quick-pick chips so the section is
-                                  // never empty. If none are loaded yet, fall
-                                  // back to the 'None' placeholder.
-                                  final available = controller.availableHashtags;
-                                  final selected = controller.selectedHashtags;
-
-                                  final quickPicks = available
-                                      .where((h) => !selected.any((s) => s.id == h.id))
-                                      .take(5)
-                                      .toList();
-
-                                  return Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: [
-                                      // Selected hashtags always shown first
-                                      ...selected.map((h) => _HashtagChip(
-                                            label: '#${h.hashtag}',
-                                            isSelected: true,
-                                            onTap: () =>
-                                                controller.toggleHashtag(h),
-                                          )),
-                                      // Quick-pick from admin list (not yet selected)
-                                      ...quickPicks.map((h) => _HashtagChip(
-                                            label: '#${h.hashtag}',
-                                            isSelected: false,
-                                            onTap: () =>
-                                                controller.toggleHashtag(h),
-                                          )),
-                                      // If nothing is loaded yet, show 'None'
-                                      if (available.isEmpty && selected.isEmpty)
-                                        _HashtagChip(
-                                          label: 'None',
-                                          isSelected: true,
-                                          onTap: () {},
-                                        ),
-                                      // + More always last
-                                      GestureDetector(
-                                        onTap: () => _showHashtagPickerSheet(
-                                            context, controller),
-                                        child: Container(
-                                          padding: const EdgeInsets
-                                              .symmetric(
-                                              horizontal: 14, vertical: 8),
-                                          decoration: BoxDecoration(
-                                            borderRadius:
-                                                BorderRadius.circular(20),
-                                            border: Border.all(
-                                                color: whitePure(context)
-                                                    .withValues(alpha: .25)),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(Icons.add,
-                                                  size: 14,
-                                                  color: whitePure(context)),
-                                              const SizedBox(width: 4),
-                                              Text('More',
+                                                          ? ColorRes.primaryColor
+                                                          : whitePure(context)
+                                                              .withValues(
+                                                                  alpha: .25),
+                                                      width: isSelected ? 1.5 : 1),
+                                                ),
+                                                child: Text(
+                                                  mode['label']!,
                                                   style: TextStyleCustom
                                                       .outFitRegular400(
-                                                          fontSize: 13,
-                                                          color: whitePure(
-                                                              context))),
-                                            ],
+                                                          fontSize: 14,
+                                                          color: isSelected
+                                                              ? ColorRes
+                                                                  .primaryColor
+                                                              : whitePure(
+                                                                  context)),
+                                                ),
+                                              ),
+                                            );
+                                          }).toList(),
+                                        )),
+                                    const SizedBox(height: 16),
+                                    Text('Choose Category',
+                                        style: TextStyleCustom.outFitLight300(
+                                            fontSize: 13,
+                                            color: whitePure(context)
+                                                .withValues(alpha: .7))),
+                                    const SizedBox(height: 8),
+                                    SizedBox(
+                                      height: 76,
+                                      child: Obx(() => ListView.separated(
+                                            scrollDirection: Axis.horizontal,
+                                            itemCount:
+                                                controller.categoryList.length,
+                                            separatorBuilder: (_, __) =>
+                                                const SizedBox(width: 10),
+                                            itemBuilder: (context, index) {
+                                              final category =
+                                                  controller.categoryList[index];
+                                              final isSelected = controller
+                                                      .selectedCategory
+                                                      .value
+                                                      ?.id ==
+                                                  category.id;
+                                              return _CategoryTile3D(
+                                                name: category.name ?? '',
+                                                isSelected: isSelected,
+                                                onTap: () => controller
+                                                    .onCategoryChanged(category),
+                                              );
+                                            },
+                                          )),
+                                    ),
+                                    // Sub Category section
+                                    Obx(() {
+                                      final currentCat = controller.selectedCategory.value;
+                                      if (currentCat == null) return const SizedBox.shrink();
+                                      final subs = currentCat.subCategories ?? [];
+                                      if (subs.isEmpty) return const SizedBox.shrink();
+
+                                      return Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const SizedBox(height: 14),
+                                          Text(
+                                            'Choose Sub Category',
+                                            style: TextStyleCustom.outFitLight300(
+                                              fontSize: 13,
+                                              color: whitePure(context).withValues(alpha: .7),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          SizedBox(
+                                            height: 38,
+                                            child: ListView.separated(
+                                              scrollDirection: Axis.horizontal,
+                                              itemCount: subs.length,
+                                              separatorBuilder: (_, __) => const SizedBox(width: 8),
+                                              itemBuilder: (context, index) {
+                                                final sub = subs[index];
+                                                final isSelected = controller.selectedSubCategory.value?.id == sub.id;
+                                                return GestureDetector(
+                                                  onTap: () => controller.onSubCategoryChanged(sub),
+                                                  child: AnimatedContainer(
+                                                    duration: const Duration(milliseconds: 200),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                                    decoration: BoxDecoration(
+                                                      color: isSelected
+                                                          ? ColorRes.primaryColor.withValues(alpha: 0.25)
+                                                          : Colors.white.withValues(alpha: 0.08),
+                                                      borderRadius: BorderRadius.circular(20),
+                                                      border: Border.all(
+                                                        color: isSelected
+                                                            ? ColorRes.primaryColor
+                                                            : Colors.white.withValues(alpha: 0.2),
+                                                        width: isSelected ? 1.5 : 1,
+                                                      ),
+                                                    ),
+                                                    alignment: Alignment.center,
+                                                    child: Text(
+                                                      sub.name ?? '',
+                                                      style: TextStyle(
+                                                        color: isSelected ? ColorRes.primaryColor : Colors.white,
+                                                        fontSize: 12.5,
+                                                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    }),
+                                    // Topic section
+                                    Obx(() {
+                                      final currentSub = controller.selectedSubCategory.value;
+                                      if (currentSub == null) return const SizedBox.shrink();
+                                      final topics = currentSub.topics ?? [];
+                                      if (topics.isEmpty) return const SizedBox.shrink();
+
+                                      return Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const SizedBox(height: 14),
+                                          Text(
+                                            'Choose Topic',
+                                            style: TextStyleCustom.outFitLight300(
+                                              fontSize: 13,
+                                              color: whitePure(context).withValues(alpha: .7),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          SizedBox(
+                                            height: 34,
+                                            child: ListView.separated(
+                                              scrollDirection: Axis.horizontal,
+                                              itemCount: topics.length,
+                                              separatorBuilder: (_, __) => const SizedBox(width: 8),
+                                              itemBuilder: (context, index) {
+                                                final topic = topics[index];
+                                                final isSelected = controller.selectedTopic.value?.id == topic.id;
+                                                return GestureDetector(
+                                                  onTap: () => controller.onTopicChanged(topic),
+                                                  child: AnimatedContainer(
+                                                    duration: const Duration(milliseconds: 200),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                    decoration: BoxDecoration(
+                                                      color: isSelected
+                                                          ? ColorRes.primaryColor.withValues(alpha: 0.25)
+                                                          : Colors.white.withValues(alpha: 0.06),
+                                                      borderRadius: BorderRadius.circular(16),
+                                                      border: Border.all(
+                                                        color: isSelected
+                                                            ? ColorRes.primaryColor
+                                                            : Colors.white.withValues(alpha: 0.15),
+                                                        width: isSelected ? 1.5 : 1,
+                                                      ),
+                                                    ),
+                                                    alignment: Alignment.center,
+                                                    child: Text(
+                                                      topic.name ?? '',
+                                                      style: TextStyle(
+                                                        color: isSelected ? ColorRes.primaryColor : Colors.white70,
+                                                        fontSize: 11.5,
+                                                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    }),
+                                    const SizedBox(height: 16),
+                                    Text('Select Hashtag',
+                                        style: TextStyleCustom.outFitLight300(
+                                            fontSize: 13,
+                                            color: whitePure(context)
+                                                .withValues(alpha: .7))),
+                                    const SizedBox(height: 8),
+                                    Obx(() {
+                                      // Show admin preloaded hashtags (up to 5)
+                                      // as quick-pick chips so the section is
+                                      // never empty. If none are loaded yet, fall
+                                      // back to the 'None' placeholder.
+                                      final available = controller.availableHashtags;
+                                      final selected = controller.selectedHashtags;
+
+                                      final quickPicks = available
+                                          .where((h) => !selected.any((s) => s.id == h.id))
+                                          .take(5)
+                                          .toList();
+
+                                      return Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          // Selected hashtags always shown first
+                                          ...selected.map((h) => _HashtagChip(
+                                                label: '#${h.hashtag}',
+                                                isSelected: true,
+                                                onTap: () =>
+                                                    controller.toggleHashtag(h),
+                                              )),
+                                          // Quick-pick from admin list (not yet selected)
+                                          ...quickPicks.map((h) => _HashtagChip(
+                                                label: '#${h.hashtag}',
+                                                isSelected: false,
+                                                onTap: () =>
+                                                    controller.toggleHashtag(h),
+                                              )),
+                                          // If nothing is loaded yet, show 'None'
+                                          if (available.isEmpty && selected.isEmpty)
+                                            _HashtagChip(
+                                              label: 'None',
+                                              isSelected: true,
+                                              onTap: () {},
+                                            ),
+                                          // + More always last
+                                          GestureDetector(
+                                            onTap: () => _showHashtagPickerSheet(
+                                                context, controller),
+                                            child: Container(
+                                              padding: const EdgeInsets
+                                                  .symmetric(
+                                                  horizontal: 14, vertical: 8),
+                                              decoration: BoxDecoration(
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                                border: Border.all(
+                                                    color: whitePure(context)
+                                                        .withValues(alpha: .25)),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(Icons.add,
+                                                      size: 14,
+                                                      color: whitePure(context)),
+                                                  const SizedBox(width: 4),
+                                                  Text('More',
+                                                      style: TextStyleCustom
+                                                          .outFitRegular400(
+                                                              fontSize: 13,
+                                                              color: whitePure(
+                                                                  context))),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    }),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        Obx(() => Checkbox(
+                                              checkColor: Colors.black,
+                                              value: controller.isRestricted.value,
+                                              activeColor: ColorRes.primaryColor,
+                                              side: BorderSide(
+                                                  color: whitePure(context)
+                                                      .withValues(alpha: .4)),
+                                              onChanged: (value) => controller
+                                                  .isRestricted.value = value ?? false,
+                                            )),
+                                        Expanded(
+                                          child: Text(
+                                            LKey.restrictUserRequests.tr,
+                                            style: TextStyleCustom.outFitLight300(
+                                                color: whitePure(context),
+                                                fontSize: 13),
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  );
-                                }),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Obx(() => Checkbox(
-                                          checkColor: Colors.black,
-                                          value: controller.isRestricted.value,
-                                          activeColor: ColorRes.primaryColor,
-                                          side: BorderSide(
-                                              color: whitePure(context)
-                                                  .withValues(alpha: .4)),
-                                          onChanged: (value) => controller
-                                              .isRestricted.value = value ?? false,
-                                        )),
-                                    Expanded(
-                                      child: Text(
-                                        LKey.restrictUserRequests.tr,
-                                        style: TextStyleCustom.outFitLight300(
-                                            color: whitePure(context),
-                                            fontSize: 13),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    InkWell(
+                                      onTap: controller.onStartLive,
+                                      child: Container(
+                                        height: 50,
+                                        width: double.infinity,
+                                        decoration: BoxDecoration(
+                                          gradient: ColorRes.primaryGradient,
+                                          borderRadius: BorderRadius.circular(25),
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: Text(
+                                          LKey.startLive.tr,
+                                          style: TextStyleCustom
+                                              .unboundedMedium500(
+                                            color: Colors.white,
+                                            fontSize: 17,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
-                                InkWell(
-                                  onTap: controller.onStartLive,
-                                  child: Container(
-                                    height: 50,
-                                    width: double.infinity,
-                                    decoration: BoxDecoration(
-                                      gradient: ColorRes.primaryGradient,
-                                      borderRadius: BorderRadius.circular(25),
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      LKey.startLive.tr,
-                                      style: TextStyleCustom
-                                          .unboundedMedium500(
-                                        color: Colors.white,
-                                        fontSize: 17,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
@@ -637,27 +818,47 @@ class _CategoryTile3D extends StatelessWidget {
         width: 62,
         child: Column(
           children: [
-            Container(
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
+                color: isSelected
+                    ? ColorRes.primaryColor.withValues(alpha: 0.25)
+                    : Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                    color: isSelected ? ColorRes.primaryColor : Colors.transparent,
-                    width: 2),
+                  color: isSelected ? ColorRes.primaryColor : Colors.white12,
+                  width: isSelected ? 2.5 : 1,
+                ),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: ColorRes.primaryColor.withValues(alpha: 0.4),
+                          blurRadius: 8,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : null,
               ),
               alignment: Alignment.center,
-              child: Icon(_icon, color: Colors.white, size: 24),
+              child: Icon(
+                _icon,
+                color: isSelected ? ColorRes.primaryColor : Colors.white,
+                size: 24,
+              ),
             ),
             const SizedBox(height: 4),
-            Text(name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    color: isSelected ? ColorRes.primaryColor : Colors.white70,
-                    fontSize: 10,
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400)),
+            Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: isSelected ? ColorRes.primaryColor : Colors.white70,
+                fontSize: 10,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+              ),
+            ),
           ],
         ),
       ),

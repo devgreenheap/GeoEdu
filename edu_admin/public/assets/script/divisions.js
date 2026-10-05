@@ -206,7 +206,6 @@ $(document).ready(function () {
         modalShow("#editDivisionModal");
     });
 
-    // Reset modals on close
     $("#addDivisionModal").on("hidden.bs.modal", function () {
         resetForm("#addDivisionForm");
         setSubCategoryOptions("#division_sub_category_id", []);
@@ -216,4 +215,38 @@ $(document).ready(function () {
         resetForm("#editDivisionForm");
         setSubCategoryOptions("#edit_division_sub_category_id", []);
     });
+
+    $("#importDivisionForm").on("submit", function (e) {
+        e.preventDefault();
+        checkUserType(() => {
+            var file = $("#division_excel_file")[0].files[0];
+            if (!file) {
+                showErrorToast("Please select a file to import");
+                return;
+            }
+            var formId = "#importDivisionForm";
+            var url = `${domainUrl}importDivisions`;
+            var formdata = collectFormData(formId);
+            showFormSpinner(formId);
+            doAjax(url, formdata).then(function (response) {
+                hideFormSpinner(formId);
+                if (response.status) {
+                    reloadDataTables(["divisionsTable"]);
+                    modalHide("#importDivisionModal");
+                    resetForm(formId);
+                    showSuccessToast(response.message);
+                } else {
+                    showErrorToast(response.message);
+                }
+            }).catch(function (error) {
+                hideFormSpinner(formId);
+                showErrorToast(error.responseJSON?.message || error.message || 'Import failed');
+            });
+        });
+    });
+
+    $("#importDivisionModal").on("hidden.bs.modal", function () {
+        resetForm("#importDivisionForm");
+    });
 });
+

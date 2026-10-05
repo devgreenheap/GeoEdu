@@ -344,4 +344,71 @@ $(document).ready(function () {
     $("#editSubCategoryModal").on("hidden.bs.modal", function () {
         resetForm('#editSubCategoryForm');
     });
+
+    $("#importCategoryForm").on("submit", function (e) {
+        e.preventDefault();
+        checkUserType(() => {
+            var file = $("#category_excel_file")[0].files[0];
+            if (!file) {
+                showErrorToast("Please select a file to import");
+                return;
+            }
+            var formId = "#importCategoryForm";
+            var url = `${domainUrl}importCategories`;
+            var formdata = collectFormData(formId);
+            showFormSpinner(formId);
+            doAjax(url, formdata).then(function (response) {
+                hideFormSpinner(formId);
+                if (response.status) {
+                    reloadDataTables(['categoriesTable']);
+                    modalHide('#importCategoryModal');
+                    resetForm(formId);
+                    showSuccessToast(response.message);
+                } else {
+                    showErrorToast(response.message);
+                }
+            }).catch(function (error) {
+                hideFormSpinner(formId);
+                showErrorToast(error.responseJSON?.message || error.message || 'Import failed');
+            });
+        });
+    });
+
+    $("#importSubCategoryForm").on("submit", function (e) {
+        e.preventDefault();
+        checkUserType(() => {
+            var file = $("#sub_category_excel_file")[0].files[0];
+            if (!file) {
+                showErrorToast("Please select a file to import");
+                return;
+            }
+            var formId = "#importSubCategoryForm";
+            var url = `${domainUrl}importSubCategories`;
+            var formdata = collectFormData(formId);
+            showFormSpinner(formId);
+            doAjax(url, formdata).then(function (response) {
+                hideFormSpinner(formId);
+                if (response.status) {
+                    reloadDataTables(['subCategoriesTable']);
+                    modalHide('#importSubCategoryModal');
+                    resetForm(formId);
+                    showSuccessToast(response.message);
+                } else {
+                    showErrorToast(response.message);
+                }
+            }).catch(function (error) {
+                hideFormSpinner(formId);
+                showErrorToast(error.responseJSON?.message || error.message || 'Import failed');
+            });
+        });
+    });
+
+    $("#importCategoryModal").on("hidden.bs.modal", function () {
+        resetForm('#importCategoryForm');
+    });
+
+    $("#importSubCategoryModal").on("hidden.bs.modal", function () {
+        resetForm('#importSubCategoryForm');
+    });
 });
+

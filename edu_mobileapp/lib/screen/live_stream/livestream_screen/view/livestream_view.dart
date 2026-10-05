@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -6,7 +7,6 @@ import 'package:geoedu/common/extensions/string_extension.dart';
 import 'package:geoedu/common/manager/haptic_manager.dart';
 import 'package:geoedu/common/widget/custom_image.dart';
 import 'package:geoedu/common/widget/full_name_with_blue_tick.dart';
-import 'package:geoedu/common/widget/loader_widget.dart';
 import 'package:geoedu/model/livestream/app_user.dart';
 import 'package:geoedu/model/livestream/livestream.dart';
 import 'package:geoedu/model/livestream/livestream_user_state.dart';
@@ -32,30 +32,54 @@ class LivestreamView extends StatelessWidget {
       final hostId = stream.hostId.toString();
       final views = List<StreamView>.from(streamViews); // Optional: clone if needed
 
-      final hostIndex = views.indexWhere((v) => v.streamId == hostId);
+      final hostIndex = views.indexWhere(
+          (v) => v.streamId == hostId || v.streamId == (stream.roomID ?? ''));
       if (hostIndex != -1 && hostIndex != 0) {
         final hostView = views.removeAt(hostIndex);
         views.insert(0, hostView);
       }
-      List<AppUser> liveUsers = controller.firestoreController.users;
-      List<AppUser> allUsers = stream.getAllUsers(liveUsers);
-
-      if (allUsers.isEmpty) {
-        return _buildEmptyView();
-      }
 
       if (views.isEmpty) {
-        return const LoaderWidget();
-      }
+        final hostUser = stream.hostUser ??
+            controller.firestoreController.users
+                .firstWhereOrNull((u) => u.userId == stream.hostId);
+        final hostName = hostUser?.fullname ?? hostUser?.username ?? 'Host';
+        final hostPhoto = hostUser?.profile?.addBaseURL();
 
-      // if(coHostCount == 1){
-      //   return LiveStreamUserView(isNameAndSpeakerVisible: false, streamingView: views.first, controller: controller,);
-      // }else{
-      //  return EloeloStyleLayout(
-      //    controller: controller,
-      //    streamViews: views,
-      //  );
-      // }
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CustomImage(
+                size: const Size(84, 84),
+                image: hostPhoto,
+                radius: 42,
+                strokeWidth: 2.5,
+                strokeColor: const Color(0xFFFFB300),
+                fullName: hostName,
+              ),
+              const SizedBox(height: 16),
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFFB300)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Joining live video call...',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
 
       return EloeloStyleLayout(
         controller: controller,
@@ -64,13 +88,6 @@ class LivestreamView extends StatelessWidget {
     });
   }
 
-  Widget _buildEmptyView() {
-    return Center(
-        child: Text(
-      'No users in livestream',
-      style: TextStyleCustom.unboundedMedium500(color: Colors.white),
-    ));
-  }
 }
 
 class EloeloStyleLayout extends StatelessWidget {
@@ -85,8 +102,19 @@ class EloeloStyleLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final host = streamViews.first;
-    final members = streamViews.skip(1).toList();
+    if (streamViews.isEmpty) return const SizedBox.shrink();
+
+    final hostIdStr = controller.liveData.value.hostId?.toString() ?? '';
+    final roomIdStr = controller.liveData.value.roomID ?? '';
+
+    // Identify the host stream reliably, falling back to index 0
+    final host = streamViews.firstWhere(
+      (s) =>
+          (roomIdStr.isNotEmpty && s.streamId == roomIdStr) ||
+          (hostIdStr.isNotEmpty && s.streamId == hostIdStr),
+      orElse: () => streamViews.first,
+    );
+    final members = streamViews.where((s) => s != host).toList();
 
     return Stack(
       children: [
@@ -106,7 +134,7 @@ class EloeloStyleLayout extends StatelessWidget {
           child: Obx(() {
             final liveData = controller.liveData.value;
             final isRestricted = liveData.isRestrictToJoin != 0;
-            final showJoinSlot = !isRestricted && members.length < 3;
+            final showJoinSlot = (controller.isHost || !isRestricted) && members.length < 3;
 
             return Column(
               mainAxisSize: MainAxisSize.min,
@@ -600,16 +628,39 @@ class LiveStreamUserView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
+      final streamIdStr = streamingView?.streamId ?? '';
+      final streamUserId = int.tryParse(streamIdStr);
+      final isHost = streamIdStr == controller.liveData.value.roomID ||
+          (controller.liveData.value.hostId != null &&
+              (streamUserId == controller.liveData.value.hostId ||
+                  streamIdStr == controller.liveData.value.hostId.toString()));
+
       LivestreamUserState? state = controller.liveUsersStates.firstWhereOrNull(
           (element) =>
-              element.userId == int.parse(streamingView?.streamId ?? ''));
-      AppUser? liveUser = controller.firestoreController.users.firstWhereOrNull((element) =>
-              element.userId == int.parse(streamingView?.streamId ?? ''));
+              (streamUserId != null && element.userId == streamUserId) ||
+              (isHost && element.userId == controller.liveData.value.hostId));
+
+      AppUser? liveUser = controller.firestoreController.users.firstWhereOrNull(
+          (element) =>
+              (streamUserId != null && element.userId == streamUserId) ||
+              (isHost && element.userId == controller.liveData.value.hostId));
+      if (liveUser == null && isHost) {
+        liveUser = controller.liveData.value.hostUser;
+      }
+
+      // CRITICAL FIX: Only hide video if camera is explicitly turned off.
+      // Default / null state must keep video visible so host video is not blocked
+      // by the blurred avatar placeholder while syncing with Firestore.
+      final bool isVideoOff = state?.videoStatus == VideoAudioStatus.offByMe ||
+          state?.videoStatus == VideoAudioStatus.offByHost;
+      final bool isAudioOff = state?.audioStatus == VideoAudioStatus.offByMe ||
+          state?.audioStatus == VideoAudioStatus.offByHost;
+      final bool isAudioOn = !isAudioOff;
 
       return Stack(
         children: [
           if (streamingView != null) streamingView!.streamView,
-          if (state?.videoStatus != VideoAudioStatus.on)
+          if (isVideoOff)
             Stack(
               children: [
                 CustomImage(
@@ -631,17 +682,61 @@ class LiveStreamUserView extends StatelessWidget {
                 Align(
                   alignment: Alignment.center,
                   child: LayoutBuilder(builder: (context, constraints) {
-                    double width = ((constraints.maxWidth * 50) / 100);
-                    return CustomImage(
-                        size: Size(width, width),
-                        image: liveUser?.profile?.addBaseURL(),
-                        fullName: liveUser?.fullname,
-                        strokeWidth: 3);
+                    double width =
+                        ((constraints.maxWidth * 45) / 100).clamp(110.0, 160.0);
+
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: const Color(0xFFFFB300),
+                              width: 3.5,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFFFB300)
+                                    .withValues(alpha: 0.35),
+                                blurRadius: 18,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          child: CustomImage(
+                            size: Size(width, width),
+                            image: liveUser?.profile?.addBaseURL(),
+                            fullName: liveUser?.fullname,
+                            radius: width / 2,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        // Animated purple equalizer soundwave bars (matching Photo 1)
+                        if (isAudioOn)
+                          const _AnimatedPurpleSoundwave()
+                        else
+                          Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.6),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                  color: const Color(0xFFFF1744), width: 1.2),
+                            ),
+                            child: const Icon(
+                              Icons.mic_off_rounded,
+                              color: Color(0xFFFF1744),
+                              size: 18,
+                            ),
+                          ),
+                      ],
+                    );
                   }),
                 ),
               ],
             ),
-          if (state?.audioStatus != VideoAudioStatus.on)
+          if (!isVideoOff && isAudioOff)
             Align(
                 alignment: Alignment.center,
                 child: Image.asset(
@@ -650,10 +745,10 @@ class LiveStreamUserView extends StatelessWidget {
                   width: 25,
                   color: whitePure(context).withValues(alpha: .6),
                 )),
-          if (isNameAndSpeakerVisible)
+          if (isNameAndSpeakerVisible && streamingView != null)
             _buildUserInfoOverlay(context,
                 streamView: streamingView!,
-                state: state.obs,
+                state: Rx<LivestreamUserState?>(state),
                 liveUser: liveUser,
                 isMuteVisible: liveUser?.userId != controller.myUserId)
         ],
@@ -685,7 +780,11 @@ class LiveStreamUserView extends StatelessWidget {
               fontColor: whitePure(context),
               fontSize: 12,
               isVerify: liveUser?.isVerify,
-              onTap: () => _showUserActionSheet(liveUser!, state),
+              onTap: () {
+                if (liveUser != null) {
+                  _showUserActionSheet(liveUser, state);
+                }
+              },
             ),
             if (alignment == null && isMuteVisible)
               MuteUnMuteButton(
@@ -746,3 +845,83 @@ extension on Widget {
     return const Center(child: Text('No users in livestream'));
   }
 }
+
+// -------------------------------------------------------------
+// Animated Purple Equalizer Soundwave Bars
+// -------------------------------------------------------------
+class _AnimatedPurpleSoundwave extends StatefulWidget {
+  const _AnimatedPurpleSoundwave();
+
+  @override
+  State<_AnimatedPurpleSoundwave> createState() =>
+      _AnimatedPurpleSoundwaveState();
+}
+
+class _AnimatedPurpleSoundwaveState extends State<_AnimatedPurpleSoundwave>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animController;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animController,
+      builder: (context, child) {
+        final t = _animController.value * 2 * math.pi;
+        final h1 = 12.0 + 8.0 * (0.5 + 0.5 * math.sin(t));
+        final h2 = 14.0 + 14.0 * (0.5 + 0.5 * math.sin(t + 1.2));
+        final h3 = 18.0 + 18.0 * (0.5 + 0.5 * math.sin(t + 2.4));
+        final h4 = 14.0 + 14.0 * (0.5 + 0.5 * math.sin(t + 3.6));
+        final h5 = 12.0 + 8.0 * (0.5 + 0.5 * math.sin(t + 4.8));
+
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            _buildBar(h1),
+            const SizedBox(width: 4),
+            _buildBar(h2),
+            const SizedBox(width: 4),
+            _buildBar(h3),
+            const SizedBox(width: 4),
+            _buildBar(h4),
+            const SizedBox(width: 4),
+            _buildBar(h5),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildBar(double height) {
+    return Container(
+      width: 4.5,
+      height: height,
+      decoration: BoxDecoration(
+        color: const Color(0xFF7C4DFF),
+        borderRadius: BorderRadius.circular(3),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF7C4DFF).withValues(alpha: 0.55),
+            blurRadius: 5,
+          ),
+        ],
+      ),
+    );
+  }
+}
+

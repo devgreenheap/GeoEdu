@@ -100,8 +100,43 @@ $(document).ready(function () {
                 }
             });
         });
-    })
+    });
 
+    $("#addHashtagModal").on("hidden.bs.modal", function () {
+        resetForm("#addHashtagForm");
+    });
 
+    $("#importHashtagForm").on("submit", function (e) {
+        e.preventDefault();
+        checkUserType(() => {
+            var file = $("#hashtag_excel_file")[0].files[0];
+            if (!file) {
+                showErrorToast("Please select a file to import");
+                return;
+            }
+            var formId = "#importHashtagForm";
+            var url = `${domainUrl}importHashtags`;
+            var formdata = collectFormData(formId);
+            showFormSpinner(formId);
+            doAjax(url, formdata).then(function (response) {
+                hideFormSpinner(formId);
+                if (response.status) {
+                    reloadDataTables(['hashtagsTable']);
+                    modalHide("#importHashtagModal");
+                    resetForm(formId);
+                    showSuccessToast(response.message);
+                } else {
+                    showErrorToast(response.message);
+                }
+            }).catch(function (error) {
+                hideFormSpinner(formId);
+                showErrorToast(error.responseJSON?.message || error.message || 'Import failed');
+            });
+        });
+    });
 
+    $("#importHashtagModal").on("hidden.bs.modal", function () {
+        resetForm("#importHashtagForm");
+    });
 });
+
