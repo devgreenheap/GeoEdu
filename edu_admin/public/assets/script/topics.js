@@ -314,5 +314,9 @@ $(document).ready(function () {
     $("#importTopicModal").on("hidden.bs.modal", function () {
         resetForm("#importTopicForm");
     });
+
+    $("#btnSubmitImportTopic").on("click", function () {
+        $("#importTopicForm").trigger("submit");
+    });
 });
 

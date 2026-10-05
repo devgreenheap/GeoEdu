@@ -138,5 +138,9 @@ $(document).ready(function () {
     $("#importHashtagModal").on("hidden.bs.modal", function () {
         resetForm("#importHashtagForm");
     });
+
+    $("#btnSubmitImportHashtag").on("click", function () {
+        $("#importHashtagForm").trigger("submit");
+    });
 });
 

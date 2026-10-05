@@ -410,5 +410,13 @@ $(document).ready(function () {
     $("#importSubCategoryModal").on("hidden.bs.modal", function () {
         resetForm('#importSubCategoryForm');
     });
+
+    $("#btnSubmitImportCategory").on("click", function () {
+        $("#importCategoryForm").trigger("submit");
+    });
+
+    $("#btnSubmitImportSubCategory").on("click", function () {
+        $("#importSubCategoryForm").trigger("submit");
+    });
 });
 

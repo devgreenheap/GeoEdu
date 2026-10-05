@@ -169,5 +169,9 @@ $(document).ready(function () {
     $("#importStateModal").on("hidden.bs.modal", function () {
         resetForm("#importStateForm");
     });
+
+    $("#btnSubmitImportState").on("click", function () {
+        $("#importStateForm").trigger("submit");
+    });
 });
 

@@ -248,5 +248,9 @@ $(document).ready(function () {
     $("#importDivisionModal").on("hidden.bs.modal", function () {
         resetForm("#importDivisionForm");
     });
+
+    $("#btnSubmitImportDivision").on("click", function () {
+        $("#importDivisionForm").trigger("submit");
+    });
 });
 

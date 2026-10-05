@@ -1,6 +1,6 @@
 @extends('include.app')
 @section('script')
-<script src="{{ asset('assets/script/divisions.js') }}"></script>
+<script src="{{ asset('assets/script/divisions.js') }}?v={{ @filemtime(public_path('assets/script/divisions.js')) }}"></script>
 @endsection
 @section('content')
 @php
@@ -132,7 +132,7 @@
                 </h4>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
             </div>
-            <form id="importDivisionForm" method="POST" enctype="multipart/form-data">
+            <form id="importDivisionForm" method="POST" action="{{ route('importDivisions') }}" onsubmit="return false;" enctype="multipart/form-data">
                 <div class="modal-body">
                     <div class="alert alert-info border-0 mb-3" role="alert">
                         <div class="d-flex align-items-center justify-content-between mb-1">
@@ -154,7 +154,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">{{ __('Close') }}</button>
-                    <button type="submit" class="btn btn-success">
+                    <button type="button" id="btnSubmitImportDivision" class="btn btn-success">
                         <span class="spinner-border spinner-border-sm me-1 spinner hide" role="status" aria-hidden="true"></span>
                         <i class="ri-upload-cloud-2-line me-1"></i>{{ __('Upload & Import') }}
                     </button>

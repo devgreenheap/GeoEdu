@@ -160,5 +160,9 @@ $(document).ready(function () {
     $("#importCountryModal").on("hidden.bs.modal", function () {
         resetForm("#importCountryForm");
     });
+
+    $("#btnSubmitImportCountry").on("click", function () {
+        $("#importCountryForm").trigger("submit");
+    });
 });
 
