@@ -81,6 +81,7 @@ class _GiftWallet {
   String deleteLiveHistory = "${apiURL}misc/deleteLiveHistory";
   String fetchRecordedLives = "${apiURL}misc/fetchRecordedLives";
   String fetchGiftProfit = "${apiURL}misc/fetchGiftProfit";
+  String fetchCategoryGiftHistory = "${apiURL}misc/fetchCategoryGiftHistory";
   String fetchDiamondFaqs = "${apiURL}misc/fetchDiamondFaqs";
   String requestScreenshotDisable = "${apiURL}misc/requestScreenshotDisable";
   String approveScreenshotDisable = "${apiURL}misc/approveScreenshotDisableRequest";

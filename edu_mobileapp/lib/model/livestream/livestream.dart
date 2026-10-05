@@ -36,9 +36,11 @@ class Livestream {
   bool? isAutoMode;
   String? thumbnailUrl;
   String? pinnedComment;
+  bool? isActive;
 
   Livestream(
       {this.watchingCount,
+      this.isActive,
       this.description,
       this.type,
       this.battleType,
@@ -100,10 +102,14 @@ class Livestream {
     isAutoMode = json['is_auto_mode'];
     thumbnailUrl = json['thumbnail_url'];
     pinnedComment = json['pinned_comment'];
+    isActive = json['is_active'] as bool?;
   }
 
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};
+    if (isActive != null) {
+      data['is_active'] = isActive;
+    }
     data['watching_count'] = watchingCount;
     data['description'] = description;
     data['type'] = type?.value;

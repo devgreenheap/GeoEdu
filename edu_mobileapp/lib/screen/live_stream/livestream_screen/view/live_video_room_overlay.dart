@@ -56,6 +56,39 @@ class LiveVideoRoomOverlay extends StatefulWidget {
 
 class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
   bool _showOtherLives = false;
+  final ScrollController _chatScrollController = ScrollController();
+  int _prevCommentCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollChatToBottom(animated: false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _chatScrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollChatToBottom({bool animated = true}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_chatScrollController.hasClients) {
+        final maxScroll = _chatScrollController.position.maxScrollExtent;
+        if (animated) {
+          _chatScrollController.animateTo(
+            maxScroll,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+          );
+        } else {
+          _chatScrollController.jumpTo(maxScroll);
+        }
+      }
+    });
+  }
 
   void _handleBackOrClose() {
     showEndLiveConfirmation(
@@ -71,7 +104,8 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
   }
 
   void _shareLive() {
-    final hostUser = widget.controller.liveData.value.hostUser;
+    final hostUser = widget.controller.effectiveHostUser ??
+        widget.controller.liveData.value.hostUser;
     LiveShareSheet.show(
       context: context,
       hostName: hostUser?.fullname ?? 'Host',
@@ -493,7 +527,7 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Obx(() {
         final stream = controller.liveData.value;
-        final hostUser = stream.hostUser;
+        final hostUser = controller.effectiveHostUser ?? stream.hostUser;
         final hostName = hostUser?.fullname ?? hostUser?.username ?? 'Host';
         final hostPhoto = hostUser?.profile?.addBaseURL();
         final hostId = stream.hostId;
@@ -1390,14 +1424,21 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
     return Obx(() {
       final comments = controller.comments;
       final stream = controller.liveData.value;
-      final hostUser = stream.hostUser;
+      final hostUser = controller.effectiveHostUser ?? stream.hostUser;
       final hostName = hostUser?.fullname ?? hostUser?.username ?? 'Host';
       final hostPhoto = hostUser?.profile?.addBaseURL();
       final title = stream.description ?? stream.topicName ?? 'प्यार के तराने 🎵';
 
+      // Auto-scroll to latest message at the bottom whenever new comments arrive
+      if (comments.length != _prevCommentCount) {
+        _prevCommentCount = comments.length;
+        _scrollChatToBottom();
+      }
+
       return ListView(
+        controller: _chatScrollController,
         padding: EdgeInsets.zero,
-        reverse: true,
+        reverse: false,
         physics: const BouncingScrollPhysics(),
         children: [
           // 1. Host Bio / Status Pinned bubble (matching screenshot)

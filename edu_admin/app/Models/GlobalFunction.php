@@ -163,6 +163,17 @@ class GlobalFunction extends Model
                 break;
             case Constants::notify_gift_user:
                 $gift = Gifts::find($notifyItem->data_id);
+                if (!$gift) {
+                    $txn = \Illuminate\Support\Facades\DB::table('tbl_wallet_transactions')
+                        ->where('sender_user_id', $notifyItem->from_user_id)
+                        ->where('receiver_user_id', $notifyItem->to_user_id)
+                        ->whereNotNull('gift_id')
+                        ->orderBy('id', 'desc')
+                        ->first();
+                    if ($txn && !empty($txn->gift_id)) {
+                        $gift = Gifts::find($txn->gift_id);
+                    }
+                }
                 $data['gift'] = $gift;
                 break;
             case Constants::notify_reply_comment:
@@ -1121,10 +1132,29 @@ class GlobalFunction extends Model
             $topic = !empty($user->topic_id) ? Topics::find($user->topic_id) : null;
             $language = !empty($user->language_id) ? Language::find($user->language_id) : null;
 
-            $user->category_name = $category?->name;
-            $user->sub_category_name = $subCategory?->name;
-            $user->topic_name = $topic?->name;
-            $user->language_name = $language?->title;
+            $user->category_name = $category?->name ?: ($user->category_name ?? null);
+            $user->sub_category_name = $subCategory?->name ?: ($user->sub_category_name ?? null);
+            $user->topic_name = $topic?->name ?: ($user->topic_name ?? null);
+            $user->language_name = $language?->title ?: ($user->language_name ?? null);
+
+            if (Schema::hasColumn('tbl_users', 'category_name')) {
+                $sync = [];
+                if (!empty($user->category_name) && empty($user->getOriginal('category_name'))) {
+                    $sync['category_name'] = $user->category_name;
+                }
+                if (!empty($user->sub_category_name) && empty($user->getOriginal('sub_category_name'))) {
+                    $sync['sub_category_name'] = $user->sub_category_name;
+                }
+                if (!empty($user->topic_name) && empty($user->getOriginal('topic_name'))) {
+                    $sync['topic_name'] = $user->topic_name;
+                }
+                if (!empty($user->language_name) && empty($user->getOriginal('language_name'))) {
+                    $sync['language_name'] = $user->language_name;
+                }
+                if (!empty($sync)) {
+                    DB::table('tbl_users')->where('id', $user->id)->update($sync);
+                }
+            }
         }
 
         return $user;

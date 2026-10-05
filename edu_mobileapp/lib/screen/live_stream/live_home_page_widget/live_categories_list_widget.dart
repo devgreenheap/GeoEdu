@@ -5,8 +5,33 @@ import 'package:geoedu/screen/live_stream/live_home_page_widget/change_interest_
 import 'package:geoedu/screen/live_stream/live_stream_search_screen/live_stream_search_screen_controller.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 
-class LiveCategoriesListWidget extends StatelessWidget {
+class LiveCategoriesListWidget extends StatefulWidget {
   const LiveCategoriesListWidget({super.key});
+
+  @override
+  State<LiveCategoriesListWidget> createState() => _LiveCategoriesListWidgetState();
+}
+
+class _LiveCategoriesListWidgetState extends State<LiveCategoriesListWidget> {
+  final ScrollController _categoryScrollController = ScrollController();
+
+  void _scrollToStart() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_categoryScrollController.hasClients) {
+        _categoryScrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _categoryScrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,6 +100,7 @@ class LiveCategoriesListWidget extends StatelessWidget {
             final totalCount = categories.length + 1; // +1 for "All"
 
             return ListView.builder(
+              controller: _categoryScrollController,
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -86,7 +112,10 @@ class LiveCategoriesListWidget extends StatelessWidget {
                 return CategoryTile(
                   label: label,
                   isSelected: isSelected,
-                  onTap: () => controller.onCategorySelected(index),
+                  onTap: () {
+                    controller.onCategorySelected(index);
+                    _scrollToStart();
+                  },
                 );
               },
             );

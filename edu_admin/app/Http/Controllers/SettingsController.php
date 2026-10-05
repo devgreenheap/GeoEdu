@@ -1106,6 +1106,33 @@ class SettingsController extends Controller
 
     public function fetchInterests()
     {
+        try {
+            $categories = Categories::where('status', 1)->orderBy('name')->get(['id', 'name']);
+            if ($categories->isNotEmpty()) {
+                $categoryNames = $categories->pluck('name')->map(fn($n) => trim((string)$n))->filter()->toArray();
+
+                foreach ($categories as $cat) {
+                    $trimmed = trim((string) $cat->name);
+                    if ($trimmed === '') continue;
+                    $existing = Interest::where('name', $trimmed)->first();
+                    if (!$existing) {
+                        $newInterest = new Interest();
+                        $newInterest->name = $trimmed;
+                        $newInterest->status = 1;
+                        $newInterest->save();
+                    } elseif ($existing->status != 1) {
+                        $existing->status = 1;
+                        $existing->save();
+                    }
+                }
+
+                // Deactivate obsolete dummy interests that are not in categories
+                Interest::whereNotIn('name', $categoryNames)->update(['status' => 0]);
+            }
+        } catch (\Throwable $e) {
+            Log::error('fetchInterests sync error: ' . $e->getMessage());
+        }
+
         $interests = Interest::where('status', 1)->orderBy('name')->get(['id', 'name']);
 
         return GlobalFunction::sendDataResponse(true, 'Interests fetched successfully', $interests);

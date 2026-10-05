@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:lottie/lottie.dart';
+import 'package:geoedu/common/service/api/user_service.dart';
 import 'package:geoedu/model/general/category_sub_category_topic_model.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/screen/auth_screen/widget/auth_theme.dart';
@@ -50,6 +51,17 @@ class _InterestTopicScreenState extends State<InterestTopicScreen>
   }
 
   void _finish() {
+    // Persist the user's selected category interests so they appear in Edit Profile
+    try {
+      final categoryIds = widget.selectedCategories
+          .map((c) => c.id)
+          .whereType<int>()
+          .toList();
+      if (categoryIds.isNotEmpty) {
+        UserService.instance.updateMyInterests(interestIds: categoryIds);
+      }
+    } catch (_) {}
+
     // Show Lottie success animation then navigate to dashboard
     Get.to(
       () => _InterestSuccessScreen(userData: widget.userData),

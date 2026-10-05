@@ -15,7 +15,6 @@ import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_co
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requested_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/members_sheet.dart';
 import 'package:geoedu/utilities/asset_res.dart';
-import 'package:geoedu/utilities/text_style_custom.dart';
 import 'package:geoedu/utilities/theme_res.dart';
 
 class LivestreamView extends StatelessWidget {
@@ -127,28 +126,55 @@ class EloeloStyleLayout extends StatelessWidget {
           ),
         ),
 
-        // 2. Vertical Call Slots column under "Lives >" at top-right
+        // 2. Large, prominent Participant Video Cards row (Matching Reference Image 2)
         Positioned(
-          right: 10,
-          top: MediaQuery.of(context).padding.top + 80,
+          left: 0,
+          right: 0,
+          top: MediaQuery.of(context).padding.top + 74,
           child: Obx(() {
             final liveData = controller.liveData.value;
             final isRestricted = liveData.isRestrictToJoin != 0;
-            final showJoinSlot = (controller.isHost || !isRestricted) && members.length < 3;
+            final showJoinSlot =
+                (controller.isHost || !isRestricted) && members.length < 8;
 
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ...List.generate(
-                  members.length,
-                  (index) => SidebarMemberTile(
-                    controller: controller,
-                    streamingView: members[index],
-                  ),
+            // Responsive card sizing: 1 participant -> larger card; multiple -> properly sized cards
+            final double cardWidth = members.length <= 1 ? 116.0 : 108.0;
+            final double cardHeight = members.length <= 1 ? 136.0 : 126.0;
+
+            if (members.isEmpty && !showJoinSlot) {
+              return const SizedBox.shrink();
+            }
+
+            return SizedBox(
+              height: cardHeight + 10,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ...List.generate(
+                      members.length,
+                      (index) => Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ParticipantVideoCard(
+                          controller: controller,
+                          streamingView: members[index],
+                          width: cardWidth,
+                          height: cardHeight,
+                        ),
+                      ),
+                    ),
+                    if (showJoinSlot)
+                      _JoinCallSlot(
+                        controller: controller,
+                        width: cardWidth,
+                        height: cardHeight,
+                      ),
+                  ],
                 ),
-                if (showJoinSlot)
-                  _JoinCallSlot(controller: controller),
-              ],
+              ),
             );
           }),
         ),
@@ -157,130 +183,246 @@ class EloeloStyleLayout extends StatelessWidget {
   }
 }
 
-class SidebarMemberTile extends StatelessWidget {
+class ParticipantVideoCard extends StatelessWidget {
   final LivestreamScreenController controller;
   final StreamView streamingView;
+  final double width;
+  final double height;
 
-  const SidebarMemberTile({
+  const ParticipantVideoCard({
     super.key,
     required this.controller,
     required this.streamingView,
+    this.width = 108.0,
+    this.height = 126.0,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      height: 78,
-      width: 78,
-      decoration: BoxDecoration(
-        color: const Color(0xFF1B1E28),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.4),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Stack(
-          children: [
-            // Video stream or avatar
-            Positioned.fill(
-              child: LiveStreamUserView(
-                isNameAndSpeakerVisible: false,
-                controller: controller,
-                streamingView: streamingView,
-              ),
-            ),
+    final streamUserId = int.tryParse(streamingView.streamId);
 
-            // Top-right chevron / minimize icon
-            Positioned(
-              top: 3,
-              right: 3,
-              child: Container(
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  color: Colors.white,
-                  size: 14,
-                ),
-              ),
-            ),
+    return Obx(() {
+      final state = controller.liveUsersStates.firstWhereOrNull(
+          (element) => element.userId == streamUserId);
+      final user = controller.firestoreController.users.firstWhereOrNull(
+          (u) => u.userId.toString() == streamingView.streamId);
 
-            // Bottom-left mic status badge
-            Obx(() {
-              final state = controller.liveUsersStates.firstWhereOrNull(
-                  (element) =>
-                      element.userId == int.tryParse(streamingView.streamId));
-              final isAudioOn = state?.audioStatus == VideoAudioStatus.on;
+      final isAudioOff = state?.audioStatus == VideoAudioStatus.offByMe ||
+          state?.audioStatus == VideoAudioStatus.offByHost;
+      final isVideoOff = state?.videoStatus == VideoAudioStatus.offByMe ||
+          state?.videoStatus == VideoAudioStatus.offByHost;
 
-              return Positioned(
-                bottom: 4,
-                left: 4,
-                child: Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.6),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    isAudioOn ? Icons.mic_rounded : Icons.mic_off_rounded,
-                    color: isAudioOn ? Colors.white : const Color(0xFFFF1744),
-                    size: 11,
-                  ),
+      final userName = user?.fullname ?? user?.username ?? "User";
+      final userPhoto = user?.profile?.addBaseURL();
+
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticManager.shared.light();
+          if (controller.isHost) {
+            _showHostParticipantControlMenu(
+              context: context,
+              controller: controller,
+              userId: streamUserId ?? 0,
+              user: user,
+              state: state,
+            );
+          } else {
+            if (user != null) {
+              Get.bottomSheet(
+                LiveStreamUserInfoSheet(
+                  isAudience: true,
+                  liveUser: user,
+                  controller: controller,
                 ),
+                isScrollControlled: true,
               );
-            }),
-
-            // Bottom user name gradient strip
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 1.5, horizontal: 2),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.black.withValues(alpha: 0.75)],
-                  ),
-                ),
-                child: Text(
-                  controller.firestoreController.users
-                          .firstWhereOrNull((u) => u.userId.toString() == streamingView.streamId)
-                          ?.fullname ??
-                      "User",
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 8.5,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+            }
+          }
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1B1E28),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.22),
+              width: 1.2,
             ),
-          ],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.45),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Stack(
+              children: [
+                // 1. Video Stream or Avatar Placeholder (When camera disabled/turned off)
+                Positioned.fill(
+                  child: isVideoOff
+                      ? Container(
+                          decoration: const BoxDecoration(
+                            gradient: RadialGradient(
+                              center: Alignment.center,
+                              radius: 0.9,
+                              colors: [Color(0xFF2C3243), Color(0xFF13151D)],
+                            ),
+                          ),
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CustomImage(
+                                  size: const Size(48, 48),
+                                  image: userPhoto,
+                                  fullName: userName,
+                                  radius: 24,
+                                  strokeWidth: 1.8,
+                                  strokeColor: const Color(0xFFFFB300),
+                                ),
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.5),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.videocam_off_rounded,
+                                        color: Colors.white70,
+                                        size: 11,
+                                      ),
+                                      SizedBox(width: 3),
+                                      Text(
+                                        'Video Off',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 8.5,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : streamingView.streamView,
+                ),
+
+                // 2. Top-left Chevron Icon (matching Reference Image 2)
+                Positioned(
+                  top: 5,
+                  left: 5,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: Colors.white,
+                      size: 15,
+                    ),
+                  ),
+                ),
+
+                // 3. Bottom-right Microphone Status Badge (matching Reference Image 2)
+                Positioned(
+                  bottom: 6,
+                  right: 6,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: isAudioOff
+                          ? const Color(0xFFD32F2F).withValues(alpha: 0.95)
+                          : const Color(0xFF2E7D32).withValues(alpha: 0.95),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.35),
+                        width: 0.8,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      isAudioOff
+                          ? Icons.mic_off_rounded
+                          : Icons.mic_rounded,
+                      color: Colors.white,
+                      size: 12,
+                    ),
+                  ),
+                ),
+
+                // 4. Bottom User Name Overlay
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.only(
+                        left: 7, right: 28, top: 12, bottom: 4),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.85),
+                        ],
+                      ),
+                    ),
+                    child: Text(
+                      userName,
+                      textAlign: TextAlign.left,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.1,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 }
 
 class _JoinCallSlot extends StatelessWidget {
   final LivestreamScreenController controller;
+  final double width;
+  final double height;
 
-  const _JoinCallSlot({required this.controller});
+  const _JoinCallSlot({
+    required this.controller,
+    this.width = 108.0,
+    this.height = 126.0,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -311,40 +453,47 @@ class _JoinCallSlot extends StatelessWidget {
         }
       },
       child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        width: 78,
-        height: 78,
+        width: width,
+        height: height,
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
         ),
         child: CustomPaint(
           painter: DashedRRectPainter(
             color: Colors.white.withValues(alpha: 0.7),
             strokeWidth: 1.5,
-            radius: 12,
+            radius: 16,
             dash: 5,
             gap: 4,
           ),
           child: Stack(
             children: [
-              const Center(
+              Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      Icons.video_call_rounded,
-                      color: Colors.white,
-                      size: 26,
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.video_call_rounded,
+                        color: Colors.white,
+                        size: 26,
+                      ),
                     ),
-                    SizedBox(height: 2),
-                    Text(
+                    const SizedBox(height: 6),
+                    const Text(
                       'Join Call',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 10,
+                        fontSize: 11,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.2,
                       ),
@@ -352,17 +501,17 @@ class _JoinCallSlot extends StatelessWidget {
                   ],
                 ),
               ),
-              // Blue badge on top-right corner
+              // Request count badge on top-right corner
               Positioned(
-                top: 4,
-                right: 4,
+                top: 6,
+                right: 6,
                 child: Container(
-                  padding: const EdgeInsets.all(2),
+                  padding: const EdgeInsets.all(3),
                   decoration: const BoxDecoration(
                     color: Color(0xFF1E88E5),
                     shape: BoxShape.circle,
                   ),
-                  constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
+                  constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
                   alignment: Alignment.center,
                   child: Obx(() {
                     final count = controller.isHost
@@ -372,7 +521,7 @@ class _JoinCallSlot extends StatelessWidget {
                       '$count',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 8.5,
+                        fontSize: 9,
                         fontWeight: FontWeight.w900,
                       ),
                     );
@@ -385,6 +534,371 @@ class _JoinCallSlot extends StatelessWidget {
       ),
     );
   }
+}
+
+void _showHostParticipantControlMenu({
+  required BuildContext context,
+  required LivestreamScreenController controller,
+  required int userId,
+  required AppUser? user,
+  required LivestreamUserState? state,
+}) {
+  final userName = user?.fullname ?? user?.username ?? 'Participant';
+  final userPhoto = user?.profile?.addBaseURL();
+  final isAudioMuted = state?.audioStatus == VideoAudioStatus.offByMe ||
+      state?.audioStatus == VideoAudioStatus.offByHost;
+  final isVideoOff = state?.videoStatus == VideoAudioStatus.offByMe ||
+      state?.videoStatus == VideoAudioStatus.offByHost;
+
+  Get.bottomSheet(
+    Container(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E212B),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        border: Border(
+          top: BorderSide(color: Colors.white12, width: 1),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Drag handle
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // User header info
+            Row(
+              children: [
+                CustomImage(
+                  size: const Size(48, 48),
+                  image: userPhoto,
+                  fullName: userName,
+                  radius: 24,
+                  strokeWidth: 2,
+                  strokeColor: const Color(0xFFFFB300),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        userName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          // Mic status chip
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2.5),
+                            decoration: BoxDecoration(
+                              color: isAudioMuted
+                                  ? const Color(0xFFD32F2F).withValues(alpha: 0.2)
+                                  : const Color(0xFF2E7D32).withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isAudioMuted
+                                    ? const Color(0xFFD32F2F).withValues(alpha: 0.6)
+                                    : const Color(0xFF2E7D32).withValues(alpha: 0.6),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  isAudioMuted
+                                      ? Icons.mic_off_rounded
+                                      : Icons.mic_rounded,
+                                  size: 11,
+                                  color: isAudioMuted
+                                      ? const Color(0xFFFF5252)
+                                      : const Color(0xFF69F0AE),
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  isAudioMuted ? 'Mic Muted' : 'Mic Active',
+                                  style: TextStyle(
+                                    color: isAudioMuted
+                                        ? const Color(0xFFFF5252)
+                                        : const Color(0xFF69F0AE),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Video status chip
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2.5),
+                            decoration: BoxDecoration(
+                              color: isVideoOff
+                                  ? const Color(0xFFE65100).withValues(alpha: 0.2)
+                                  : const Color(0xFF2E7D32).withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isVideoOff
+                                    ? const Color(0xFFE65100).withValues(alpha: 0.6)
+                                    : const Color(0xFF2E7D32).withValues(alpha: 0.6),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  isVideoOff
+                                      ? Icons.videocam_off_rounded
+                                      : Icons.videocam_rounded,
+                                  size: 11,
+                                  color: isVideoOff
+                                      ? const Color(0xFFFFB74D)
+                                      : const Color(0xFF69F0AE),
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  isVideoOff ? 'Video Off' : 'Video Active',
+                                  style: TextStyle(
+                                    color: isVideoOff
+                                        ? const Color(0xFFFFB74D)
+                                        : const Color(0xFF69F0AE),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            const Divider(color: Colors.white12, height: 1),
+            const SizedBox(height: 10),
+
+            // 1. Mute / Unmute
+            _buildHostControlTile(
+              icon: isAudioMuted ? Icons.mic_rounded : Icons.mic_off_rounded,
+              iconColor: isAudioMuted
+                  ? const Color(0xFF69F0AE)
+                  : const Color(0xFFFFB300),
+              title: isAudioMuted ? 'Unmute User' : 'Mute User',
+              subtitle: isAudioMuted
+                  ? 'Allow user to speak in the live room'
+                  : "Mute user's microphone for all listeners",
+              onTap: () {
+                Get.back();
+                HapticManager.shared.light();
+                controller.hostMuteUser(userId, !isAudioMuted);
+              },
+            ),
+
+            // 2. Turn Video Off / On
+            _buildHostControlTile(
+              icon: isVideoOff
+                  ? Icons.videocam_rounded
+                  : Icons.videocam_off_rounded,
+              iconColor: isVideoOff
+                  ? const Color(0xFF69F0AE)
+                  : const Color(0xFFFFB300),
+              title: isVideoOff ? 'Turn On Video' : 'Turn Off Video',
+              subtitle: isVideoOff
+                  ? 'Enable user camera'
+                  : 'Disable user camera and display profile avatar',
+              onTap: () {
+                Get.back();
+                HapticManager.shared.light();
+                controller.hostToggleUserVideo(userId, !isVideoOff);
+              },
+            ),
+
+            // 3. Remove / Kick User
+            _buildHostControlTile(
+              icon: Icons.person_remove_rounded,
+              iconColor: const Color(0xFFFF3B30),
+              title: 'Remove / Kick User',
+              titleColor: const Color(0xFFFF5252),
+              subtitle: 'Disconnect user and remove them from the call',
+              onTap: () {
+                Get.back();
+                _showKickConfirmationDialog(context, controller, userId, userName);
+              },
+            ),
+          ],
+        ),
+      ),
+    ),
+    isScrollControlled: true,
+  );
+}
+
+Widget _buildHostControlTile({
+  required IconData icon,
+  required Color iconColor,
+  required String title,
+  required String subtitle,
+  required VoidCallback onTap,
+  Color? titleColor,
+}) {
+  return ListTile(
+    contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+    leading: Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: iconColor.withValues(alpha: 0.14),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icon, color: iconColor, size: 22),
+    ),
+    title: Text(
+      title,
+      style: TextStyle(
+        color: titleColor ?? Colors.white,
+        fontSize: 14.5,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+    subtitle: Text(
+      subtitle,
+      style: const TextStyle(color: Colors.white54, fontSize: 11.5),
+    ),
+    trailing: const Icon(Icons.arrow_forward_ios_rounded,
+        color: Colors.white24, size: 14),
+    onTap: onTap,
+  );
+}
+
+void _showKickConfirmationDialog(
+  BuildContext context,
+  LivestreamScreenController controller,
+  int userId,
+  String userName,
+) {
+  Get.dialog(
+    Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Container(
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E212B),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.6),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF3B30).withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.person_remove_rounded,
+                color: Color(0xFFFF3B30),
+                size: 32,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Remove $userName?',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Are you sure you want to remove $userName from the live call? They will be disconnected from the video call.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 13.5,
+              ),
+            ),
+            const SizedBox(height: 22),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Get.back(),
+                    child: Text(
+                      'Cancel',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF3B30),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    onPressed: () {
+                      Get.back();
+                      HapticManager.shared.medium();
+                      controller.hostKickUser(userId);
+                    },
+                    child: const Text(
+                      'Remove',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class DashedRRectPainter extends CustomPainter {

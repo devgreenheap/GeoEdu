@@ -46,7 +46,6 @@ class AudioCallListController extends BaseController {
         .listen((snapshot) {
       final rooms = snapshot.docs
           .map((doc) => AudioRoom.fromJson(doc.data()))
-          .where((r) => r.hostId != myUser?.id)
           .toList();
       audioRooms.value = rooms;
     }, onError: (e) {

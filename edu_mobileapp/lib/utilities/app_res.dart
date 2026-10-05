@@ -6,7 +6,7 @@ class AppRes {
   static const String gifBrandName = 'GIPHY';
 
   static String playStoreLink =
-      'https://play.google.com/store/apps/details?id=com.geoedu.app';
+      'https://play.google.com/store/apps/details?id=com.geoedu.app&pcampaignid=web_share';
 
   static String getLiveShareMessage({
     required String hostName,

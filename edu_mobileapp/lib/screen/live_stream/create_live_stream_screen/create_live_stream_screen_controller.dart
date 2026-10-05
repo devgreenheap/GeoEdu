@@ -100,29 +100,83 @@ class CreateLiveStreamScreenController extends BaseController {
     }
   }
 
+  bool isCategorySelected(Category category) {
+    final current = selectedCategory.value;
+    if (current == null) return false;
+    if (identical(current, category)) return true;
+    if (current.id != null && category.id != null) {
+      return current.id == category.id;
+    }
+    if ((current.name?.trim().isNotEmpty ?? false) &&
+        (category.name?.trim().isNotEmpty ?? false)) {
+      return current.name!.trim().toLowerCase() ==
+          category.name!.trim().toLowerCase();
+    }
+    return false;
+  }
+
+  bool isSubCategorySelected(SubCategory sub) {
+    final current = selectedSubCategory.value;
+    if (current == null) return false;
+    if (identical(current, sub)) return true;
+    if (current.id != null && sub.id != null) {
+      return current.id == sub.id;
+    }
+    if ((current.name?.trim().isNotEmpty ?? false) &&
+        (sub.name?.trim().isNotEmpty ?? false)) {
+      return current.name!.trim().toLowerCase() ==
+          sub.name!.trim().toLowerCase();
+    }
+    return false;
+  }
+
+  bool isTopicSelected(Topic topic) {
+    final current = selectedTopic.value;
+    if (current == null) return false;
+    if (identical(current, topic)) return true;
+    if (current.id != null && topic.id != null) {
+      return current.id == topic.id;
+    }
+    if ((current.name?.trim().isNotEmpty ?? false) &&
+        (topic.name?.trim().isNotEmpty ?? false)) {
+      return current.name!.trim().toLowerCase() ==
+          topic.name!.trim().toLowerCase();
+    }
+    return false;
+  }
+
   void onCategoryChanged(Category? value) {
     selectedCategory.value = value;
+    selectedCategory.refresh();
     final subs = value?.subCategories;
     if (subs != null && subs.isNotEmpty) {
       onSubCategoryChanged(subs.first);
     } else {
       selectedSubCategory.value = null;
+      selectedSubCategory.refresh();
       selectedTopic.value = null;
+      selectedTopic.refresh();
     }
+    update();
   }
 
   void onSubCategoryChanged(SubCategory? value) {
     selectedSubCategory.value = value;
+    selectedSubCategory.refresh();
     final tops = value?.topics;
     if (tops != null && tops.isNotEmpty) {
-      selectedTopic.value = tops.first;
+      onTopicChanged(tops.first);
     } else {
       selectedTopic.value = null;
+      selectedTopic.refresh();
     }
+    update();
   }
 
   void onTopicChanged(Topic? value) {
     selectedTopic.value = value;
+    selectedTopic.refresh();
+    update();
   }
 
   void onLanguageChanged(Language? value) {

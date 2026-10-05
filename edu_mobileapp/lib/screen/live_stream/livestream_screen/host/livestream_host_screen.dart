@@ -60,16 +60,7 @@ class _LivestreamHostScreenState extends State<LivestreamHostScreen> {
         canPop: false,
         onPopInvokedWithResult: (didPop, result) {
           if (!didPop) {
-            showEndLiveConfirmation(
-              context: context,
-              title: widget.isHost ? 'End Live' : 'Leave Live',
-              message: widget.isHost
-                  ? 'Are you sure you want to end this live?'
-                  : 'Are you sure you want to leave this live?',
-              confirmText: widget.isHost ? 'End Live' : 'Leave',
-              cancelText: 'Cancel',
-              onConfirm: controller.onStopButtonTap,
-            );
+            controller.onStopButtonTap();
           }
         },
         child: Stack(
@@ -107,7 +98,9 @@ class _LivestreamHostScreenState extends State<LivestreamHostScreen> {
             LiveVideoRoomOverlay(
               controller: controller,
               isHost: widget.isHost,
-              onBackOrClose: controller.onStopButtonTap,
+              onBackOrClose: widget.isHost
+                  ? controller.hostEndStream
+                  : controller.onCloseAudienceBtn,
             ),
             Obx(
               () {
@@ -127,6 +120,11 @@ class _LivestreamHostScreenState extends State<LivestreamHostScreen> {
                   if (mounted) {
                     setState(() {
                       _showCountdown = false;
+                      final now = DateTime.now().millisecondsSinceEpoch;
+                      widget.livestream.createdAt = now;
+                      controller.liveData.update((val) {
+                        val?.createdAt = now;
+                      });
                     });
                   }
                 },

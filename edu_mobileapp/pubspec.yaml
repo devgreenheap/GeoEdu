@@ -135,6 +135,8 @@ dependencies:
   retrytech_plugin:
     path: ./plugins/retrytech_plugin
   file_picker: ^10.3.10
+  pdf: ^3.12.0
+  printing: ^5.14.3
 
 
 dev_dependencies:

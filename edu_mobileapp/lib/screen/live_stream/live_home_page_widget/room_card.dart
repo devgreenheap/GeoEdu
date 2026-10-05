@@ -320,21 +320,24 @@ class _AudioRoomGridCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            ColorRes.orangeDark.withValues(alpha: 0.35),
-            ColorRes.cardBackground
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    return GestureDetector(
+      onTap: item.onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              ColorRes.orangeDark.withValues(alpha: 0.35),
+              ColorRes.cardBackground
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: ColorRes.bgGrey),
         ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: ColorRes.bgGrey),
-      ),
-      child: Stack(
+        child: Stack(
         children: [
           Positioned(
             top: 0,
@@ -474,6 +477,7 @@ class _AudioRoomGridCard extends StatelessWidget {
           ),
         ],
       ),
+    ),
     );
   }
 }

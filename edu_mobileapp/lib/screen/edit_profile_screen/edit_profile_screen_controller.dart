@@ -196,8 +196,8 @@ class EditProfileScreenController extends BaseController {
 
   void selectCategory(String? value) {
     selectedCategory = value;
-    selectedCategoryObj =
-        categoryList.firstWhereOrNull((e) => e.name == value);
+    selectedCategoryObj = categoryList.firstWhereOrNull((e) =>
+        e.name?.trim().toLowerCase() == value?.trim().toLowerCase());
     selectedSubCategory = null;
     selectedSubCategoryObj = null;
     selectedTopic = null;
@@ -208,7 +208,8 @@ class EditProfileScreenController extends BaseController {
   void selectSubCategory(String? value) {
     selectedSubCategory = value;
     selectedSubCategoryObj = selectedCategoryObj?.subCategories
-        ?.firstWhereOrNull((e) => e.name == value);
+        ?.firstWhereOrNull((e) =>
+            e.name?.trim().toLowerCase() == value?.trim().toLowerCase());
     selectedTopic = null;
     selectedTopicObj = null;
     update();
@@ -217,7 +218,8 @@ class EditProfileScreenController extends BaseController {
   void selectTopic(String? value) {
     selectedTopic = value;
     selectedTopicObj = selectedSubCategoryObj?.topics
-        ?.firstWhereOrNull((e) => e.name == value);
+        ?.firstWhereOrNull((e) =>
+            e.name?.trim().toLowerCase() == value?.trim().toLowerCase());
     update();
   }
 
@@ -295,9 +297,21 @@ class EditProfileScreenController extends BaseController {
   Future<void> fetchInterestCatalog() async {
     try {
       final result = await CommonService.instance.fetchInterests();
-      interestCatalog = result.data ?? [];
+      final items = result.data ?? [];
+      if (items.isNotEmpty) {
+        interestCatalog = items;
+      } else if (categoryList.isNotEmpty) {
+        interestCatalog = categoryList
+            .map((c) => Interest(id: c.id, name: c.name))
+            .toList();
+      }
     } catch (e) {
       Loggers.error('Failed to fetch interest catalog: $e');
+      if (categoryList.isNotEmpty) {
+        interestCatalog = categoryList
+            .map((c) => Interest(id: c.id, name: c.name))
+            .toList();
+      }
     }
     update();
   }
@@ -311,18 +325,27 @@ class EditProfileScreenController extends BaseController {
     }
   }
 
-  Future<void> saveInterests(List<Interest> newSelection) async {
-    showLoader();
+  Future<bool> saveInterests(List<Interest> newSelection) async {
+    // Immediately reflect the updated selection in the UI
+    selectedInterests.value = List<Interest>.from(newSelection);
+    selectedInterests.refresh();
+    update();
+
     try {
+      final ids = newSelection.map((e) => e.id).whereType<int>().toList();
       final result = await UserService.instance.updateMyInterests(
-        interestIds: newSelection.map((e) => e.id!).toList(),
+        interestIds: ids,
       );
-      selectedInterests.value = result.data ?? newSelection;
+      if (result.status == true && result.data != null) {
+        selectedInterests.value = result.data!;
+        selectedInterests.refresh();
+      }
+      update();
+      return true;
     } catch (e) {
       Loggers.error('Failed to update interests: $e');
-      showSnackBar('Failed to update interests');
+      return false;
     }
-    stopLoader();
   }
 
   void removeInterest(Interest interest) {
@@ -482,6 +505,23 @@ class EditProfileScreenController extends BaseController {
         ? '${selectedDate!.year}-${selectedDate!.month.toString().padLeft(2, '0')}-${selectedDate!.day.toString().padLeft(2, '0')}'
         : null;
     final fullName = '${firstNameController.text.trim()} ${lastNameController.text.trim()}'.trim();
+    final catObj = selectedCategoryObj ??
+        categoryList.firstWhereOrNull((e) =>
+            e.name?.trim().toLowerCase() ==
+            selectedCategory?.trim().toLowerCase());
+    final subCatObj = selectedSubCategoryObj ??
+        catObj?.subCategories?.firstWhereOrNull((e) =>
+            e.name?.trim().toLowerCase() ==
+            selectedSubCategory?.trim().toLowerCase());
+    final topObj = selectedTopicObj ??
+        subCatObj?.topics?.firstWhereOrNull((e) =>
+            e.name?.trim().toLowerCase() ==
+            selectedTopic?.trim().toLowerCase());
+    final langObj = selectedLanguageObj ??
+        languageList.firstWhereOrNull((e) =>
+            e.title?.trim().toLowerCase() ==
+            selectedLanguageTitle?.trim().toLowerCase());
+
     User? user = await UserService.instance.updateUserDetails(
       fullname: fullName,
       userName: usernameController.text.trim(),
@@ -496,14 +536,14 @@ class EditProfileScreenController extends BaseController {
           phoneController.selectedCode.value?.phoneCode.replaceAll('+', '') ?? ''),
       country: selectedCountry,
       countryCode: phoneController.selectedCode.value?.countryCode,
-      categoryId: selectedCategoryObj?.id,
-      subCategoryId: selectedSubCategoryObj?.id,
-      topicId: selectedTopicObj?.id,
-      languageId: selectedLanguageObj?.id,
-      categoryName: selectedCategoryObj?.name,
-      subCategoryName: selectedSubCategoryObj?.name,
-      topicName: selectedTopicObj?.name,
-      languageName: selectedLanguageObj?.title,
+      categoryId: catObj?.id,
+      subCategoryId: subCatObj?.id,
+      topicId: topObj?.id,
+      languageId: langObj?.id,
+      categoryName: catObj?.name ?? selectedCategory,
+      subCategoryName: subCatObj?.name ?? selectedSubCategory,
+      topicName: topObj?.name ?? selectedTopic,
+      languageName: langObj?.title ?? selectedLanguageTitle,
       firstName: firstNameController.text.trim(),
       lastName: lastNameController.text.trim(),
       gender: selectedGender,

@@ -28,6 +28,7 @@ import 'package:geoedu/utilities/audio_theme_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/utilities/firebase_const.dart';
 import 'package:geoedu/common/widget/room_top_gifters_sheet.dart';
+import 'package:geoedu/common/widget/live_room/set_live_target_sheet.dart';
 
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_start_countdown_overlay.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/other_lives_side_panel.dart';
@@ -393,6 +394,9 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                   if (mounted) {
                     setState(() {
                       _showCountdown = false;
+                      final now = DateTime.now().millisecondsSinceEpoch;
+                      widget.room.createdAt = now;
+                      controller.room.createdAt = now;
                     });
                   }
                 },
@@ -617,7 +621,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _AudioTimer(createdAt: room.createdAt),
+                  _AudioTimer(createdAt: _showCountdown ? null : room.createdAt),
                   const SizedBox(width: 8),
                   GestureDetector(
                     onTap: () => _showRequestsSheet(controller),
@@ -965,29 +969,12 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
   }
 
   void _showSetTargetDialog(AudioRoomController controller) {
-    final textController = TextEditingController(
-        text: controller.targetDiamonds.value > 0 ? controller.targetDiamonds.value.toString() : '');
-    Get.dialog(
-      AlertDialog(
-        backgroundColor: ColorRes.cardBackground,
-        title: const Text('Set Diamond Target', style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: textController,
-          keyboardType: TextInputType.number,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(hintText: 'e.g. 5000', hintStyle: TextStyle(color: Colors.white38)),
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () {
-              controller.setTargetDiamonds(int.tryParse(textController.text.trim()) ?? 0);
-              Get.back();
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+    SetLiveTargetSheet.show(
+      context,
+      initialValue: controller.targetDiamonds.value,
+      onTargetSet: (val) {
+        controller.setTargetDiamonds(val);
+      },
     );
   }
 
@@ -1195,8 +1182,12 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
     return Obx(() {
       final participant = controller.participants
           .firstWhereOrNull((p) => p.userId == userId);
-      final isMuted = controller.mutedSpeakerIds.contains(userId);
-      final isSelf = controller.myUser?.id == userId;
+      final myId = controller.myUser?.id ?? SessionManager.instance.getUserID();
+      final isSelf = (controller.myUser?.id == userId) || (myId == userId);
+      final isMuted = isSelf
+          ? (controller.isMuted.value || controller.mutedSpeakerIds.contains(userId))
+          : controller.mutedSpeakerIds.contains(userId);
+      final isSpeaking = !isMuted && controller.isUserSpeaking(userId);
       final name = participant?.fullname ?? participant?.username ?? (isSelf ? 'You' : 'User $userId');
       final photo = participant?.profilePhoto;
 
@@ -1236,7 +1227,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Center Stage: Circular Avatar with glowing golden ring
+              // Center Stage: Circular Avatar with glowing golden ring (green if speaking)
               Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1246,14 +1237,18 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: const Color(0xFFFFD700).withValues(alpha: 0.8),
-                          width: 2,
+                          color: isSpeaking
+                              ? const Color(0xFF00FF7F)
+                              : const Color(0xFFFFD700).withValues(alpha: 0.8),
+                          width: isSpeaking ? 2.5 : 2,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFFFFD700).withValues(alpha: 0.35),
-                            blurRadius: 8,
-                            spreadRadius: 1,
+                            color: isSpeaking
+                                ? const Color(0xFF00FF7F).withValues(alpha: 0.85)
+                                : const Color(0xFFFFD700).withValues(alpha: 0.35),
+                            blurRadius: isSpeaking ? 10 : 8,
+                            spreadRadius: isSpeaking ? 2 : 1,
                           ),
                         ],
                       ),
@@ -1762,10 +1757,10 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
   Widget _buildHostAvatar(AudioRoomController controller) {
     return Obx(() {
       final bool royal = controller.isRoyalMode.value;
-      final bool isSpeaking = controller.isUserSpeaking(room.hostId);
       final bool isMuted = isHost
-          ? controller.isMuted.value
+          ? (controller.isMuted.value || controller.mutedSpeakerIds.contains(room.hostId))
           : controller.mutedSpeakerIds.contains(room.hostId);
+      final bool isSpeaking = !isMuted && controller.isUserSpeaking(room.hostId);
 
       final Color borderColor =
           isSpeaking ? const Color(0xFF00FF7F) : const Color(0xFF00E676);
@@ -3027,7 +3022,6 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
     if (userId == null) {
       return Obx(() {
         final isLocked = controller.lockedSeatIndices.contains(index);
-        final canRequest = !isHost && !isLocked && !controller.isSpeaker.value;
         final hasRequested = controller.hasRequested.value;
 
         return GestureDetector(
@@ -3098,10 +3092,12 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
 
     // ── 2. OCCUPIED SEAT (CO-HOST / MEMBER JOINS) ──
     return Obx(() {
-      final isMuted = controller.mutedSpeakerIds.contains(userId);
-      final isSpeaking = controller.isUserSpeaking(userId);
       final myId = controller.myUser?.id ?? SessionManager.instance.getUserID();
-      final isSelf = myId != null && myId == userId;
+      final isSelf = (myId == userId) || (controller.myUser?.id == userId);
+      final isMuted = isSelf
+          ? (controller.isMuted.value || controller.mutedSpeakerIds.contains(userId))
+          : controller.mutedSpeakerIds.contains(userId);
+      final isSpeaking = !isMuted && controller.isUserSpeaking(userId);
 
       return GestureDetector(
         onTap: () {
@@ -5721,6 +5717,7 @@ class _AudioTimerState extends State<_AudioTimer> {
     final startedAt = widget.createdAt;
     if (startedAt == null) return '00:00:00';
     final elapsed = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(startedAt));
+    if (elapsed.isNegative) return '00:00:00';
     final h = elapsed.inHours.toString().padLeft(2, '0');
     final m = (elapsed.inMinutes % 60).toString().padLeft(2, '0');
     final s = (elapsed.inSeconds % 60).toString().padLeft(2, '0');

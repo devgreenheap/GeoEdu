@@ -380,33 +380,35 @@ class CreateLiveStreamScreen extends StatelessWidget {
                                                 .withValues(alpha: .7))),
                                     const SizedBox(height: 8),
                                     SizedBox(
-                                      height: 76,
-                                      child: Obx(() => ListView.separated(
-                                            scrollDirection: Axis.horizontal,
-                                            itemCount:
-                                                controller.categoryList.length,
-                                            separatorBuilder: (_, __) =>
-                                                const SizedBox(width: 10),
-                                            itemBuilder: (context, index) {
-                                              final category =
-                                                  controller.categoryList[index];
-                                              final isSelected = controller
-                                                      .selectedCategory
-                                                      .value
-                                                      ?.id ==
-                                                  category.id;
-                                              return _CategoryTile3D(
-                                                name: category.name ?? '',
-                                                isSelected: isSelected,
-                                                onTap: () => controller
-                                                    .onCategoryChanged(category),
-                                              );
-                                            },
-                                          )),
+                                      height: 86,
+                                      child: Obx(() {
+                                        // Subscribe to selectedCategory so Obx rebuilds on category switch
+                                        final _ = controller.selectedCategory.value;
+                                        return ListView.separated(
+                                          scrollDirection: Axis.horizontal,
+                                          itemCount:
+                                              controller.categoryList.length,
+                                          separatorBuilder: (_, __) =>
+                                              const SizedBox(width: 10),
+                                          itemBuilder: (context, index) {
+                                            final category =
+                                                controller.categoryList[index];
+                                            final isSelected = controller
+                                                .isCategorySelected(category);
+                                            return _CategoryTile3D(
+                                              name: category.name ?? '',
+                                              isSelected: isSelected,
+                                              onTap: () => controller
+                                                  .onCategoryChanged(category),
+                                            );
+                                          },
+                                        );
+                                      }),
                                     ),
                                     // Sub Category section
                                     Obx(() {
                                       final currentCat = controller.selectedCategory.value;
+                                      final currentSub = controller.selectedSubCategory.value;
                                       if (currentCat == null) return const SizedBox.shrink();
                                       final subs = currentCat.subCategories ?? [];
                                       if (subs.isEmpty) return const SizedBox.shrink();
@@ -431,29 +433,44 @@ class CreateLiveStreamScreen extends StatelessWidget {
                                               separatorBuilder: (_, __) => const SizedBox(width: 8),
                                               itemBuilder: (context, index) {
                                                 final sub = subs[index];
-                                                final isSelected = controller.selectedSubCategory.value?.id == sub.id;
+                                                final isSelected = controller.isSubCategorySelected(sub);
                                                 return GestureDetector(
+                                                  behavior: HitTestBehavior.opaque,
                                                   onTap: () => controller.onSubCategoryChanged(sub),
                                                   child: AnimatedContainer(
                                                     duration: const Duration(milliseconds: 200),
                                                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                                     decoration: BoxDecoration(
+                                                      gradient: isSelected
+                                                          ? const LinearGradient(
+                                                              colors: [ColorRes.primaryColor, ColorRes.primaryColorEnd],
+                                                            )
+                                                          : null,
                                                       color: isSelected
-                                                          ? ColorRes.primaryColor.withValues(alpha: 0.25)
+                                                          ? null
                                                           : Colors.white.withValues(alpha: 0.08),
                                                       borderRadius: BorderRadius.circular(20),
                                                       border: Border.all(
                                                         color: isSelected
-                                                            ? ColorRes.primaryColor
+                                                            ? Colors.white
                                                             : Colors.white.withValues(alpha: 0.2),
                                                         width: isSelected ? 1.5 : 1,
                                                       ),
+                                                      boxShadow: isSelected
+                                                          ? [
+                                                              BoxShadow(
+                                                                color: ColorRes.primaryColor.withValues(alpha: 0.45),
+                                                                blurRadius: 8,
+                                                                spreadRadius: 1,
+                                                              ),
+                                                            ]
+                                                          : null,
                                                     ),
                                                     alignment: Alignment.center,
                                                     child: Text(
                                                       sub.name ?? '',
                                                       style: TextStyle(
-                                                        color: isSelected ? ColorRes.primaryColor : Colors.white,
+                                                        color: Colors.white,
                                                         fontSize: 12.5,
                                                         fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                                                       ),
@@ -469,6 +486,7 @@ class CreateLiveStreamScreen extends StatelessWidget {
                                     // Topic section
                                     Obx(() {
                                       final currentSub = controller.selectedSubCategory.value;
+                                      final currentTopic = controller.selectedTopic.value;
                                       if (currentSub == null) return const SizedBox.shrink();
                                       final topics = currentSub.topics ?? [];
                                       if (topics.isEmpty) return const SizedBox.shrink();
@@ -493,29 +511,43 @@ class CreateLiveStreamScreen extends StatelessWidget {
                                               separatorBuilder: (_, __) => const SizedBox(width: 8),
                                               itemBuilder: (context, index) {
                                                 final topic = topics[index];
-                                                final isSelected = controller.selectedTopic.value?.id == topic.id;
+                                                final isSelected = controller.isTopicSelected(topic);
                                                 return GestureDetector(
+                                                  behavior: HitTestBehavior.opaque,
                                                   onTap: () => controller.onTopicChanged(topic),
                                                   child: AnimatedContainer(
                                                     duration: const Duration(milliseconds: 200),
                                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                                     decoration: BoxDecoration(
+                                                      gradient: isSelected
+                                                          ? const LinearGradient(
+                                                              colors: [ColorRes.primaryColor, ColorRes.primaryColorEnd],
+                                                            )
+                                                          : null,
                                                       color: isSelected
-                                                          ? ColorRes.primaryColor.withValues(alpha: 0.25)
+                                                          ? null
                                                           : Colors.white.withValues(alpha: 0.06),
                                                       borderRadius: BorderRadius.circular(16),
                                                       border: Border.all(
                                                         color: isSelected
-                                                            ? ColorRes.primaryColor
+                                                            ? Colors.white
                                                             : Colors.white.withValues(alpha: 0.15),
                                                         width: isSelected ? 1.5 : 1,
                                                       ),
+                                                      boxShadow: isSelected
+                                                          ? [
+                                                              BoxShadow(
+                                                                color: ColorRes.primaryColor.withValues(alpha: 0.4),
+                                                                blurRadius: 6,
+                                                              ),
+                                                            ]
+                                                          : null,
                                                     ),
                                                     alignment: Alignment.center,
                                                     child: Text(
                                                       topic.name ?? '',
                                                       style: TextStyle(
-                                                        color: isSelected ? ColorRes.primaryColor : Colors.white70,
+                                                        color: Colors.white,
                                                         fontSize: 11.5,
                                                         fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
                                                       ),
@@ -755,22 +787,31 @@ class _CategoryTile3D extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _CategoryTile3D({required this.name, required this.isSelected, required this.onTap});
+  const _CategoryTile3D({
+    super.key,
+    required this.name,
+    required this.isSelected,
+    required this.onTap,
+  });
 
   static const _iconsByKeyword = <String, IconData>{
-    // Education
-    'engineering': Icons.construction_rounded,
+    // Education & Academics — matches screenshot icons
+    'engineer': Icons.handyman_rounded,
+    'engineering': Icons.handyman_rounded,
+    'exam': Icons.category_rounded,
+    'test': Icons.category_rounded,
+    'medical': Icons.local_hospital_rounded,
+    'health': Icons.local_hospital_rounded,
+    'doctor': Icons.medical_services_rounded,
     'school': Icons.school_rounded,
     'education': Icons.school_rounded,
+    'college': Icons.school_rounded,
     'study': Icons.menu_book_rounded,
     'math': Icons.calculate_rounded,
     'science': Icons.science_rounded,
     'chemistry': Icons.science_rounded,
     'physics': Icons.bolt_rounded,
     'biology': Icons.biotech_rounded,
-    'medical': Icons.local_hospital_rounded,
-    'health': Icons.health_and_safety_rounded,
-    'doctor': Icons.medical_services_rounded,
     'law': Icons.gavel_rounded,
     'business': Icons.business_center_rounded,
     'finance': Icons.account_balance_rounded,
@@ -779,7 +820,7 @@ class _CategoryTile3D extends StatelessWidget {
     'program': Icons.terminal_rounded,
     'language': Icons.translate_rounded,
     'english': Icons.abc_rounded,
-    // Entertainment
+    // Entertainment & Lifestyle
     'live': Icons.videocam_rounded,
     'show': Icons.videocam_rounded,
     'video': Icons.play_circle_rounded,
@@ -803,7 +844,7 @@ class _CategoryTile3D extends StatelessWidget {
   };
 
   IconData get _icon {
-    final lower = name.toLowerCase();
+    final lower = name.toLowerCase().trim();
     for (final entry in _iconsByKeyword.entries) {
       if (lower.contains(entry.key)) return entry.value;
     }
@@ -813,50 +854,93 @@ class _CategoryTile3D extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: SizedBox(
-        width: 62,
+        width: 64,
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? ColorRes.primaryColor.withValues(alpha: 0.25)
-                    : Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: isSelected ? ColorRes.primaryColor : Colors.white12,
-                  width: isSelected ? 2.5 : 1,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    gradient: isSelected
+                        ? const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFFFF5200), Color(0xFFFF7A00)],
+                          )
+                        : null,
+                    color: isSelected
+                        ? null
+                        : Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(
+                      color: isSelected ? Colors.white : Colors.white12,
+                      width: isSelected ? 2.0 : 1.0,
+                    ),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: const Color(0xFFFF5200).withValues(alpha: 0.5),
+                              blurRadius: 10,
+                              spreadRadius: 1,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    _icon,
+                    color: Colors.white,
+                    size: 26,
+                  ),
                 ),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: ColorRes.primaryColor.withValues(alpha: 0.4),
-                          blurRadius: 8,
-                          spreadRadius: 1,
-                        ),
-                      ]
-                    : null,
-              ),
-              alignment: Alignment.center,
-              child: Icon(
-                _icon,
-                color: isSelected ? ColorRes.primaryColor : Colors.white,
-                size: 24,
-              ),
+                if (isSelected)
+                  Positioned(
+                    top: -4,
+                    right: -4,
+                    child: Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.check_rounded,
+                        size: 13,
+                        color: Color(0xFFFF5200),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(
               name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
               style: TextStyle(
-                color: isSelected ? ColorRes.primaryColor : Colors.white70,
-                fontSize: 10,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                color: isSelected
+                    ? const Color(0xFFFF8533)
+                    : Colors.white.withValues(alpha: 0.75),
+                fontSize: 10.5,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
               ),
             ),
           ],

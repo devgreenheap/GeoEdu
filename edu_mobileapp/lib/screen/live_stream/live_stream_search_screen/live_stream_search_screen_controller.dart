@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
 import 'package:geoedu/common/controller/base_controller.dart';
 import 'package:geoedu/common/controller/firebase_firestore_controller.dart';
-import 'package:geoedu/common/extensions/list_extension.dart';
 import 'package:geoedu/common/extensions/user_extension.dart';
 import 'package:geoedu/common/manager/logger.dart';
 import 'package:geoedu/common/manager/session_manager.dart';
@@ -21,8 +20,9 @@ import 'package:geoedu/model/livestream/livestream_user_state.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:flutter/material.dart';
 import 'package:geoedu/common/widget/recorded_video_player_screen.dart';
+import 'package:geoedu/model/audio_call/audio_room.dart';
 import 'package:geoedu/model/livestream/live_room_item.dart';
-import 'package:geoedu/screen/audio_call/audio_call_list_controller.dart';
+import 'package:geoedu/screen/audio_call/audio_room_screen.dart';
 import 'package:geoedu/screen/live_stream/go_live_setup_screen.dart';
 import 'package:geoedu/screen/profile_screen/profile_screen.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/audience/live_stream_audience_screen.dart';
@@ -35,6 +35,11 @@ class LiveStreamSearchScreenController extends BaseController {
   RxList<Livestream> livestreamList = <Livestream>[].obs;
   RxList<Livestream> livestreamFilterList = <Livestream>[].obs;
   StreamSubscription<QuerySnapshot<Livestream>>? livestreamListListener;
+
+  // Real-time audio rooms state
+  RxList<AudioRoom> audioRoomsList = <AudioRoom>[].obs;
+  RxList<AudioRoom> audioRoomsFilterList = <AudioRoom>[].obs;
+  StreamSubscription? _audioRoomsSub;
 
   final firebaseFirestoreController = Get.find<FirebaseFirestoreController>();
 
@@ -81,13 +86,9 @@ class LiveStreamSearchScreenController extends BaseController {
 
   bool _dummyUsersReady = false;
 
-  /// Live video + live audio rooms only (no recordings), wrapped for the
-  /// unified Home grid / Popular Hosts row. Recomputed on read — callers
-  /// wrap this in their own `Obx` watching `livestreamFilterList` and
-  /// `AudioCallListController.audioRooms` directly, so it always reflects
-  /// current data without a separate cached Rx field to keep in sync.
-  List<LiveRoomItem> _liveVideoAndAudioItems() {
-    final items = <LiveRoomItem>[
+  /// Live video + live audio rooms matching current category filter.
+  List<LiveRoomItem> _filteredLiveVideoAndAudioItems() {
+    return [
       for (final stream in livestreamFilterList)
         LiveRoomItem.video(
           stream,
@@ -99,17 +100,38 @@ class LiveStreamSearchScreenController extends BaseController {
               .where((photo) => photo.isNotEmpty)
               .toList(),
         ),
+      for (final room in audioRoomsFilterList)
+        LiveRoomItem.audio(
+          room,
+          onTap: () => onAudioRoomTap(room),
+        ),
     ];
-    if (Get.isRegistered<AudioCallListController>()) {
-      final audioController = Get.find<AudioCallListController>();
-      for (final room in audioController.audioRooms) {
-        items.add(LiveRoomItem.audio(room, onTap: () => audioController.joinAudioRoom(room)));
-      }
-    }
-    return items;
   }
 
-  /// Merged grid feed for Home/AllRooms: live video + live audio + recorded
+  /// All currently active live video + live audio rooms (unfiltered by category).
+  List<LiveRoomItem> _allLiveVideoAndAudioItems() {
+    return [
+      for (final stream in livestreamList)
+        LiveRoomItem.video(
+          stream,
+          onTap: () => onLiveUserTap(stream),
+          coHostAvatars: stream
+              .getCoHostUsers(firebaseFirestoreController.users)
+              .map((user) => user.profile)
+              .whereType<String>()
+              .where((photo) => photo.isNotEmpty)
+              .toList(),
+        ),
+      for (final room in audioRoomsList)
+        LiveRoomItem.audio(
+          room,
+          onTap: () => onAudioRoomTap(room),
+        ),
+    ];
+  }
+
+  List<LiveRoomItem> _liveVideoAndAudioItems() => _filteredLiveVideoAndAudioItems();
+
   /// Merged grid feed for Home/AllRooms: live video + live audio + recorded
   /// sessions, prioritized by user interests when under "All", then most recent first.
   List<LiveRoomItem> get mergedRoomItems {
@@ -164,7 +186,7 @@ class LiveStreamSearchScreenController extends BaseController {
   /// "Popular Hosts" row: currently-live video/audio rooms, prioritized by
   /// user's selected interests, then ranked by viewer/listener count.
   List<LiveRoomItem> get popularLiveHosts {
-    final items = _liveVideoAndAudioItems();
+    final items = _allLiveVideoAndAudioItems();
     if (myInterests.isNotEmpty) {
       final interestNames = myInterests
           .map((i) => i.name?.toLowerCase().trim() ?? '')
@@ -203,15 +225,15 @@ class LiveStreamSearchScreenController extends BaseController {
 
     await Future.wait({
       fetchLiveStreams(),
+      _listenAudioRooms(),
       favoritesFuture,
       categoriesFuture,
       followingFuture,
       interestsFuture,
     });
 
-    // Reorder categories to show user's interests first, then auto-select
+    // Reorder categories to show user's interests first right after All
     _reorderCategoriesByInterests();
-    _autoSelectCategoryFromInterests();
 
     fetchRecordedLives();
   }
@@ -234,8 +256,9 @@ class LiveStreamSearchScreenController extends BaseController {
 
   @override
   void onClose() {
-    super.onClose();
     livestreamListListener?.cancel();
+    _audioRoomsSub?.cancel();
+    super.onClose();
   }
 
   Future<void> fetchLiveStreams() async {
@@ -251,12 +274,30 @@ class LiveStreamSearchScreenController extends BaseController {
         .snapshots()
         .listen((snapshot) {
       final activeStreams = <Livestream>[];
+      final myId = SessionManager.instance.getUserID();
       for (var doc in snapshot.docs) {
         final stream = doc.data();
         if (stream.roomID != null && stream.roomID!.isNotEmpty) {
           if (stream.isDummyLive == 1 ||
               stream.type == LivestreamType.dummy ||
               (stream.dummyUserLink != null && stream.dummyUserLink!.isNotEmpty)) {
+            continue;
+          }
+          // If explicitly marked inactive, skip it
+          if (stream.isActive == false) {
+            continue;
+          }
+          // If this is my own stream and I am on the home/search screen, it's a stale stream left behind!
+          if (stream.hostId == myId) {
+            Loggers.info('LiveStreamSearch: purging leftover stale host stream $myId');
+            doc.reference.delete().catchError((_) {});
+            continue;
+          }
+          // If the stream is older than 12 hours, treat as expired stale live
+          final createdAt = stream.createdAt ?? 0;
+          if (createdAt > 0 &&
+              DateTime.now().millisecondsSinceEpoch - createdAt > 12 * 60 * 60 * 1000) {
+            doc.reference.delete().catchError((_) {});
             continue;
           }
           activeStreams.add(stream);
@@ -307,10 +348,89 @@ class LiveStreamSearchScreenController extends BaseController {
     }
   }
 
+  Future<void> _listenAudioRooms() async {
+    _audioRoomsSub?.cancel();
+    _audioRoomsSub = db
+        .collection(FirebaseConst.audioRooms)
+        .where('is_active', isEqualTo: true)
+        .snapshots()
+        .listen((snapshot) {
+      final activeRooms = <AudioRoom>[];
+      for (var doc in snapshot.docs) {
+        try {
+          final room = AudioRoom.fromJson(doc.data());
+          if (room.isActive == true && room.roomId != null && room.roomId!.isNotEmpty) {
+            activeRooms.add(room);
+            if (room.hostId != null && room.hostId != -1) {
+              firebaseFirestoreController.fetchUserIfNeeded(room.hostId!);
+            }
+          }
+        } catch (e) {
+          Loggers.error('LiveStreamSearchScreenController: error parsing audio room doc: $e');
+        }
+      }
+      audioRoomsList.value = activeRooms;
+      _applyFilter();
+    }, onError: (e) {
+      Loggers.error('LiveStreamSearchScreenController: listen audio rooms error: $e');
+    });
+  }
+
+  void onAudioRoomTap(AudioRoom room) async {
+    final myUser = SessionManager.instance.getUser();
+    if (myUser?.id == null) return;
+
+    final isHost = room.hostId == myUser!.id;
+    if (isHost) {
+      Get.to(() => AudioRoomScreen(room: room, isHost: true));
+      return;
+    }
+
+    final currentParticipants = room.participantIds ?? [];
+    if (currentParticipants.contains(myUser.id)) {
+      Get.to(() => AudioRoomScreen(room: room, isHost: false));
+      return;
+    }
+
+    if (currentParticipants.length >= (room.maxParticipants ?? 8)) {
+      showSnackBar('Room is full');
+      return;
+    }
+
+    try {
+      await db
+          .collection(FirebaseConst.audioRooms)
+          .doc(room.hostId.toString())
+          .update({
+        'participant_ids': FieldValue.arrayUnion([myUser.id]),
+      });
+    } catch (e) {
+      Loggers.error('Error updating audio room participants: $e');
+    }
+
+    Get.to(() => AudioRoomScreen(room: room, isHost: false));
+  }
+
   onSearchChange(String value) {
-    livestreamFilterList.value = livestreamList.search(value, (p0) {
-      return p0.hostUser?.username ?? '';
-    }, (p1) => p1.description ?? '');
+    if (value.trim().isEmpty) {
+      _applyFilter();
+      return;
+    }
+    final q = value.trim().toLowerCase();
+    livestreamFilterList.value = livestreamList.where((s) {
+      final hostName = (s.hostUser?.fullname ?? s.hostUser?.username ?? '').toLowerCase();
+      final desc = (s.description ?? '').toLowerCase();
+      final cat = (s.categoryName ?? '').toLowerCase();
+      return hostName.contains(q) || desc.contains(q) || cat.contains(q);
+    }).toList();
+
+    audioRoomsFilterList.value = audioRoomsList.where((r) {
+      final hostName = (r.hostName ?? '').toLowerCase();
+      final roomName = (r.roomName ?? '').toLowerCase();
+      final desc = (r.description ?? '').toLowerCase();
+      final cat = (r.categoryName ?? '').toLowerCase();
+      return hostName.contains(q) || roomName.contains(q) || desc.contains(q) || cat.contains(q);
+    }).toList();
   }
 
   void toggleFavorite(Livestream stream) {
@@ -337,7 +457,7 @@ class LiveStreamSearchScreenController extends BaseController {
       fetchMyInterestsForHome(),
     ]);
     _reorderCategoriesByInterests();
-    _autoSelectCategoryFromInterests();
+    _applyFilter();
   }
 
   Future<void> fetchFavoriteUsers() async {
@@ -385,29 +505,48 @@ class LiveStreamSearchScreenController extends BaseController {
         others.add(cat);
       }
     }
-    filterCategories.value = [...matching, ...others];
-  }
-
-  /// After categories load, auto-select the first category that matches
-  /// one of the user's interests (by name, case-insensitive).
-  void _autoSelectCategoryFromInterests() {
-    if (myInterests.isEmpty || filterCategories.isEmpty) return;
-    final interestNames = myInterests.map((i) => i.name?.toLowerCase().trim() ?? '').toSet();
-    for (int i = 0; i < filterCategories.length; i++) {
-      final catName = filterCategories[i].name?.toLowerCase().trim() ?? '';
-      if (interestNames.contains(catName)) {
-        selectedCategoryIndex.value = i + 1; // +1 because index 0 is "All"
-        _applyFilter();
-        return;
-      }
+    if (matching.isNotEmpty) {
+      filterCategories.value = [...matching, ...others];
     }
   }
 
-  /// Called from the ChangeInterestSheet after the user saves their interests.
+  /// Selects a category and moves it to index 0 of [filterCategories]
+  /// (which corresponds to index 1 right after "All" in the horizontal selector).
+  /// All other categories remain in order behind it.
+  void selectCategoryAndPrioritize(
+    Category category, {
+    SubCategory? subCategory,
+    Division? division,
+    Topic? topic,
+  }) {
+    final list = List<Category>.from(filterCategories);
+    final existingIdx = list.indexWhere((c) => c.id == category.id);
+    if (existingIdx >= 0) {
+      final item = list.removeAt(existingIdx);
+      list.insert(0, item);
+    } else {
+      list.insert(0, category);
+    }
+    filterCategories.value = list;
+
+    // Index 1 corresponds to filterCategories[0], directly after "All" (index 0)
+    selectedCategoryIndex.value = 1;
+    selectedSubCategory.value = subCategory;
+    selectedDivision.value = division;
+    selectedTopic.value = topic;
+
+    _applyFilter();
+    fetchRecordedLives();
+  }
+
+  /// Called from ChangeInterestSheet after the user saves interests.
   Future<void> onInterestsSaved(List<Interest> newInterests) async {
     myInterests.value = newInterests;
     _reorderCategoriesByInterests();
-    _autoSelectCategoryFromInterests();
+    if (filterCategories.isNotEmpty) {
+      selectedCategoryIndex.value = 1;
+    }
+    _applyFilter();
     fetchRecordedLives();
   }
 
@@ -415,9 +554,6 @@ class LiveStreamSearchScreenController extends BaseController {
     try {
       final result = await CommonService.instance.fetchCategorySubCategoryTopic();
       filterCategories.value = result.data ?? [];
-      // If the previously-selected category no longer exists in the fresh
-      // list (e.g. re-fetched on pull-to-refresh with a different count),
-      // fall back to "All" rather than leaving a dangling index around.
       if (selectedCategoryIndex.value > filterCategories.length) {
         selectedCategoryIndex.value = 0;
         _applyFilter();
@@ -428,12 +564,35 @@ class LiveStreamSearchScreenController extends BaseController {
   }
 
   void onCategorySelected(int index) {
-    selectedCategoryIndex.value = index;
-    selectedSubCategory.value = null;
-    selectedDivision.value = null;
-    selectedTopic.value = null;
-    _applyFilter();
-    fetchRecordedLives();
+    if (index == 0) {
+      // User tapped "All" — keep categories ordering, select "All"
+      selectedCategoryIndex.value = 0;
+      selectedSubCategory.value = null;
+      selectedDivision.value = null;
+      selectedTopic.value = null;
+      _applyFilter();
+      fetchRecordedLives();
+      return;
+    }
+
+    final catIndex = index - 1;
+    if (catIndex >= 0 && catIndex < filterCategories.length) {
+      final selectedCat = filterCategories[catIndex];
+      if (catIndex != 0) {
+        // Move the selected category to index 0 (immediately after "All")
+        final list = List<Category>.from(filterCategories);
+        list.removeAt(catIndex);
+        list.insert(0, selectedCat);
+        filterCategories.value = list;
+      }
+
+      selectedCategoryIndex.value = 1;
+      selectedSubCategory.value = null;
+      selectedDivision.value = null;
+      selectedTopic.value = null;
+      _applyFilter();
+      fetchRecordedLives();
+    }
   }
 
   void setHierarchicalFilter({
@@ -442,12 +601,19 @@ class LiveStreamSearchScreenController extends BaseController {
     Division? division,
     Topic? topic,
   }) {
-    selectedCategoryIndex.value = categoryIndex;
-    selectedSubCategory.value = subCategory;
-    selectedDivision.value = division;
-    selectedTopic.value = topic;
-    _applyFilter();
-    fetchRecordedLives();
+    if (categoryIndex == 0) {
+      clearHierarchicalFilter();
+      return;
+    }
+    final catIdx = categoryIndex - 1;
+    if (catIdx >= 0 && catIdx < filterCategories.length) {
+      selectCategoryAndPrioritize(
+        filterCategories[catIdx],
+        subCategory: subCategory,
+        division: division,
+        topic: topic,
+      );
+    }
   }
 
   void clearHierarchicalFilter() {
@@ -460,42 +626,56 @@ class LiveStreamSearchScreenController extends BaseController {
   }
 
   void _applyFilter() {
-    List<Livestream> filtered;
-
-    // Guard against a stale selection left pointing past the end of a
-    // freshly re-fetched (possibly shorter/reordered) category list — e.g.
-    // pull-to-refresh re-downloading categories while a category far down
-    // the list is selected. Falls back to "All" instead of crashing.
     if (selectedCategoryIndex.value > filterCategories.length) {
       selectedCategoryIndex.value = 0;
     }
 
+    List<Livestream> filteredVideo;
+    List<AudioRoom> filteredAudio;
+
     if (selectedCategoryIndex.value == 0) {
-      // "All" selected — show everything, but prioritize user's interests first
-      filtered = List.from(livestreamList);
+      // "All" selected — display all live video streams and audio rooms in real time
+      filteredVideo = List.from(livestreamList);
+      filteredAudio = List.from(audioRoomsList);
+
       if (myInterests.isNotEmpty) {
         final interestNames = myInterests
             .map((i) => i.name?.toLowerCase().trim() ?? '')
             .where((name) => name.isNotEmpty)
             .toSet();
-        filtered.sort((a, b) {
+        filteredVideo.sort((a, b) {
           final aCat = a.categoryName?.toLowerCase().trim() ?? '';
           final bCat = b.categoryName?.toLowerCase().trim() ?? '';
           final aMatch = interestNames.contains(aCat) ? 1 : 0;
           final bMatch = interestNames.contains(bCat) ? 1 : 0;
           if (aMatch != bMatch) {
-            return bMatch.compareTo(aMatch); // matched first
+            return bMatch.compareTo(aMatch);
           }
           return (b.createdAt ?? 0).compareTo(a.createdAt ?? 0);
         });
+
+        filteredAudio.sort((a, b) {
+          final aCat = a.categoryName?.toLowerCase().trim() ?? '';
+          final bCat = b.categoryName?.toLowerCase().trim() ?? '';
+          final aMatch = interestNames.contains(aCat) ? 1 : 0;
+          final bMatch = interestNames.contains(bCat) ? 1 : 0;
+          if (aMatch != bMatch) {
+            return bMatch.compareTo(aMatch);
+          }
+          return (b.createdAt ?? 0).compareTo(a.createdAt ?? 0);
+        });
+      } else {
+        filteredVideo.sort((a, b) => (b.createdAt ?? 0).compareTo(a.createdAt ?? 0));
+        filteredAudio.sort((a, b) => (b.createdAt ?? 0).compareTo(a.createdAt ?? 0));
       }
     } else {
       final selectedCat = filterCategories[selectedCategoryIndex.value - 1];
       final targetSubCat = selectedSubCategory.value;
       final targetDiv = selectedDivision.value;
       final targetTop = selectedTopic.value;
+      final selectedCatName = selectedCat.name?.toLowerCase().trim() ?? '';
 
-      filtered = livestreamList.where((s) {
+      filteredVideo = livestreamList.where((s) {
         // Category check
         bool matchCategory = false;
         if (s.categoryId == selectedCat.id) {
@@ -504,6 +684,11 @@ class LiveStreamSearchScreenController extends BaseController {
           final hostUser = firebaseFirestoreController.users
               .firstWhereOrNull((u) => u.userId == s.hostId);
           if (hostUser?.categoryId == selectedCat.id) matchCategory = true;
+        }
+        if (!matchCategory && s.categoryName != null && selectedCatName.isNotEmpty) {
+          if (s.categoryName!.trim().toLowerCase() == selectedCatName) {
+            matchCategory = true;
+          }
         }
         if (!matchCategory) return false;
 
@@ -515,7 +700,29 @@ class LiveStreamSearchScreenController extends BaseController {
                 .firstWhereOrNull((u) => u.userId == s.hostId);
             if (hostUser?.subCategoryId == targetSubCat.id) matchSub = true;
           }
+          if (!matchSub && s.subCategoryName != null && targetSubCat.name != null) {
+            if (s.subCategoryName!.trim().toLowerCase() == targetSubCat.name!.trim().toLowerCase()) {
+              matchSub = true;
+            }
+          }
           if (!matchSub) return false;
+        }
+
+        // Division check if selected
+        if (targetDiv != null) {
+          final divTopicIds = targetSubCat?.topics
+              ?.where((t) => t.divisionId == targetDiv.id)
+              .map((t) => t.id)
+              .toSet() ?? {};
+          if (divTopicIds.isNotEmpty) {
+            bool matchDiv = divTopicIds.contains(s.topicId);
+            if (!matchDiv && s.hostId != null) {
+              final hostUser = firebaseFirestoreController.users
+                  .firstWhereOrNull((u) => u.userId == s.hostId);
+              if (divTopicIds.contains(hostUser?.topicId)) matchDiv = true;
+            }
+            if (!matchDiv) return false;
+          }
         }
 
         // Topic check if selected
@@ -531,17 +738,47 @@ class LiveStreamSearchScreenController extends BaseController {
 
         return true;
       }).toList();
+
+      filteredAudio = audioRoomsList.where((room) {
+        bool matchCategory = false;
+        if (room.categoryId == selectedCat.id) {
+          matchCategory = true;
+        } else if (room.hostId != null) {
+          final hostUser = firebaseFirestoreController.users
+              .firstWhereOrNull((u) => u.userId == room.hostId);
+          if (hostUser?.categoryId == selectedCat.id) matchCategory = true;
+        }
+        if (!matchCategory && room.categoryName != null && selectedCatName.isNotEmpty) {
+          if (room.categoryName!.trim().toLowerCase() == selectedCatName) {
+            matchCategory = true;
+          }
+        }
+        return matchCategory;
+      }).toList();
+
+      filteredVideo.sort((a, b) => (b.createdAt ?? 0).compareTo(a.createdAt ?? 0));
+      filteredAudio.sort((a, b) => (b.createdAt ?? 0).compareTo(a.createdAt ?? 0));
     }
 
-    // Filter by selected live room language
-    // Streams without languageId set are always shown
+    // Prioritize selected language without filtering out any live rooms from "All"
     final liveRoomLangId = SessionManager.instance.storage.read<int>(SessionKeys.liveRoomLanguageId);
     if (liveRoomLangId != null) {
-      filtered = filtered.where((s) => s.languageId == null || s.languageId == liveRoomLangId).toList();
+      filteredVideo.sort((a, b) {
+        final aMatch = (a.languageId == liveRoomLangId) ? 1 : 0;
+        final bMatch = (b.languageId == liveRoomLangId) ? 1 : 0;
+        if (aMatch != bMatch) return bMatch.compareTo(aMatch);
+        return (b.createdAt ?? 0).compareTo(a.createdAt ?? 0);
+      });
+      filteredAudio.sort((a, b) {
+        final aMatch = (a.languageId == liveRoomLangId) ? 1 : 0;
+        final bMatch = (b.languageId == liveRoomLangId) ? 1 : 0;
+        if (aMatch != bMatch) return bMatch.compareTo(aMatch);
+        return (b.createdAt ?? 0).compareTo(a.createdAt ?? 0);
+      });
     }
 
-    filtered.sort((a, b) => (b.createdAt ?? 0).compareTo(a.createdAt ?? 0));
-    livestreamFilterList.value = filtered;
+    livestreamFilterList.value = filteredVideo;
+    audioRoomsFilterList.value = filteredAudio;
   }
 
   Future<void> addDummyUsers() async {

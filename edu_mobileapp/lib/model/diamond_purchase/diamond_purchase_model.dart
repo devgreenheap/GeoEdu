@@ -24,11 +24,19 @@ class DiamondTransactionModel {
   final String? time;
   final String? transactionId;
   final String? paymentId;
+  final String? orderId;
   final int? diamonds;
   final double? amount;
+  final double? originalPrice;
+  final double? discount;
   final String? currency;
   final String? status;
   final String? createdAt;
+  final String? userName;
+  final String? userPhone;
+  final String? userEmail;
+  final String? paymentMode;
+  final String? placeOfSupply;
 
   DiamondTransactionModel({
     this.id,
@@ -36,13 +44,21 @@ class DiamondTransactionModel {
     this.dateTime,
     this.transactionId,
     this.paymentId,
+    this.orderId,
     this.diamonds,
     this.amount,
+    this.originalPrice,
+    this.discount,
     this.currency,
     this.date,
     this.time,
     this.status,
     this.createdAt,
+    this.userName,
+    this.userPhone,
+    this.userEmail,
+    this.paymentMode,
+    this.placeOfSupply,
   });
 
   factory DiamondTransactionModel.fromJson(Map<String, dynamic> json) {
@@ -70,19 +86,43 @@ class DiamondTransactionModel {
       parsedAmount = double.tryParse(json['amount'].toString());
     }
 
+    double? parsedOrigPrice;
+    if (json['original_price'] != null) {
+      parsedOrigPrice = double.tryParse(json['original_price'].toString());
+    } else if (parsedAmount != null) {
+      parsedOrigPrice = parsedAmount;
+    }
+
+    double? parsedDiscount;
+    if (json['discount'] != null) {
+      parsedDiscount = double.tryParse(json['discount'].toString());
+    } else if (parsedOrigPrice != null && parsedAmount != null && parsedOrigPrice > parsedAmount) {
+      parsedDiscount = parsedOrigPrice - parsedAmount;
+    } else {
+      parsedDiscount = 0.0;
+    }
+
     return DiamondTransactionModel(
       id: json['id'],
       title: json['title'] ?? 'Diamond Purchased',
       dateTime: parsedDate,
       transactionId: json['transaction_id'] ?? json['transactionId'] ?? json['payment_id'],
       paymentId: json['payment_id'],
+      orderId: json['order_id'],
       diamonds: json['diamonds'],
       amount: parsedAmount,
-      currency: json['currency'],
+      originalPrice: parsedOrigPrice,
+      discount: parsedDiscount,
+      currency: json['currency'] ?? '₹',
       date: json['date'] ?? derivedDate,
       time: json['time'] ?? derivedTime,
       status: json['status']?.toString(),
       createdAt: json['created_at'],
+      userName: json['user_name'] ?? json['userName'],
+      userPhone: json['user_phone'],
+      userEmail: json['user_email'],
+      paymentMode: json['payment_mode'] ?? 'UPI',
+      placeOfSupply: json['place_of_supply'] ?? 'Tamil Nadu, India',
     );
   }
 
@@ -93,13 +133,21 @@ class DiamondTransactionModel {
       'dateTime': dateTime?.toIso8601String(),
       'transaction_id': transactionId,
       'payment_id': paymentId,
+      'order_id': orderId,
       'diamonds': diamonds,
       'amount': amount,
+      'original_price': originalPrice,
+      'discount': discount,
       'currency': currency,
       'date': date,
       'time': time,
       'status': status,
       'created_at': createdAt,
+      'user_name': userName,
+      'user_phone': userPhone,
+      'user_email': userEmail,
+      'payment_mode': paymentMode,
+      'place_of_supply': placeOfSupply,
     };
   }
 }

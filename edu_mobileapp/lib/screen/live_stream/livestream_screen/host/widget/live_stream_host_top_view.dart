@@ -19,6 +19,7 @@ import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/utilities/text_style_custom.dart';
 import 'package:geoedu/utilities/theme_res.dart';
 import 'package:geoedu/common/widget/room_top_gifters_sheet.dart';
+import 'package:geoedu/common/widget/live_room/set_live_target_sheet.dart';
 
 class LiveStreamHostTopView extends StatelessWidget {
   final LivestreamScreenController controller;
@@ -156,32 +157,12 @@ class _HostInfoBlock extends StatelessWidget {
   }
 
   void _showSetTargetDialog(BuildContext context) {
-    final textController = TextEditingController(
-        text: controller.targetDiamonds.value > 0
-            ? controller.targetDiamonds.value.toString()
-            : '');
-    Get.dialog(
-      AlertDialog(
-        backgroundColor: ColorRes.cardBackground,
-        title: const Text('Set Diamond Target', style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: textController,
-          keyboardType: TextInputType.number,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(hintText: 'e.g. 5000', hintStyle: TextStyle(color: Colors.white38)),
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () {
-              final value = int.tryParse(textController.text.trim()) ?? 0;
-              controller.setTargetDiamonds(value);
-              Get.back();
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+    SetLiveTargetSheet.show(
+      context,
+      initialValue: controller.targetDiamonds.value,
+      onTargetSet: (val) {
+        controller.setTargetDiamonds(val);
+      },
     );
   }
 }
@@ -242,6 +223,7 @@ class _TopRightBlockState extends State<_TopRightBlock> {
     final startedAt = widget.stream.createdAt;
     if (startedAt == null) return '00:00:00';
     final elapsed = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(startedAt));
+    if (elapsed.isNegative) return '00:00:00';
     final h = elapsed.inHours.toString().padLeft(2, '0');
     final m = (elapsed.inMinutes % 60).toString().padLeft(2, '0');
     final s = (elapsed.inSeconds % 60).toString().padLeft(2, '0');

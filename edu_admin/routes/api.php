@@ -199,6 +199,7 @@ Route::middleware('checkHeader')->group(function () {
         Route::post('saveBattleResult', [PkBattleController::class, 'saveBattleResult'])->middleware('authorizeUser');
         Route::post('fetchTopPkBattlePlayers', [PkBattleController::class, 'fetchTopPkBattlePlayers'])->middleware('authorizeUser');
         Route::post('fetchGiftProfit', [WalletController::class, 'fetchGiftProfit'])->middleware('authorizeUser');
+        Route::post('fetchCategoryGiftHistory', [WalletController::class, 'fetchCategoryGiftHistory'])->middleware('authorizeUser');
         Route::post('fetchBanners', [WalletController::class, 'fetchBanners']);
         Route::post('requestScreenshotDisable', [UserController::class, 'requestScreenshotDisable'])->middleware('authorizeUser');
         Route::post('approveScreenshotDisableRequest', [UserController::class, 'approveScreenshotDisableRequestApi'])->middleware('authorizeUser');

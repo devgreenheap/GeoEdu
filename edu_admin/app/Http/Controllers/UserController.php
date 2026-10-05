@@ -1363,8 +1363,12 @@ class UserController extends Controller
         // Keep fetchUserDetails in sync with the full tbl_users schema.
         $userTableColumns = Schema::getColumnListing('tbl_users');
         foreach ($userTableColumns as $column) {
-            $dataUser->{$column} = $baseUser->getAttribute($column);
+            $val = $baseUser->getAttribute($column);
+            if ($val !== null || !isset($dataUser->{$column})) {
+                $dataUser->{$column} = $val;
+            }
         }
+        $dataUser = $this->appendSignupNames($dataUser);
 
         $dataUser->level_id = $rawLevelId;
         $levelValue = UserLevels::where('id', $rawLevelId)->value('level');
@@ -2456,7 +2460,9 @@ class UserController extends Controller
             return GlobalFunction::sendSimpleResponse(false, 'User not found!');
         }
 
-        return GlobalFunction::sendDataResponse(true, 'my interests', $user->interests);
+        $items = $user->interests()->where('tbl_interests.status', 1)->get(['tbl_interests.id', 'tbl_interests.name']);
+
+        return GlobalFunction::sendDataResponse(true, 'my interests', $items);
     }
 
     public function updateMyInterests(Request $request)
@@ -2470,12 +2476,26 @@ class UserController extends Controller
             return response()->json(['status' => false, 'message' => "this user is freezed!"]);
         }
 
-        $interestIds = array_filter(array_map('intval', explode(',', (string) $request->interest_ids)));
-        $validIds = Interest::whereIn('id', $interestIds)->where('status', 1)->pluck('id')->toArray();
+        $rawIds = array_filter(array_map('intval', explode(',', (string) $request->interest_ids)));
+
+        // Match against Interest IDs
+        $validIds = Interest::whereIn('id', $rawIds)->where('status', 1)->pluck('id')->toArray();
+
+        // Also check if any IDs sent were Category IDs (from tbl_categories)
+        $missingIds = array_diff($rawIds, $validIds);
+        if (!empty($missingIds)) {
+            $catNames = Categories::whereIn('id', $missingIds)->pluck('name')->toArray();
+            if (!empty($catNames)) {
+                $mappedIds = Interest::whereIn('name', $catNames)->where('status', 1)->pluck('id')->toArray();
+                $validIds = array_unique(array_merge($validIds, $mappedIds));
+            }
+        }
 
         $user->interests()->sync($validIds);
 
-        return GlobalFunction::sendDataResponse(true, 'interests updated successfully', $user->interests()->get());
+        $updated = $user->interests()->where('tbl_interests.status', 1)->get(['tbl_interests.id', 'tbl_interests.name']);
+
+        return GlobalFunction::sendDataResponse(true, 'interests updated successfully', $updated);
     }
 
     public function updateUserDetails(Request $request)
@@ -2534,6 +2554,10 @@ class UserController extends Controller
             'sub_category_id' => 'nullable|exists:tbl_sub_categories,id',
             'topic_id' => 'nullable|exists:tbl_topics,id',
             'language_id' => 'nullable|exists:languages,id',
+            'category_name' => 'nullable|string|max:255',
+            'sub_category_name' => 'nullable|string|max:255',
+            'topic_name' => 'nullable|string|max:255',
+            'language_name' => 'nullable|string|max:255',
             'level_id' => 'nullable|exists:user_levels,id',
             'is_adult' => 'nullable|boolean',
             'notify_post_like' => 'nullable|boolean',
@@ -2602,6 +2626,10 @@ class UserController extends Controller
             'sub_category_id',
             'topic_id',
             'language_id',
+            'category_name',
+            'sub_category_name',
+            'topic_name',
+            'language_name',
             'level_id',
             'is_adult',
         ];
@@ -2615,10 +2643,74 @@ class UserController extends Controller
         if ($request->has('mobile')) {
             $user->user_mobile_no = $request->mobile;
         }
-        if ($request->has('sub_category_id')) {
-            $subCategory = SubCategories::find($request->sub_category_id);
-            if ($subCategory) {
-                $user->category_id = $subCategory->category_id;
+
+        if ($request->has('category_id') || $request->has('category_name')) {
+            $catId = $request->input('category_id', $user->category_id);
+            $catName = $request->input('category_name');
+            if (empty($catName) && !empty($catId)) {
+                $catName = Categories::where('id', $catId)->value('name');
+            }
+            $user->category_id = $catId ? intval($catId) : null;
+            if (Schema::hasColumn('tbl_users', 'category_name')) {
+                $user->category_name = $catName ?: null;
+            }
+        }
+
+        if ($request->has('sub_category_id') || $request->has('sub_category_name')) {
+            $subId = $request->input('sub_category_id', $user->sub_category_id);
+            $subName = $request->input('sub_category_name');
+            if (empty($subName) && !empty($subId)) {
+                $sub = SubCategories::find($subId);
+                $subName = $sub?->name;
+                if ($sub && empty($user->category_id)) {
+                    $user->category_id = $sub->category_id;
+                    if (Schema::hasColumn('tbl_users', 'category_name')) {
+                        $user->category_name = $sub->category?->name;
+                    }
+                }
+            }
+            $user->sub_category_id = $subId ? intval($subId) : null;
+            if (Schema::hasColumn('tbl_users', 'sub_category_name')) {
+                $user->sub_category_name = $subName ?: null;
+            }
+        }
+
+        if ($request->has('topic_id') || $request->has('topic_name')) {
+            $topId = $request->input('topic_id', $user->topic_id);
+            $topName = $request->input('topic_name');
+            if (empty($topName) && !empty($topId)) {
+                $top = Topics::find($topId);
+                $topName = $top?->name;
+                if ($top) {
+                    if (empty($user->sub_category_id) && !empty($top->sub_category_id)) {
+                        $user->sub_category_id = $top->sub_category_id;
+                        if (Schema::hasColumn('tbl_users', 'sub_category_name')) {
+                            $user->sub_category_name = $top->subCategory?->name;
+                        }
+                    }
+                    if (empty($user->category_id) && !empty($top->category_id)) {
+                        $user->category_id = $top->category_id;
+                        if (Schema::hasColumn('tbl_users', 'category_name')) {
+                            $user->category_name = $top->category?->name;
+                        }
+                    }
+                }
+            }
+            $user->topic_id = $topId ? intval($topId) : null;
+            if (Schema::hasColumn('tbl_users', 'topic_name')) {
+                $user->topic_name = $topName ?: null;
+            }
+        }
+
+        if ($request->has('language_id') || $request->has('language_name')) {
+            $langId = $request->input('language_id', $user->language_id);
+            $langName = $request->input('language_name');
+            if (empty($langName) && !empty($langId)) {
+                $langName = Language::where('id', $langId)->value('title');
+            }
+            $user->language_id = $langId ? intval($langId) : null;
+            if (Schema::hasColumn('tbl_users', 'language_name')) {
+                $user->language_name = $langName ?: null;
             }
         }
 
@@ -2671,8 +2763,12 @@ class UserController extends Controller
 
         $userTableColumns = Schema::getColumnListing('tbl_users');
         foreach ($userTableColumns as $column) {
-            $user->{$column} = $user->getAttribute($column);
+            $val = $user->getAttribute($column);
+            if ($val !== null || !isset($user->{$column})) {
+                $user->{$column} = $val;
+            }
         }
+        $user = $this->appendSignupNames($user);
 
         return GlobalFunction::sendDataResponse(true, 'User details updated successfully', $user);
     }

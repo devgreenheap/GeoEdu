@@ -23,8 +23,8 @@ class LeaderboardTopThree extends StatelessWidget {
     // Podium order is 2nd, 1st, 3rd left-to-right.
     const podium = [1, 0, 2];
     return Container(
-      height: 250,
-      margin: const EdgeInsets.symmetric(horizontal: 15),
+      height: 275,
+      margin: const EdgeInsets.symmetric(horizontal: 12),
       child: Stack(
         alignment: Alignment.bottomCenter,
         children: [

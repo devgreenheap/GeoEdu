@@ -33,18 +33,14 @@ class SettingsScreen extends StatelessWidget {
 
   const SettingsScreen({super.key, this.onUpdateUser});
 
-  Future<void> launchApp(String url)
-  async {
-    if(url.isEmpty)
-      {
-        throw Exception('Could not launch $url');
+  Future<void> launchApp(String url) async {
+    if (url.isEmpty) return;
+    try {
+      final uri = Uri.parse(url);
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        await launchUrl(uri);
       }
-    else if (!await launchUrl(Uri.parse(url))) {
-      throw Exception('Could not launch $url');
-    }
-    else{
-      await launchUrl(Uri.parse(url));
-    }
+    } catch (_) {}
   }
 
   void Sharefunc(){
@@ -324,7 +320,7 @@ class SettingsScreen extends StatelessWidget {
                     icon: AssetRes.starSettings,
                     title: 'Rate Us',
                     onTap: () {
-                      launchApp("https://play.google.com/");
+                      launchApp("https://play.google.com/store/apps/details?id=com.geoedu.app&pcampaignid=web_share");
                     },
                   ),
                   SettingIconTextWithArrow(

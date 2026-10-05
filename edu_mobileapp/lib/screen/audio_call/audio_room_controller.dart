@@ -738,6 +738,15 @@ class AudioRoomController extends BaseController {
       isRoyalMode.value = updatedRoom.isRoyalMode ?? false;
       themeIndex.value = updatedRoom.themeIndex;
       mutedSpeakerIds.value = List<int>.from(updatedRoom.mutedSpeakerIds ?? []);
+      final myId = myUser?.id ?? SessionManager.instance.getUserID();
+      if (!isHost && isSpeaker.value) {
+        final hostMutedMe = mutedSpeakerIds.contains(myId);
+        if (hostMutedMe != isMuted.value) {
+          isMuted.value = hostMutedMe;
+          ZegoExpressEngine.instance.muteMicrophone(hostMutedMe);
+          ZegoExpressEngine.instance.mutePublishStreamAudio(hostMutedMe);
+        }
+      }
       lockedSeatIndices.value = List<int>.from(updatedRoom.lockedSeatIndices ?? []);
       pinnedComment.value = updatedRoom.pinnedComment ?? '';
       final newLikeCount = updatedRoom.likeCount ?? 0;
@@ -1143,15 +1152,21 @@ class AudioRoomController extends BaseController {
 
   void toggleMuteParticipant(int userId) async {
     if (!isHost) return;
-    final isMuted = mutedSpeakerIds.contains(userId);
+    final isCurrentlyMuted = mutedSpeakerIds.contains(userId);
+    final nextMute = !isCurrentlyMuted;
     final speakerStreamId = '${room.roomId}_$userId';
-    ZegoExpressEngine.instance.mutePlayStreamAudio(speakerStreamId, !isMuted);
+    ZegoExpressEngine.instance.mutePlayStreamAudio(speakerStreamId, nextMute);
+    if (nextMute) {
+      if (!mutedSpeakerIds.contains(userId)) mutedSpeakerIds.add(userId);
+    } else {
+      mutedSpeakerIds.remove(userId);
+    }
     await _db
         .collection(FirebaseConst.audioRooms)
         .doc(room.hostId.toString())
         .update({
       'muted_speaker_ids':
-          isMuted ? FieldValue.arrayRemove([userId]) : FieldValue.arrayUnion([userId]),
+          isCurrentlyMuted ? FieldValue.arrayRemove([userId]) : FieldValue.arrayUnion([userId]),
     });
   }
 
@@ -1461,11 +1476,34 @@ class AudioRoomController extends BaseController {
     }
   }
 
-  void toggleMute() {
+  void toggleMute() async {
     if (!isHost && !isSpeaker.value) return;
-    isMuted.value = !isMuted.value;
-    ZegoExpressEngine.instance.muteMicrophone(isMuted.value);
-    ZegoExpressEngine.instance.mutePublishStreamAudio(isMuted.value);
+    final newMute = !isMuted.value;
+    isMuted.value = newMute;
+    ZegoExpressEngine.instance.muteMicrophone(newMute);
+    ZegoExpressEngine.instance.mutePublishStreamAudio(newMute);
+
+    final myId = myUser?.id ?? SessionManager.instance.getUserID();
+    if (newMute) {
+      if (!mutedSpeakerIds.contains(myId)) {
+        mutedSpeakerIds.add(myId);
+      }
+    } else {
+      mutedSpeakerIds.remove(myId);
+    }
+
+    try {
+      await _db
+          .collection(FirebaseConst.audioRooms)
+          .doc(room.hostId.toString())
+          .update({
+        'muted_speaker_ids': newMute
+            ? FieldValue.arrayUnion([myId])
+            : FieldValue.arrayRemove([myId]),
+      });
+    } catch (e) {
+      Loggers.error('AudioRoom: Error syncing mute state to Firestore: $e');
+    }
   }
 
   void toggleSpeaker() {

@@ -1,3 +1,5 @@
+import 'package:geoedu/common/extensions/string_extension.dart';
+
 class EntryEffectResponseModel {
   bool? status;
   String? message;
@@ -58,23 +60,48 @@ class EntryEffectModel {
   });
 
   factory EntryEffectModel.fromJson(Map<String, dynamic> json) {
+    final rawImage = _toStr(json['image'] ?? json['thumbnail'] ?? json['asset_url'] ?? json['video_path']);
+    final entryEffectId = _toInt(json['entry_effect_id']);
+    final id = _toInt(json['id']);
+
+    String resolvedImage = rawImage;
+    if (resolvedImage.isNotEmpty && !resolvedImage.startsWith('http') && !resolvedImage.startsWith('assets/')) {
+      resolvedImage = resolvedImage.addBaseURL();
+    }
+    if (resolvedImage.isEmpty) {
+      final effId = entryEffectId ?? id;
+      if (effId != null && effId >= 1 && effId <= 9) {
+        resolvedImage = 'assets/images/animation-$effId.svga';
+      }
+    }
+
+    final rawTitle = _toStr(json['title'] ?? json['name'] ?? json['effect_name']);
+    final title = rawTitle.isNotEmpty ? rawTitle : 'Entry Effect';
+
+    final durHours = _toInt(json['duration']);
+    final durationStr = durHours != null && durHours > 0
+        ? '$durHours hours'
+        : (json['duration'] != null ? '${json['duration']}' : '');
+
     return EntryEffectModel(
-      id: _toInt(json['id']),
-      image: _toStr(json['image']),
-      title: _toStr(json['title'] ?? json['name'] ?? 'Entry Effect'),
+      id: id,
+      image: resolvedImage,
+      title: title,
       currentPrice: _toInt(json['coin_price']) ?? 0,
       originalPrice: _toInt(json['original_price'] ?? json['coin_price']) ?? 0,
       discountPercent: _toInt(json['discount_percent']) ?? 0,
-      duration: json['duration'] != null ? 'For ${json['duration']} hours' : '',
+      duration: durationStr,
       buttonText: _toStr(json['button_text']).isEmpty ? 'Buy' : _toStr(json['button_text']),
-      videoPath: _toStr(json['video_path'] ?? json['svga_url']),
+      videoPath: _toStr(json['video_path'] ?? json['svga_url'] ?? resolvedImage),
       audio: _toStr(json['audio'] ?? json['audio_url']),
       isDefaultAudio: json['is_default_audio'] ?? false,
-      entryEffectId: _toInt(json['entry_effect_id']),
+      entryEffectId: entryEffectId,
       purchasedAt: _tryParseDate(json['purchased_at']),
       expiresAt: _tryParseDate(json['expires_at']),
-      durationHours: _toInt(json['duration']),
-      isActive: json['is_active'] is bool ? json['is_active'] : null,
+      durationHours: durHours,
+      isActive: json['is_active'] is bool
+          ? json['is_active']
+          : (json['is_active'] != null ? json['is_active'] == 1 || json['is_active'] == '1' : null),
     );
   }
 

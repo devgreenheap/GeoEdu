@@ -93,7 +93,18 @@ class LiveRoomItem {
       case RoomCardVariant.recorded:
         return recording?.categoryName ?? '';
       case RoomCardVariant.audio:
-        return '';
+        return audioRoom?.categoryName ?? '';
+    }
+  }
+
+  int? get categoryId {
+    switch (variant) {
+      case RoomCardVariant.liveVideo:
+        return livestream?.categoryId;
+      case RoomCardVariant.recorded:
+        return recording?.categoryId;
+      case RoomCardVariant.audio:
+        return audioRoom?.categoryId;
     }
   }
 

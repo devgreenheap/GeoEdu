@@ -9,6 +9,7 @@ import 'package:geoedu/model/livestream/live_stream_api_model.dart';
 import 'package:geoedu/model/diamond_purchase/diamond_purchase_model.dart';
 import 'package:geoedu/model/diamond_purchase/diamond_wallet_model.dart';
 import 'package:geoedu/model/general/status_model.dart';
+import 'package:geoedu/model/gift_wallet/category_gift_history_model.dart';
 import 'package:geoedu/model/gift_wallet/gift_profit_model.dart';
 import 'package:geoedu/model/gift_wallet/withdraw_model.dart';
 import 'package:geoedu/model/star_store/diamond_pack_model.dart';
@@ -398,6 +399,23 @@ class GiftWalletService {
     GiftProfitModel response = await ApiService.instance.call(
         url: WebService.giftWallet.fetchGiftProfit,
         fromJson: GiftProfitModel.fromJson);
+    return response;
+  }
+
+  Future<CategoryGiftHistoryModel> fetchCategoryGiftHistory({
+    required int categoryId,
+    String? categoryName,
+    String? filter,
+  }) async {
+    CategoryGiftHistoryModel response = await ApiService.instance.call(
+      url: WebService.giftWallet.fetchCategoryGiftHistory,
+      param: {
+        'category_id': categoryId,
+        if (categoryName != null) 'category_name': categoryName,
+        if (filter != null) 'filter': filter,
+      },
+      fromJson: CategoryGiftHistoryModel.fromJson,
+    );
     return response;
   }
 

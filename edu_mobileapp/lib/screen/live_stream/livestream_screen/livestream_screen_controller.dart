@@ -38,10 +38,10 @@ import 'package:geoedu/common/widget/live_summary_dialog.dart';
 import 'package:geoedu/screen/live_stream/live_stream_search_screen/live_stream_search_screen_controller.dart';
 import 'package:geoedu/screen/gift_sheet/send_gift_sheet.dart';
 import 'package:geoedu/screen/gift_sheet/send_gift_sheet_controller.dart';
+import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/screen/live_stream/live_stream_end_screen/live_stream_end_screen.dart';
 import 'package:geoedu/screen/live_stream/live_stream_end_screen/widget/livestream_summary.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/audience/widget/live_stream_join_sheet.dart';
-import 'package:geoedu/screen/live_stream/livestream_screen/host/widget/live_stream_host_top_view.dart';
 import 'package:geoedu/screen/report_sheet/report_sheet.dart';
 import 'package:geoedu/screen/dashboard_screen/dashboard_screen_controller.dart';
 import 'package:geoedu/utilities/app_res.dart';
@@ -537,14 +537,14 @@ class LivestreamScreenController extends BaseController {
       showSnackBar('You cannot send gifts to yourself');
       return;
     }
-    if (giftId == null || receiverId == null || coinPrice <= 0) {
+    if (receiverId == null || coinPrice <= 0) {
       return Loggers.error(
           'Invalid battle gift: giftId=$giftId receiver=$receiverId price=$coinPrice');
     }
 
     isGiftAnimating.value = true;
 
-    int effectiveGiftId = (giftId > 0) ? giftId : -1;
+    int effectiveGiftId = (giftId != null && giftId > 0) ? giftId : -1;
     if (effectiveGiftId <= 0) {
       final serverGifts = SessionManager.instance.getSettings()?.gifts ?? [];
       if (serverGifts.isNotEmpty) {
@@ -631,6 +631,9 @@ class LivestreamScreenController extends BaseController {
     } catch (_) {}
     stopListenEvent();
     logoutRoom();
+    if (isHost) {
+      deleteStreamOnFirebase();
+    }
   }
 
   Future<void> initVideoPlayer() async {
@@ -1316,40 +1319,47 @@ class LivestreamScreenController extends BaseController {
 
     Loggers.info('Stopping live stream Room : $roomId');
 
+    // 1. Immediately mark inactive and delete the main live stream document(s) directly
+    // This MUST be done first and without waiting on subcollections or batches, so Firestore
+    // listeners remove the live stream card from the feed in real-time.
     try {
-      // Get all users in the livestream and delete them
-      QuerySnapshot usersSnapshot = await liveStreamUserStatesRef.get();
-
-      WriteBatch batch = db.batch();
-
-      for (var doc in usersSnapshot.docs) {
-        batch.delete(doc.reference);
-      }
-
-      Loggers.info(
-          'Deleted ${usersSnapshot.docs.length} livestream users_state.');
-
-      // Get all Comments in the livestream and delete them
-      QuerySnapshot commentsSnapshot = await liveStreamCommentsRef.get();
-
-      for (var doc in commentsSnapshot.docs) {
-        batch.delete(doc.reference);
-      }
-
-      Loggers.info(
-          'Deleted ${commentsSnapshot.docs.length} livestream comments.');
-
-      // Delete the main live stream document
-      batch.delete(liveStreamDocRef);
-
-      // Commit batch delete
-      await batch.commit();
-      Loggers.success(
-          'livestream , users_states , comments  deleted from Firestore.');
-    } catch (e, stackTrace) {
-      Loggers.error('Failed to stop live stream: $e');
-      Loggers.error('StackTrace: $stackTrace');
+      await db.collection(FirebaseConst.liveStreams).doc(roomId).update({'is_active': false});
+    } catch (_) {}
+    try {
+      await db.collection(FirebaseConst.liveStreams).doc(roomId).delete();
+      Loggers.success('Main live stream document $roomId deleted from Firestore.');
+    } catch (e) {
+      Loggers.error('Failed to delete live stream doc $roomId: $e');
     }
+
+    // Also delete by host userId if different from roomId
+    if ('$myUserId' != roomId) {
+      try {
+        await db.collection(FirebaseConst.liveStreams).doc('$myUserId').update({'is_active': false});
+      } catch (_) {}
+      try {
+        await db.collection(FirebaseConst.liveStreams).doc('$myUserId').delete();
+      } catch (_) {}
+    }
+
+    // 2. Best-effort subcollection cleanup in the background
+    _cleanupSubcollectionsInBackground(roomId);
+  }
+
+  void _cleanupSubcollectionsInBackground(String roomId) async {
+    try {
+      final usersSnapshot = await liveStreamUserStatesRef.get();
+      for (var doc in usersSnapshot.docs) {
+        doc.reference.delete().catchError((_) {});
+      }
+    } catch (_) {}
+
+    try {
+      final commentsSnapshot = await liveStreamCommentsRef.get();
+      for (var doc in commentsSnapshot.docs) {
+        doc.reference.delete().catchError((_) {});
+      }
+    } catch (_) {}
   }
 
   void listenLiveStreamData() {
@@ -1449,6 +1459,9 @@ class LivestreamScreenController extends BaseController {
               case DocumentChangeType.added:
                 _showJoinStreamSheet(state);
                 liveUsersStates.add(state);
+                if (state.userId == liveData.value.hostId && state.user != null) {
+                  liveData.value.hostUser = state.user;
+                }
                 // Loggers.info('➕ User added: ${state.userId}');
 
                 break;
@@ -1466,6 +1479,9 @@ class LivestreamScreenController extends BaseController {
                   liveUsersStates[index] = state;
                 } else {
                   liveUsersStates.add(state);
+                }
+                if (state.userId == liveData.value.hostId && state.user != null) {
+                  liveData.value.hostUser = state.user;
                 }
                 // Loggers.info('🔁 User modified: ${state.userId}');
                 break;
@@ -1752,12 +1768,70 @@ class LivestreamScreenController extends BaseController {
     }
   }
 
+  AppUser? get effectiveHostUser {
+    if (liveData.value.hostUser != null) {
+      return liveData.value.hostUser;
+    }
+
+    final hostId = liveData.value.hostId ??
+        int.tryParse(liveData.value.roomID ?? '');
+
+    // 1. From hostUserState
+    final stateUser = hostUserState?.user ??
+        (hostId != null
+            ? liveUsersStates.firstWhereOrNull((s) => s.userId == hostId)?.user
+            : null);
+    if (stateUser != null) {
+      liveData.value.hostUser = stateUser;
+      return stateUser;
+    }
+
+    // 2. From firestoreController.users
+    if (hostId != null) {
+      final user = firestoreController.users
+          .firstWhereOrNull((u) => u.userId == hostId);
+      if (user != null) {
+        liveData.value.hostUser = user;
+        return user;
+      }
+    }
+
+
+
+    // 4. Construct fallback with hostId
+    if (hostId != null && hostId > 0) {
+      final fallback = AppUser(
+        userId: hostId,
+        username: hostUserState?.user?.username ?? 'Host',
+        fullname: hostUserState?.user?.fullname ?? 'Host',
+        profile: hostUserState?.user?.profile,
+      );
+      liveData.value.hostUser = fallback;
+      return fallback;
+    }
+
+    return null;
+  }
+
   Future<void> sendGiftDirect(Gift gift) async {
     if (isHost) {
       showSnackBar('Hosts cannot send gifts to themselves');
       return;
     }
-    final hostUser = liveData.value.hostUser;
+    AppUser? hostUser = effectiveHostUser;
+    if (hostUser == null) {
+      final hostId = liveData.value.hostId ??
+          int.tryParse(liveData.value.roomID ?? '');
+      if (hostId != null && hostId > 0) {
+        hostUser = AppUser(
+          userId: hostId,
+          username: 'Host',
+          fullname: 'Host',
+        );
+        liveData.value.hostUser = hostUser;
+      }
+    }
+
     if (hostUser == null) {
       showSnackBar('Host details not found');
       return;
@@ -1779,10 +1853,10 @@ class LivestreamScreenController extends BaseController {
       return showSnackBar(LKey.battleEndedGiftNotSent.tr);
     }
 
-    final effectiveTargetId = liveData.value.hostId;
+    final effectiveTargetId = liveData.value.hostId ?? effectiveHostUser?.userId;
     final effectiveStreamUsers = targetUsers.isNotEmpty
         ? targetUsers
-        : (liveData.value.hostUser != null ? [liveData.value.hostUser!] : <AppUser>[]);
+        : (effectiveHostUser != null ? [effectiveHostUser!] : <AppUser>[]);
 
     GiftManager.openGiftSheet(
         userId: effectiveTargetId,
@@ -1808,11 +1882,11 @@ class LivestreamScreenController extends BaseController {
           );
 
           AppUser effectiveUser = user ??
+              effectiveHostUser ??
               AppUser(
-                userId: liveData.value.hostUser?.userId ?? 0,
-                username: liveData.value.hostUser?.username ?? 'Host',
-                fullname: liveData.value.hostUser?.fullname,
-                profile: liveData.value.hostUser?.profile,
+                userId: liveData.value.hostId ?? 0,
+                username: 'Host',
+                fullname: 'Host',
               );
 
           final sound = gift.effectiveSoundUrl.isNotEmpty
@@ -2240,7 +2314,54 @@ class LivestreamScreenController extends BaseController {
         }
         closeCoHostStream(newState.userId);
       }
+
+      // Handle host muting / unmuting this user
+      if (newState.audioStatus == VideoAudioStatus.offByHost &&
+          oldState?.audioStatus != VideoAudioStatus.offByHost) {
+        isAudioOn.value = false;
+        ZegoExpressEngine.instance.muteMicrophone(true);
+        showSnackBar(LKey.theHostHasTurnedOffYourAudio.tr);
+      } else if (newState.audioStatus == VideoAudioStatus.on &&
+          oldState?.audioStatus == VideoAudioStatus.offByHost) {
+        isAudioOn.value = true;
+        ZegoExpressEngine.instance.muteMicrophone(false);
+        showSnackBar('Host unmuted your microphone');
+      }
+
+      // Handle host disabling / enabling this user's video
+      if (newState.videoStatus == VideoAudioStatus.offByHost &&
+          oldState?.videoStatus != VideoAudioStatus.offByHost) {
+        isVideoOn.value = false;
+        ZegoExpressEngine.instance.enableCamera(false);
+        showSnackBar(LKey.theHostHasTurnedOffYourVideo.tr);
+      } else if (newState.videoStatus == VideoAudioStatus.on &&
+          oldState?.videoStatus == VideoAudioStatus.offByHost) {
+        isVideoOn.value = true;
+        ZegoExpressEngine.instance.enableCamera(true);
+        showSnackBar('Host enabled your camera');
+      }
     }
+  }
+
+  void hostMuteUser(int userId, bool shouldMute) {
+    if (!isHost) return;
+    updateUserStateToFirestore(
+      userId,
+      audioStatus: shouldMute ? VideoAudioStatus.offByHost : VideoAudioStatus.on,
+    );
+  }
+
+  void hostToggleUserVideo(int userId, bool shouldTurnOff) {
+    if (!isHost) return;
+    updateUserStateToFirestore(
+      userId,
+      videoStatus: shouldTurnOff ? VideoAudioStatus.offByHost : VideoAudioStatus.on,
+    );
+  }
+
+  void hostKickUser(int userId) {
+    if (!isHost) return;
+    closeCoHostStream(userId);
   }
 
   void coHostDelete(LivestreamUserState state) {
@@ -2270,27 +2391,153 @@ class LivestreamScreenController extends BaseController {
 
   void onStopButtonTap() {
     bool isBattleOn = liveData.value.type == LivestreamType.battle;
-    String title =
-        !isBattleOn ? 'End Call' : LKey.stopBattleTitle.tr;
-    String description =
-        !isBattleOn ? 'Are you sure you want to end the call?' : LKey.stopBattleDescription.tr;
-
-    Get.bottomSheet(
-        StopLiveStreamSheet(
-            onTap: () {
-              if (isBattleOn) {
-                updateLiveStreamData(
-                    battleType: BattleType.initiate,
-                    type: LivestreamType.livestream);
-                startMinViewerTimeoutCheck();
-              } else {
-                hostEndStream();
-              }
-            },
-            title: title,
-            description: description,
-            positiveText: !isBattleOn ? 'End Live' : LKey.stop.tr),
-        isScrollControlled: true);
+    if (isBattleOn) {
+      Get.bottomSheet(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          decoration: const BoxDecoration(
+            color: Color(0xFF1E212B),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'End Session',
+                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: const Icon(Icons.stop_circle_outlined, color: Colors.orangeAccent),
+                  title: const Text('End PK Battle only', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Stay live in standard mode', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                  onTap: () {
+                    Get.back();
+                    updateLiveStreamData(
+                      battleType: BattleType.initiate,
+                      type: LivestreamType.livestream,
+                    );
+                    startMinViewerTimeoutCheck();
+                  },
+                ),
+                const Divider(color: Colors.white12),
+                ListTile(
+                  leading: const Icon(Icons.power_settings_new_rounded, color: Colors.redAccent),
+                  title: const Text('End Live Stream', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                  subtitle: const Text('End the live stream completely', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                  onTap: () {
+                    Get.back();
+                    hostEndStream();
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+        isScrollControlled: true,
+      );
+    } else {
+      Get.dialog(
+        Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E212B),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: ColorRes.liveRed.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.power_settings_new_rounded,
+                    color: ColorRes.liveRed,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'End Live',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Are you sure you want to end this live?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Get.back(),
+                        child: Text(
+                          'Cancel',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: ColorRes.liveRed,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                        ),
+                        onPressed: () {
+                          Get.back();
+                          hostEndStream();
+                        },
+                        child: const Text(
+                          'End Live',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> hostEndStream() async {
@@ -2298,25 +2545,21 @@ class LivestreamScreenController extends BaseController {
         .firstWhereOrNull((element) => element.userId == myUserId);
     int endedViewers = liveUsersStates.length;
 
-    _endLiveStreamApi();
-    await _stopLocalRecordingAndUpload();
-
-    // Clean up Firestore documents immediately
+    // 1. Clean up Firestore documents immediately so stream disappears from all screens
     await deleteStreamOnFirebase();
-    try {
-      final streamDoc = db.collection(FirebaseConst.liveStreams).doc('$myUserId');
-      final oldComments = await streamDoc.collection(FirebaseConst.comments).limit(300).get();
-      for (final doc in oldComments.docs) {
-        doc.reference.delete();
-      }
-      await streamDoc.delete();
-    } catch (_) {}
 
     if (Get.isRegistered<LiveStreamSearchScreenController>()) {
       Get.find<LiveStreamSearchScreenController>()
           .removeStreamLocally(liveData.value.roomID, myUserId);
     }
 
+    // 2. Call backend end-stream API
+    _endLiveStreamApi();
+
+    // 3. Stop local recording and upload in background (non-blocking)
+    _stopLocalRecordingAndUpload();
+
+    // 4. Leave Zego room
     logoutRoom();
 
     final startTime = DateTime.fromMillisecondsSinceEpoch(

@@ -472,19 +472,25 @@ class WalletController extends Controller
             ->where('expires_at', '<', Carbon::now())
             ->update(['is_active' => 0]);
 
-        $query = UserEntryEffects::where('user_id', $user->id)->orderBy('id', 'DESC')->limit($request->limit);
+        $query = UserEntryEffects::with('entryEffect')
+            ->where('user_id', $user->id)
+            ->orderBy('id', 'DESC')
+            ->limit($request->limit);
         if ($request->has('last_item_id') && !empty($request->last_item_id)) {
             $query->where('id', '<', $request->last_item_id);
         }
 
         $items = $query->get()->map(function ($item) {
             $isActive = intval($item->is_active) === 1 && (!empty($item->expires_at) ? Carbon::parse($item->expires_at)->greaterThan(Carbon::now()) : true);
+            $rawImage = !empty($item->image) ? $item->image : ($item->entryEffect ? $item->entryEffect->image : null);
+            $title = !empty($item->entryEffect?->title) ? $item->entryEffect->title : 'Entry Effect';
             return [
                 'id' => $item->id,
                 'entry_effect_id' => $item->entry_effect_id,
+                'title' => $title,
                 'coin_price' => intval($item->coin_price),
                 'duration' => intval($item->duration),
-                'image' => GlobalFunction::generateFileUrl($item->image),
+                'image' => GlobalFunction::generateFileUrl($rawImage),
                 'purchased_at' => !empty($item->purchased_at) ? Carbon::parse($item->purchased_at)->format('Y-m-d H:i:s') : null,
                 'expires_at' => !empty($item->expires_at) ? Carbon::parse($item->expires_at)->format('Y-m-d H:i:s') : null,
                 'is_active' => $isActive,
@@ -759,16 +765,36 @@ class WalletController extends Controller
             $query->where('id', '<', $request->last_item_id);
         }
 
-        $items = $query->get([
-            'id',
-            'user_id',
-            'payment_id',
-            'diamond_pack_id',
-            'diamonds',
-            'amount',
-            'status',
-            'created_at',
-        ]);
+        $items = $query->get()->map(function ($item) use ($user) {
+            $pack = DiamondPackages::find($item->diamond_pack_id);
+            $amount = floatval($item->amount);
+            $origPrice = $pack ? floatval($pack->diamond_plan_price) : $amount;
+            if ($origPrice < $amount) {
+                $origPrice = $amount;
+            }
+            $discount = max(0, round($origPrice - $amount, 2));
+
+            return [
+                'id' => $item->id,
+                'user_id' => $item->user_id,
+                'user_name' => $user->fullname ?: ($user->username ?: 'GeoEdu User'),
+                'user_phone' => $user->mobile ?: '',
+                'user_email' => $user->email ?: '',
+                'payment_id' => $item->payment_id,
+                'order_id' => $item->order_id,
+                'transaction_id' => $item->payment_id ?: ('TXN' . $item->id),
+                'diamond_pack_id' => $item->diamond_pack_id,
+                'diamonds' => intval($item->diamonds),
+                'amount' => $amount,
+                'original_price' => $origPrice,
+                'discount' => $discount,
+                'currency' => '₹',
+                'payment_mode' => 'UPI',
+                'place_of_supply' => 'Tamil Nadu, India',
+                'status' => $item->status ?: 'success',
+                'created_at' => !empty($item->created_at) ? Carbon::parse($item->created_at)->format('Y-m-d H:i:s') : null,
+            ];
+        })->values();
 
         return GlobalFunction::sendDataResponse(true, 'Transactions fetched', $items);
     }
@@ -3778,6 +3804,223 @@ class WalletController extends Controller
         return response()->json([
             'status' => true,
             'data' => $rows,
+        ]);
+    }
+
+    public function fetchCategoryGiftHistory(Request $request)
+    {
+        $token = $request->header('authtoken');
+        $user = GlobalFunction::getUserFromAuthToken($token);
+        if (!$user) {
+            return GlobalFunction::sendSimpleResponse(false, 'User not found!');
+        }
+        if ($user->is_freez == 1) {
+            return ['status' => false, 'message' => 'this user is freezed!'];
+        }
+
+        $categoryId = intval($request->category_id);
+        $categoryName = trim((string) ($request->category_name ?? ''));
+        $filter = strtolower(trim((string) ($request->filter ?? 'all')));
+
+        $category = null;
+        if ($categoryId > 0 && Schema::hasTable('tbl_gift_categories')) {
+            $category = DB::table('tbl_gift_categories')->where('id', $categoryId)->first();
+        }
+        if (!$category && !empty($categoryName) && Schema::hasTable('tbl_gift_categories')) {
+            $category = DB::table('tbl_gift_categories')->whereRaw('LOWER(name) = ?', [strtolower($categoryName)])->first();
+            if ($category) {
+                $categoryId = intval($category->id);
+            }
+        }
+
+        $resolvedCategoryName = $category ? (string) $category->name : ($categoryName ?: 'All');
+
+        $settings = GlobalSettings::first();
+        $diamondToStarRate = floatval($settings->diamond_to_star_rate ?? 1);
+        if ($diamondToStarRate <= 0) {
+            $diamondToStarRate = 1;
+        }
+        $gifterReturnPercent = max(0, floatval($settings->gifter_return ?? 0));
+
+        $transactions = [];
+        $totalStars = 0;
+        $totalDiamonds = 0;
+
+        if (Schema::hasTable('notification_users') && Schema::hasTable('tbl_gifts')) {
+            $query = DB::table('notification_users as n')
+                ->join('tbl_gifts as g', 'g.id', '=', 'n.data_id')
+                ->leftJoin('tbl_users as sender', 'sender.id', '=', 'n.from_user_id')
+                ->leftJoin('tbl_users as receiver', 'receiver.id', '=', 'n.to_user_id')
+                ->leftJoin('tbl_gift_categories as gc', 'gc.id', '=', 'g.gift_category_id')
+                ->where('n.type', Constants::notify_gift_user)
+                ->where(function ($q) use ($user) {
+                    $q->where('n.to_user_id', $user->id)
+                      ->orWhere('n.from_user_id', $user->id);
+                });
+
+            if ($categoryId > 0) {
+                $query->where('g.gift_category_id', $categoryId);
+            } elseif (!empty($resolvedCategoryName) && strtolower($resolvedCategoryName) !== 'all') {
+                $query->whereRaw('LOWER(COALESCE(gc.name, "")) = ?', [strtolower($resolvedCategoryName)]);
+            }
+
+            switch ($filter) {
+                case 'today':
+                    $query->whereDate('n.created_at', Carbon::today());
+                    break;
+                case 'yesterday':
+                    $query->whereDate('n.created_at', Carbon::yesterday());
+                    break;
+                case 'week':
+                case 'this_week':
+                case 'this week':
+                    $query->whereBetween('n.created_at', [
+                        Carbon::now()->startOfWeek(),
+                        Carbon::now()->endOfWeek(),
+                    ]);
+                    break;
+                case 'month':
+                case 'this_month':
+                case 'this month':
+                    $query->whereBetween('n.created_at', [
+                        Carbon::now()->startOfMonth(),
+                        Carbon::now()->endOfMonth(),
+                    ]);
+                    break;
+                case 'all':
+                default:
+                    // all time
+                    break;
+            }
+
+            $selectCols = [
+                'n.id',
+                'n.created_at',
+                'n.from_user_id',
+                'n.to_user_id',
+                'g.id as gift_id',
+                'g.gift_category_id',
+                'g.coin_price',
+                'g.image as gift_image',
+                'gc.name as category_name',
+                'sender.fullname as sender_fullname',
+                'sender.username as sender_username',
+                'sender.profile_image as sender_profile_image',
+                'receiver.fullname as receiver_fullname',
+                'receiver.username as receiver_username',
+                'receiver.profile_image as receiver_profile_image',
+            ];
+            if (Schema::hasColumn('tbl_gifts', 'title')) {
+                $selectCols[] = 'g.title as gift_title';
+            }
+            if (Schema::hasColumn('tbl_gifts', 'diamond_price')) {
+                $selectCols[] = 'g.diamond_price';
+            }
+
+            $rows = $query->select($selectCols)
+                ->orderBy('n.created_at', 'DESC')
+                ->orderBy('n.id', 'DESC')
+                ->get();
+
+            foreach ($rows as $row) {
+                // Gift name
+                $giftName = '';
+                if (!empty($row->gift_title) && strtolower(trim($row->gift_title)) !== 'gift') {
+                    $giftName = trim((string) $row->gift_title);
+                } elseif (!empty($row->gift_image)) {
+                    $filename = basename($row->gift_image);
+                    $filename = preg_replace('/^\d+_Shortzz_/', '', $filename);
+                    $filename = preg_replace('/\.[^.]+$/', '', $filename);
+                    $clean = trim(preg_replace('/[_\-+()0-9]+/', ' ', $filename));
+                    $giftName = !empty($clean) ? ucwords($clean) : 'Gift';
+                } else {
+                    $giftName = 'Gift';
+                }
+
+                // Diamonds spent
+                $diamonds = 0;
+                if (!empty($row->diamond_price) && intval($row->diamond_price) > 0) {
+                    $diamonds = intval($row->diamond_price);
+                } else {
+                    $diamonds = intval(ceil(intval($row->coin_price ?? 0) / $diamondToStarRate));
+                }
+                if ($diamonds <= 0) {
+                    $diamonds = max(1, intval($row->coin_price ?? 1));
+                }
+
+                // Stars earned
+                $starsEarned = 0;
+                if (intval($row->to_user_id) === intval($user->id)) {
+                    // Receiver earned the stars
+                    $starsEarned = intval($row->coin_price ?? 0);
+                } else {
+                    // Gifter earned the gifter return stars
+                    $starsEarned = $gifterReturnPercent > 0
+                        ? intval(floor((intval($row->coin_price ?? 0) * $gifterReturnPercent) / 100))
+                        : intval($row->coin_price ?? 0);
+                    if ($starsEarned <= 0) {
+                        $starsEarned = intval($row->coin_price ?? 0);
+                    }
+                }
+
+                $isSender = (intval($row->from_user_id) === intval($user->id));
+                $senderName = $isSender
+                    ? 'You'
+                    : trim((string) ($row->sender_fullname ?: $row->sender_username ?: ('User #' . $row->from_user_id)));
+
+                $receiverName = trim((string) ($row->receiver_fullname ?: $row->receiver_username ?: ('User #' . $row->to_user_id)));
+
+                $createdAt = Carbon::parse($row->created_at);
+
+                $totalStars += $starsEarned;
+                $totalDiamonds += $diamonds;
+
+                $transactions[] = [
+                    'id' => intval($row->id),
+                    'gift_id' => intval($row->gift_id),
+                    'gift_name' => $giftName,
+                    'gift_image' => (string) ($row->gift_image ?? ''),
+                    'category_id' => intval($row->gift_category_id ?? $categoryId),
+                    'category_name' => (string) ($row->category_name ?: $resolvedCategoryName),
+                    'sender_id' => intval($row->from_user_id),
+                    'sender_name' => $senderName,
+                    'sender_username' => (string) ($row->sender_username ?? ''),
+                    'sender_image' => (string) ($row->sender_profile_image ?? ''),
+                    'receiver_id' => intval($row->to_user_id),
+                    'receiver_name' => $receiverName,
+                    'diamonds' => $diamonds,
+                    'stars_earned' => $starsEarned,
+                    'created_at' => $createdAt->format('Y-m-d H:i:s'),
+                    'date' => $createdAt->format('d M Y'),
+                    'time' => $createdAt->format('h:i A'),
+                    'relative_time' => $createdAt->diffForHumans(),
+                ];
+            }
+        }
+
+        // If all-time filter and wallet table has recorded stars, align total_stars with wallet if larger
+        if ($filter === 'all' && Schema::hasTable('tbl_gifter_return_wallets') && $categoryId > 0) {
+            $walletCategoryStars = intval(DB::table('tbl_gifter_return_wallets')
+                ->where('user_id', $user->id)
+                ->where('gift_category_id', $categoryId)
+                ->sum('stars'));
+            if ($walletCategoryStars > $totalStars) {
+                $totalStars = $walletCategoryStars;
+            }
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Category gift history fetched successfully',
+            'data' => [
+                'category_id' => $categoryId,
+                'category_name' => $resolvedCategoryName,
+                'filter' => $filter,
+                'total_stars' => $totalStars,
+                'total_diamonds' => $totalDiamonds,
+                'total_transactions' => count($transactions),
+                'transactions' => $transactions,
+            ],
         ]);
     }
 

@@ -117,9 +117,8 @@ class _ChangeInterestSheetState extends State<ChangeInterestSheet> {
     if (selectedCategory == null) {
       controller.clearHierarchicalFilter();
     } else {
-      final catIndex = categories.indexWhere((c) => c.id == selectedCategory!.id);
-      controller.setHierarchicalFilter(
-        categoryIndex: catIndex >= 0 ? catIndex + 1 : 0,
+      controller.selectCategoryAndPrioritize(
+        selectedCategory!,
         subCategory: selectedSubCategory,
         division: selectedDivision,
         topic: selectedTopic,

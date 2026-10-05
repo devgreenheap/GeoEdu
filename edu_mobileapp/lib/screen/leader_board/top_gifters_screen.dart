@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:geoedu/common/controller/base_controller.dart';
 import 'package:geoedu/common/manager/session_manager.dart';
 import 'package:geoedu/common/service/api/common_service.dart';
+import 'package:geoedu/common/service/api/user_service.dart';
+import 'package:geoedu/common/service/navigation/navigate_with_controller.dart';
 import 'package:geoedu/common/widget/custom_app_bar.dart' show kAppBarGradient;
 import 'package:geoedu/model/general/leaderboard_user_model.dart';
 import 'package:geoedu/screen/leader_board/widget/leader_board_background.dart';
@@ -47,7 +50,7 @@ class _TopGiftersScreenState extends State<TopGiftersScreen> {
                 height: 30,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.05),
+                  color: Colors.white.withValues(alpha: 0.05),
                 ),
               ),
             ),
@@ -59,7 +62,7 @@ class _TopGiftersScreenState extends State<TopGiftersScreen> {
                 height: 50,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.05),
+                  color: Colors.white.withValues(alpha: 0.05),
                 ),
               ),
             ),
@@ -78,9 +81,13 @@ class _TopGiftersScreenState extends State<TopGiftersScreen> {
                   margin: const EdgeInsets.symmetric(horizontal: 10),
                   decoration: BoxDecoration(
                     color: ColorRes.cardBackground.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: const TabBar(
                     isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    padding: EdgeInsets.symmetric(horizontal: 6),
+                    labelPadding: EdgeInsets.symmetric(horizontal: 14),
                     indicatorColor: ColorRes.primaryColor,
                     indicatorWeight: 3,
                     labelColor: ColorRes.primaryColor,
@@ -88,7 +95,11 @@ class _TopGiftersScreenState extends State<TopGiftersScreen> {
                     dividerColor: Colors.transparent,
                     labelStyle: TextStyle(
                       fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                      fontSize: 15,
+                    ),
+                    unselectedLabelStyle: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
                     ),
                     tabs: [
                       Tab(text: "Yesterday"),
@@ -98,8 +109,8 @@ class _TopGiftersScreenState extends State<TopGiftersScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
-                Expanded(
+                const SizedBox(height: 16),
+                const Expanded(
                   child: TabBarView(
                     children: [
                       _DynamicGifterTab(period: "yesterday"),
@@ -156,6 +167,42 @@ class _DynamicGifterTabState extends State<_DynamicGifterTab>
     }
   }
 
+  Future<void> _openProfile(LeaderboardUser user) async {
+    if (user.userId == null) return;
+    BaseController.share.showLoader();
+    try {
+      final fetchedUser =
+          await UserService.instance.fetchUserDetails(userId: user.userId);
+      BaseController.share.stopLoader();
+      if (fetchedUser != null) {
+        NavigationService.shared.openProfileScreen(fetchedUser);
+      }
+    } catch (_) {
+      BaseController.share.stopLoader();
+    }
+  }
+
+  Future<void> _toggleFollow(LeaderboardUser user) async {
+    final userId = user.userId;
+    final myUserId = SessionManager.instance.getUser()?.id ?? -1;
+    if (userId == null || userId == myUserId) return;
+
+    final wasFollowing = user.isFollowing;
+    setState(() {
+      user.isFollowing = !wasFollowing;
+    });
+
+    final result = wasFollowing
+        ? await UserService.instance.unFollowUser(userId: userId)
+        : await UserService.instance.followUser(userId: userId);
+
+    if (result.status != true && mounted) {
+      setState(() {
+        user.isFollowing = wasFollowing;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -173,15 +220,23 @@ class _DynamicGifterTabState extends State<_DynamicGifterTab>
       );
     }
     return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
       child: Column(
         children: [
           if (users.length >= 3)
-            LeaderboardTopThree(isDiamond: true, topUsers: users),
-          const SizedBox(height: 20),
+            LeaderboardTopThree(
+              isDiamond: true,
+              topUsers: users,
+              onUserTap: _openProfile,
+              onFollowTap: _toggleFollow,
+            ),
+          const SizedBox(height: 16),
           LeaderboardList(
             users: users,
             isDiamond: true,
             myUserId: SessionManager.instance.getUser()?.id ?? -1,
+            onUserTap: _openProfile,
+            onFollowTap: _toggleFollow,
           ),
         ],
       ),

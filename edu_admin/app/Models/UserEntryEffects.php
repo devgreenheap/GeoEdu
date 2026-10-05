@@ -10,4 +10,10 @@ class UserEntryEffects extends Model
     use HasFactory;
 
     public $table = 'tbl_user_entry_effects';
+
+    public function entryEffect()
+    {
+        return $this->belongsTo(EntryEffects::class, 'entry_effect_id');
+    }
 }
+
