@@ -133,6 +133,13 @@ class WalletController extends Controller
         $roleRequest->request_type = $requestType;
         $roleRequest->status = Constants::roleRequestPending;
         $roleRequest->requested_at = Carbon::now();
+
+        if ($request->hasFile('video')) {
+            $roleRequest->video = GlobalFunction::saveFileAndGivePath($request->file('video'));
+        } elseif ($request->filled('video')) {
+            $roleRequest->video = $request->input('video');
+        }
+
         $roleRequest->save();
 
         if ($requestType === Constants::roleRequestHost) {
@@ -503,6 +510,41 @@ class WalletController extends Controller
     public function requestBecomeHost(Request $request)
     {
         return $this->submitRoleRequest($request, Constants::roleRequestHost, 'Host request submitted successfully');
+    }
+
+    public function checkHostRequestStatus(Request $request)
+    {
+        $token = $request->header('authtoken');
+        $user = GlobalFunction::getUserFromAuthToken($token);
+        if (!$user) {
+            return GlobalFunction::sendSimpleResponse(false, 'User not found!');
+        }
+
+        $latestRequest = UserRoleRequests::where('user_id', $user->id)
+            ->where('request_type', Constants::roleRequestHost)
+            ->orderBy('id', 'DESC')
+            ->first();
+
+        $statusText = 'none';
+        if ($latestRequest) {
+            if (intval($latestRequest->status) === Constants::roleRequestPending) {
+                $statusText = 'pending';
+            } elseif (intval($latestRequest->status) === Constants::roleRequestAccepted) {
+                $statusText = 'accepted';
+            } elseif (intval($latestRequest->status) === Constants::roleRequestRejected) {
+                $statusText = 'rejected';
+            }
+        }
+
+        return GlobalFunction::sendDataResponse(true, 'Host request status fetched successfully', [
+            'is_host' => intval($user->is_host ?? 0),
+            'has_request' => $latestRequest !== null,
+            'request_id' => $latestRequest ? $latestRequest->id : null,
+            'status' => $latestRequest ? intval($latestRequest->status) : null,
+            'status_text' => $statusText,
+            'requested_at' => $latestRequest ? $latestRequest->requested_at : null,
+            'video' => $latestRequest && !empty($latestRequest->video) ? GlobalFunction::generateFileUrl($latestRequest->video) : null,
+        ]);
     }
 
     public function approveHost(Request $request)
@@ -1496,6 +1538,16 @@ class WalletController extends Controller
                 </a>";
             }
 
+            $interviewVideoHtml = "<span class='badge bg-light text-muted border'>Not Uploaded</span>";
+            if (!empty($item->video)) {
+                $videoUrl = GlobalFunction::generateFileUrl($item->video);
+                $userName = e($userModel->fullname ?? $userModel->username ?? ('User #' . $item->user_id));
+                $interviewVideoHtml = "<button type='button' class='btn btn-sm btn-primary play-interview-video d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1' data-video-url='{$videoUrl}' data-user-name='{$userName}' title='Watch Interview Video'>
+                    <i class='uil-play-circle fs-5'></i>
+                    <span>Watch Video</span>
+                </button>";
+            }
+
             $requestType = intval($item->request_type) === Constants::roleRequestHost
                 ? "<span class='badge bg-primary'>HOST</span>"
                 : "<span class='badge bg-info'>AGENT</span>";
@@ -1526,6 +1578,7 @@ class WalletController extends Controller
                     $requestType,
                     $user,
                     $verificationPhotoHtml,
+                    $interviewVideoHtml,
                     GlobalFunction::formateDatabaseTime($item->requested_at ?? $item->created_at),
                     $statusBadge,
                     $action,
@@ -1537,6 +1590,7 @@ class WalletController extends Controller
                 $requestType,
                 $user,
                 $verificationPhotoHtml,
+                $interviewVideoHtml,
                 GlobalFunction::formateDatabaseTime($item->requested_at ?? $item->created_at),
                 GlobalFunction::formateDatabaseTime($item->action_at ?? $item->updated_at),
                 $statusBadge,

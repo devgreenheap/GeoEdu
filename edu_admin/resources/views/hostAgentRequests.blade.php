@@ -32,6 +32,7 @@
                                 <th>{{ __('Type')}}</th>
                                 <th>{{ __('User')}}</th>
                                 <th>{{ __('Verification Photo')}}</th>
+                                <th>{{ __('Interview Video')}}</th>
                                 <th>{{ __('Requested Date')}}</th>
                                 <th>{{ __('Status')}}</th>
                                 <th style="width: 200px;" class="text-end">{{ __('Action')}}</th>
@@ -49,6 +50,7 @@
                                 <th>{{ __('Type')}}</th>
                                 <th>{{ __('User')}}</th>
                                 <th>{{ __('Verification Photo')}}</th>
+                                <th>{{ __('Interview Video')}}</th>
                                 <th>{{ __('Requested Date')}}</th>
                                 <th>{{ __('Action Date')}}</th>
                                 <th>{{ __('Status')}}</th>
@@ -66,6 +68,7 @@
                                 <th>{{ __('Type')}}</th>
                                 <th>{{ __('User')}}</th>
                                 <th>{{ __('Verification Photo')}}</th>
+                                <th>{{ __('Interview Video')}}</th>
                                 <th>{{ __('Requested Date')}}</th>
                                 <th>{{ __('Action Date')}}</th>
                                 <th>{{ __('Status')}}</th>
@@ -73,6 +76,28 @@
                         </thead>
                     </table>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- Interview Video Player Modal --}}
+<div class="modal fade" id="videoPlayerModal" tabindex="-1" aria-labelledby="videoPlayerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content bg-dark text-white rounded-3 shadow">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="videoPlayerModalLabel"><i class="uil-video me-1 text-primary"></i> {{ __('Interview Video') }}</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0 text-center bg-black">
+                <video id="modalInterviewVideo" controls class="w-100" style="max-height: 70vh; outline: none; background: #000;" playsinline>
+                    <source src="" type="video/mp4">
+                    {{ __('Your browser does not support the video tag.') }}
+                </video>
+            </div>
+            <div class="modal-footer border-secondary justify-content-between">
+                <span id="modalVideoUserInfo" class="text-white-50 small"></span>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">{{ __('Close') }}</button>
             </div>
         </div>
     </div>

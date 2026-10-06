@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:geoedu/common/manager/session_manager.dart';
-import 'package:geoedu/common/service/api/gift_wallet_service.dart';
 import 'package:geoedu/common/widget/confirmation_dialog.dart';
 import 'package:geoedu/common/widget/no_data_widget.dart';
 import 'package:geoedu/common/widget/recorded_video_player_screen.dart';
@@ -10,6 +9,7 @@ import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/model/livestream/live_history_model.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/screen/live_stream/go_live_setup_screen.dart';
+import 'package:geoedu/screen/profile_screen/widget/host_interview_recording_screen.dart';
 import 'package:geoedu/screen/profile_screen/profile_screen_controller.dart';
 import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/utilities/text_style_custom.dart';
@@ -426,31 +426,7 @@ class _NoRecordedLivesView extends StatelessWidget {
   const _NoRecordedLivesView({required this.isMe});
 
   void _confirmBecomeHost(BuildContext context) {
-    Get.bottomSheet(
-      ConfirmationSheet(
-        title: 'Become a Host',
-        description: 'Are you sure you want to become a host? Your request will be sent for approval.',
-        positiveText: 'Yes, Become Host',
-        onTap: () => _requestBecomeHost(context),
-      ),
-      isScrollControlled: true,
-    );
-  }
-
-  Future<void> _requestBecomeHost(BuildContext context) async {
-    try {
-      final result = await GiftWalletService.instance.requestBecomeHost();
-      Get.snackbar(
-        result.status == true ? 'Request Sent' : 'Request Failed',
-        result.message ?? '',
-        backgroundColor: result.status == true ? Colors.green : Colors.red,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.TOP,
-      );
-    } catch (_) {
-      Get.snackbar('Error', 'Something went wrong',
-          backgroundColor: Colors.red, colorText: Colors.white, snackPosition: SnackPosition.TOP);
-    }
+    Get.to(() => const HostInterviewRecordingScreen());
   }
 
   void _onHostALive(BuildContext context) {

@@ -1370,6 +1370,13 @@ class UserController extends Controller
         }
         $dataUser = $this->appendSignupNames($dataUser);
 
+        $latestHostRequest = UserRoleRequests::where('user_id', $baseUser->id)
+            ->where('request_type', Constants::roleRequestHost)
+            ->orderBy('id', 'DESC')
+            ->first();
+        $dataUser->host_request_status = $latestHostRequest ? intval($latestHostRequest->status) : null;
+        $dataUser->host_request_id = $latestHostRequest ? intval($latestHostRequest->id) : null;
+
         $dataUser->level_id = $rawLevelId;
         $levelValue = UserLevels::where('id', $rawLevelId)->value('level');
         $dataUser->user_level = !is_null($levelValue) && is_numeric($levelValue)

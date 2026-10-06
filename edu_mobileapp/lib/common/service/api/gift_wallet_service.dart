@@ -330,11 +330,35 @@ class GiftWalletService {
     return response.data ?? [];
   }
 
-  Future<StatusModel> requestBecomeHost() async {
+  Future<StatusModel> requestBecomeHost({String? videoFilePath}) async {
+    if (videoFilePath != null && videoFilePath.isNotEmpty) {
+      StatusModel response = await ApiService.instance.multiPartCallApi(
+        url: WebService.giftWallet.requestBecomeHost,
+        filesMap: {
+          'video': [XFile(videoFilePath)],
+        },
+        fromJson: StatusModel.fromJson,
+      );
+      return response;
+    }
     StatusModel response = await ApiService.instance.call(
         url: WebService.giftWallet.requestBecomeHost,
         fromJson: StatusModel.fromJson);
     return response;
+  }
+
+  Future<Map<String, dynamic>?> checkHostRequestStatus() async {
+    try {
+      final response = await ApiService.instance.call(
+        url: WebService.giftWallet.checkHostRequestStatus,
+      );
+      if (response != null && response['status'] == true && response['data'] != null) {
+        return Map<String, dynamic>.from(response['data']);
+      }
+    } catch (e) {
+      Loggers.error('checkHostRequestStatus error: $e');
+    }
+    return null;
   }
 
   Future<StatusModel> requestBecomeAgent() async {

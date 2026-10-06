@@ -149,4 +149,32 @@ $(document).ready(function () {
             });
         });
     });
+
+    // Interview Video playback modal handling
+    $(document).on("click", ".play-interview-video", function (e) {
+        e.preventDefault();
+        var videoUrl = $(this).data("video-url");
+        var userName = $(this).data("user-name") || "";
+        if (videoUrl) {
+            var videoElem = document.getElementById("modalInterviewVideo");
+            if (videoElem) {
+                videoElem.src = videoUrl;
+                $("#modalVideoUserInfo").text(userName ? "Candidate: " + userName : "");
+                var modal = new bootstrap.Modal(document.getElementById("videoPlayerModal"));
+                modal.show();
+                videoElem.play().catch(function (err) {
+                    console.log("Auto-play blocked or failed: ", err);
+                });
+            }
+        }
+    });
+
+    $("#videoPlayerModal").on("hidden.bs.modal", function () {
+        var videoElem = document.getElementById("modalInterviewVideo");
+        if (videoElem) {
+            videoElem.pause();
+            videoElem.currentTime = 0;
+            videoElem.src = "";
+        }
+    });
 });

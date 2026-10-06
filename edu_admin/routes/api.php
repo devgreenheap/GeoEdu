@@ -165,6 +165,7 @@ Route::middleware('checkHeader')->group(function () {
         Route::post('buyEntryEffect', [WalletController::class, 'buyEntryEffect'])->middleware('authorizeUser');
         Route::post('fetchMyEntryEffects', [WalletController::class, 'fetchMyEntryEffects'])->middleware('authorizeUser');
         Route::post('requestBecomeHost', [WalletController::class, 'requestBecomeHost'])->middleware('authorizeUser');
+        Route::match(['get', 'post'], 'checkHostRequestStatus', [WalletController::class, 'checkHostRequestStatus'])->middleware('authorizeUser');
         Route::post('approveHost', [WalletController::class, 'approveHost'])->middleware('authorizeUser');
         Route::post('requestBecomeAgent', [WalletController::class, 'requestBecomeAgent'])->middleware('authorizeUser');
         Route::post('saveLiveStreamComment', [LiveStreamController::class, 'saveLiveStreamComment'])->middleware('authorizeUser');

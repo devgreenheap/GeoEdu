@@ -60,6 +60,7 @@ class _GiftWallet {
   String buyEntryEffect = "${apiURL}misc/buyEntryEffect";
   String fetchMyEntryEffects = "${apiURL}misc/fetchMyEntryEffects";
   String requestBecomeHost = "${apiURL}misc/requestBecomeHost";
+  String checkHostRequestStatus = "${apiURL}misc/checkHostRequestStatus";
   String requestBecomeAgent = "${apiURL}misc/requestBecomeAgent";
   String startLiveStream = "${apiURL}misc/startLiveStream";
   String endLiveStream = "${apiURL}misc/endLiveStream";

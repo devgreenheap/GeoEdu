@@ -20,6 +20,7 @@ import 'package:geoedu/screen/profile_screen/profile_screen.dart';
 import 'package:geoedu/screen/profile_screen/profile_screen_controller.dart';
 import 'package:geoedu/screen/profile_screen/widget/profile_preview_interactive_screen.dart';
 import 'package:geoedu/screen/profile_screen/widget/user_link_sheet.dart';
+import 'package:geoedu/screen/profile_screen/widget/host_interview_recording_screen.dart';
 import 'package:geoedu/screen/settings_screen/settings_screen.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/style_res.dart';
@@ -1055,65 +1056,248 @@ class _OutlineActionButton extends StatelessWidget {
   }
 }
 
-class BecomeHostButton extends StatelessWidget {
+class BecomeHostButton extends StatefulWidget {
   const BecomeHostButton({super.key});
 
-  void _confirmBecomeHost(BuildContext context) {
-    Get.bottomSheet(
-      ConfirmationSheet(
-        title: 'Become a Host',
-        description: 'Are you sure you want to become a host? Your request will be sent for approval.',
-        positiveText: 'Yes, Become Host',
-        onTap: () => _requestBecomeHost(context),
-      ),
-      isScrollControlled: true,
-    );
+  @override
+  State<BecomeHostButton> createState() => _BecomeHostButtonState();
+}
+
+class _BecomeHostButtonState extends State<BecomeHostButton> {
+  String _statusText = 'none'; // 'none', 'pending', 'accepted', 'rejected'
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchStatus();
   }
 
-  Future<void> _requestBecomeHost(BuildContext context) async {
-    try {
-      final result = await GiftWalletService.instance.requestBecomeHost();
+  Future<void> _fetchStatus() async {
+    final user = SessionManager.instance.getUser();
+    if (user?.isHost == 1) {
+      if (mounted) setState(() => _statusText = 'accepted');
+      return;
+    }
+
+    final data = await GiftWalletService.instance.checkHostRequestStatus();
+    if (mounted) {
+      setState(() {
+        if (data != null && data['status_text'] != null) {
+          _statusText = data['status_text'].toString();
+        } else {
+          _statusText = 'none';
+        }
+      });
+    }
+  }
+
+  void _onTap() {
+    if (_statusText == 'accepted') {
       Get.snackbar(
-        result.status == true ? 'Request Sent' : 'Request Failed',
-        result.message ?? '',
-        backgroundColor: result.status == true ? Colors.green : Colors.red,
+        'Host Account',
+        'You are an approved Host on GioEdu!',
+        backgroundColor: Colors.green,
         colorText: Colors.white,
-        snackPosition: SnackPosition.TOP,
       );
-    } catch (_) {
-      Get.snackbar('Error', 'Something went wrong',
-          backgroundColor: Colors.red, colorText: Colors.white, snackPosition: SnackPosition.TOP);
+      return;
+    }
+
+    if (_statusText == 'pending') {
+      Get.bottomSheet(
+        Container(
+          padding: const EdgeInsets.all(22),
+          decoration: const BoxDecoration(
+            color: Color(0xFF1B1E28),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 38,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: const Color(0xFFFFB300).withValues(alpha: 0.15), shape: BoxShape.circle),
+                  child: const Icon(Icons.hourglass_top_rounded, color: Color(0xFFFFB300), size: 36),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Interview Under Review',
+                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Your 2-minute interview video has been submitted and is currently being reviewed by our admin team. You will be notified once reviewed.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white70, fontSize: 13.5, height: 1.4),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white12,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: () => Get.back(),
+                    child: const Text('Close', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (_statusText == 'rejected') {
+      Get.bottomSheet(
+        Container(
+          padding: const EdgeInsets.all(22),
+          decoration: const BoxDecoration(
+            color: Color(0xFF1B1E28),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 38,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: const Color(0xFFFF1744).withValues(alpha: 0.15), shape: BoxShape.circle),
+                  child: const Icon(Icons.cancel_rounded, color: Color(0xFFFF1744), size: 36),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Application Rejected',
+                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Your previous host application was not approved. You can record a new ~2-minute interview video to apply again.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white70, fontSize: 13.5, height: 1.4),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: ColorRes.primaryColor,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: () {
+                      Get.back();
+                      _openRecordingScreen();
+                    },
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.videocam_rounded, color: Colors.white, size: 18),
+                        SizedBox(width: 8),
+                        Text('Record New Video', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    _openRecordingScreen();
+  }
+
+  void _openRecordingScreen() async {
+    final result = await Get.to(() => HostInterviewRecordingScreen(
+      onSubmitted: () {
+        _fetchStatus();
+      },
+    ));
+    if (result == true) {
+      _fetchStatus();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final user = SessionManager.instance.getUser();
-    final bool isHost = user?.isHost == 1;
+    final bool isHost = user?.isHost == 1 || _statusText == 'accepted';
+
+    String label = 'Become Host';
+    IconData icon = Icons.videocam_rounded;
+    Color? bgColor;
+    Gradient? gradient = const LinearGradient(colors: [ColorRes.primaryColor, ColorRes.orangeDark]);
+    Border? border;
+
+    if (isHost) {
+      label = 'Host';
+      icon = Icons.videocam_rounded;
+      bgColor = Colors.grey.shade800;
+      gradient = null;
+    } else if (_statusText == 'pending') {
+      label = 'Under Review';
+      icon = Icons.hourglass_top_rounded;
+      bgColor = const Color(0xFF2E2412);
+      gradient = null;
+      border = Border.all(color: const Color(0xFFFFB300), width: 1.2);
+    } else if (_statusText == 'rejected') {
+      label = 'Apply Again';
+      icon = Icons.replay_rounded;
+      bgColor = const Color(0xFF2C1318);
+      gradient = null;
+      border = Border.all(color: const Color(0xFFFF1744), width: 1.2);
+    }
 
     return InkWell(
-      onTap: isHost ? null : () => _confirmBecomeHost(context),
+      onTap: _onTap,
       borderRadius: BorderRadius.circular(30),
       child: Container(
         height: 48,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          gradient: isHost
-              ? null
-              : const LinearGradient(colors: [ColorRes.primaryColor, ColorRes.orangeDark]),
-          color: isHost ? Colors.grey.shade800 : null,
+          gradient: gradient,
+          color: bgColor,
           borderRadius: BorderRadius.circular(30),
+          border: border,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.videocam_rounded, color: isHost ? Colors.white54 : Colors.white, size: 20),
+            Icon(
+              icon,
+              color: isHost
+                  ? Colors.white54
+                  : (_statusText == 'rejected'
+                      ? const Color(0xFFFF5252)
+                      : (_statusText == 'pending' ? const Color(0xFFFFB300) : Colors.white)),
+              size: 20,
+            ),
             const SizedBox(width: 8),
             Text(
-              isHost ? 'Host' : 'Become Host',
+              label,
               style: TextStyle(
                 color: isHost ? Colors.white54 : Colors.white,
-                fontSize: 15,
+                fontSize: 14.5,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1366,6 +1550,8 @@ class StatItem {
 }
 
 class DiamondBalanceBadge extends StatefulWidget {
+  const DiamondBalanceBadge({super.key});
+
   @override
   State<DiamondBalanceBadge> createState() => DiamondBalanceBadgeState();
 }
@@ -1391,7 +1577,7 @@ class DiamondBalanceBadgeState extends State<DiamondBalanceBadge> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => Get.to(() => DiamondPurchaseScreen()),
+      onTap: () => Get.to(() => const DiamondPurchaseScreen()),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(

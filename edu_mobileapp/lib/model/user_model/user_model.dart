@@ -279,6 +279,8 @@ class User {
     languageName = json['language_name'];
     isHost = json['is_host'];
     isAgent = json['is_agent'];
+    hostRequestStatus = json['host_request_status'];
+    hostRequestId = json['host_request_id'];
     level = json['user_level'] ?? json['level'];
     firstName = json['first_name'];
     lastName = json['last_name'];
@@ -401,6 +403,8 @@ class User {
   String? languageName;
   int? isHost;
   int? isAgent;
+  int? hostRequestStatus;
+  int? hostRequestId;
   int? level;
   String? firstName;
   String? lastName;
@@ -502,6 +506,8 @@ class User {
     map['language_name'] = languageName;
     map['is_host'] = isHost;
     map['is_agent'] = isAgent;
+    map['host_request_status'] = hostRequestStatus;
+    map['host_request_id'] = hostRequestId;
     map['level'] = level;
     map['first_name'] = firstName;
     map['last_name'] = lastName;
