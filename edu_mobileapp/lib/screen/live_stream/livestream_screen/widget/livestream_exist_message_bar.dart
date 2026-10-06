@@ -58,7 +58,9 @@ class _LivestreamExistMessageBarState extends State<LivestreamExistMessageBar> {
             widget.controller.startMinViewerTimeoutCheck();
           });
         } else {
-          widget.controller.hostEndStream();
+          if (widget.controller.isHost && widget.controller.isMinViewerTimeout.value) {
+            widget.controller.hostEndStream();
+          }
         }
       } else {
         currentSecLeft.value--;

@@ -26,6 +26,8 @@ class InterestSubcategoryScreen extends StatefulWidget {
 class _InterestSubcategoryScreenState extends State<InterestSubcategoryScreen>
     with SingleTickerProviderStateMixin {
   final Set<SubCategory> _selected = {};
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
 
@@ -42,6 +44,7 @@ class _InterestSubcategoryScreenState extends State<InterestSubcategoryScreen>
   @override
   void dispose() {
     _animCtrl.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -81,6 +84,15 @@ class _InterestSubcategoryScreenState extends State<InterestSubcategoryScreen>
     Icons.class_rounded,
   ];
 
+  List<SubCategory> get _filteredSubCategories {
+    if (_searchQuery.isEmpty) return widget.allSubCategories;
+    final q = _searchQuery.toLowerCase();
+    return widget.allSubCategories.where((sub) {
+      final name = sub.name?.toLowerCase() ?? '';
+      return name.contains(q);
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -91,10 +103,13 @@ class _InterestSubcategoryScreenState extends State<InterestSubcategoryScreen>
           child: Column(
             children: [
               _buildHeader(context),
+              if (widget.allSubCategories.isNotEmpty) _buildSearchBar(),
               Expanded(
                 child: widget.allSubCategories.isEmpty
                     ? _buildEmpty()
-                    : _buildList(),
+                    : _filteredSubCategories.isEmpty
+                        ? _buildNoSearchResults()
+                        : _buildList(),
               ),
               _buildBottomBar(),
             ],
@@ -104,9 +119,105 @@ class _InterestSubcategoryScreenState extends State<InterestSubcategoryScreen>
     );
   }
 
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+      child: Container(
+        height: 46,
+        decoration: BoxDecoration(
+          color: AuthColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: _searchQuery.isNotEmpty
+                ? AuthColors.primaryOrange.withValues(alpha: 0.6)
+                : AuthColors.border.withValues(alpha: 0.7),
+            width: 1,
+          ),
+        ),
+        child: TextField(
+          controller: _searchCtrl,
+          onChanged: (val) {
+            setState(() {
+              _searchQuery = val.trim();
+            });
+          },
+          style: const TextStyle(
+            color: AuthColors.textPrimary,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+          decoration: InputDecoration(
+            hintText: 'Search subjects...',
+            hintStyle: TextStyle(
+              color: AuthColors.textSecondary.withValues(alpha: 0.55),
+              fontSize: 14,
+            ),
+            prefixIcon: const Icon(
+              Icons.search_rounded,
+              color: AuthColors.textSecondary,
+              size: 20,
+            ),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? GestureDetector(
+                    onTap: () {
+                      _searchCtrl.clear();
+                      setState(() {
+                        _searchQuery = '';
+                      });
+                    },
+                    child: const Icon(
+                      Icons.close_rounded,
+                      color: AuthColors.textSecondary,
+                      size: 18,
+                    ),
+                  )
+                : null,
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoSearchResults() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off_rounded,
+                color: AuthColors.textSecondary.withValues(alpha: 0.6), size: 44),
+            const SizedBox(height: 12),
+            Text(
+              'No subjects match "$_searchQuery"',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AuthColors.textSecondary,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                _searchCtrl.clear();
+                setState(() => _searchQuery = '');
+              },
+              child: const Text('Clear search',
+                  style: TextStyle(
+                      color: AuthColors.primaryOrange,
+                      fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeader(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -220,7 +331,7 @@ class _InterestSubcategoryScreenState extends State<InterestSubcategoryScreen>
   Widget _buildList() {
     // Group sub-categories by their parent category
     final grouped = <Category, List<SubCategory>>{};
-    for (final sub in widget.allSubCategories) {
+    for (final sub in _filteredSubCategories) {
       final parent = widget.selectedCategories
           .firstWhereOrNull((c) => c.id == sub.categoryId);
       if (parent != null) {
@@ -356,8 +467,8 @@ class _InterestSubcategoryScreenState extends State<InterestSubcategoryScreen>
               onTap: () => Get.to(() => InterestTopicScreen(
                     userData: widget.userData,
                     selectedCategories: widget.selectedCategories,
-                    selectedSubCategories: [],
-                    allTopics: [],
+                    selectedSubCategories: const [],
+                    allTopics: const [],
                   )),
             ),
           ),

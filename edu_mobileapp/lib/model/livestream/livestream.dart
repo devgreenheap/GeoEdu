@@ -74,34 +74,39 @@ class Livestream {
   Livestream.fromJson(Map<String, dynamic> json) {
     type = LivestreamType.fromString(json['type']);
     battleType = BattleType.fromString(json['battle_type']);
-    watchingCount = json['watching_count'];
-    description = json['description'];
-    isRestrictToJoin = json['is_restrict_to_join'];
-    hostViewID = json['host_view_id'];
-    roomID = json['room_id'];
-    likeCount = json['like_count'];
-    hostId = json['host_id'];
-    coHostIds = json['co-host_ids'].cast<int>();
-    createdAt = json['created_at'];
-    battleCreatedAt = json['battle_created_at'];
-    isDummyLive = json['is_dummy_live'];
-    dummyUserLink = json['dummy_user_link'];
-    battleDuration = json['battle_duration'];
-    categoryId = json['category_id'];
-    categoryName = json['category_name'];
-    subCategoryId = json['sub_category_id'];
-    subCategoryName = json['sub_category_name'];
-    topicId = json['topic_id'];
-    topicName = json['topic_name'];
-    languageId = json['language_id'];
-    languageName = json['language_name'];
-    hashtag = json['hashtag'];
-    streamMode = json['stream_mode'];
-    screenshotDisabled = json['screenshot_disabled'];
-    favouriteGiftId = json['favourite_gift_id'];
-    isAutoMode = json['is_auto_mode'];
-    thumbnailUrl = json['thumbnail_url'];
-    pinnedComment = json['pinned_comment'];
+    watchingCount = json['watching_count'] is num ? (json['watching_count'] as num).toInt() : 0;
+    description = json['description']?.toString();
+    isRestrictToJoin = json['is_restrict_to_join'] is num ? (json['is_restrict_to_join'] as num).toInt() : null;
+    hostViewID = json['host_view_id'] is num ? (json['host_view_id'] as num).toInt() : null;
+    roomID = json['room_id']?.toString();
+    likeCount = json['like_count'] is num ? (json['like_count'] as num).toInt() : 0;
+    hostId = json['host_id'] is num ? (json['host_id'] as num).toInt() : null;
+    final rawCoHosts = json['co-host_ids'];
+    if (rawCoHosts is List) {
+      coHostIds = rawCoHosts.whereType<num>().map((e) => e.toInt()).toList();
+    } else {
+      coHostIds = [];
+    }
+    createdAt = json['created_at'] is num ? (json['created_at'] as num).toInt() : null;
+    battleCreatedAt = json['battle_created_at'] is num ? (json['battle_created_at'] as num).toInt() : null;
+    isDummyLive = json['is_dummy_live'] is num ? (json['is_dummy_live'] as num).toInt() : null;
+    dummyUserLink = json['dummy_user_link']?.toString();
+    battleDuration = json['battle_duration'] is num ? (json['battle_duration'] as num).toInt() : AppRes.battleDurationInMinutes;
+    categoryId = json['category_id'] is num ? (json['category_id'] as num).toInt() : null;
+    categoryName = json['category_name']?.toString();
+    subCategoryId = json['sub_category_id'] is num ? (json['sub_category_id'] as num).toInt() : null;
+    subCategoryName = json['sub_category_name']?.toString();
+    topicId = json['topic_id'] is num ? (json['topic_id'] as num).toInt() : null;
+    topicName = json['topic_name']?.toString();
+    languageId = json['language_id'] is num ? (json['language_id'] as num).toInt() : null;
+    languageName = json['language_name']?.toString();
+    hashtag = json['hashtag']?.toString();
+    streamMode = json['stream_mode']?.toString();
+    screenshotDisabled = json['screenshot_disabled'] is num ? (json['screenshot_disabled'] as num).toInt() : null;
+    favouriteGiftId = json['favourite_gift_id'] is num ? (json['favourite_gift_id'] as num).toInt() : null;
+    isAutoMode = json['is_auto_mode'] as bool?;
+    thumbnailUrl = json['thumbnail_url']?.toString();
+    pinnedComment = json['pinned_comment']?.toString();
     isActive = json['is_active'] as bool?;
   }
 

@@ -38,6 +38,7 @@ extension UserExtension on User {
     String? thumbnailUrl,
   }) {
     return Livestream(
+        isActive: true,
         description: (description ?? '').trim(),
         isRestrictToJoin: restrictToJoin,
         type: type,

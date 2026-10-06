@@ -56,7 +56,12 @@ class LiveRoomItem {
   String get hostName {
     switch (variant) {
       case RoomCardVariant.liveVideo:
-        return livestream?.hostUser?.fullname ?? livestream?.hostUser?.username ?? '';
+        final name = livestream?.hostUser?.fullname ?? livestream?.hostUser?.username;
+        if (name != null && name.trim().isNotEmpty) return name;
+        if (livestream?.description != null && livestream!.description!.trim().isNotEmpty) {
+          return livestream!.description!;
+        }
+        return 'Live Host';
       case RoomCardVariant.recorded:
         return recording?.hostFullname ?? recording?.hostUsername ?? 'Host';
       case RoomCardVariant.audio:
@@ -67,6 +72,8 @@ class LiveRoomItem {
   String? get hostPhotoUrl {
     switch (variant) {
       case RoomCardVariant.liveVideo:
+        final thumb = livestream?.thumbnailUrl;
+        if (thumb != null && thumb.trim().isNotEmpty) return thumb;
         return livestream?.hostUser?.profile;
       case RoomCardVariant.recorded:
         return recording?.thumbnail ?? recording?.hostProfilePhoto;

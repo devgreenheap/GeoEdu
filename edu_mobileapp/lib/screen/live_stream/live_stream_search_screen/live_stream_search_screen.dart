@@ -262,7 +262,7 @@ class _MergedRoomsGrid extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: RoomGridWithBanners(
-                items: items.take(6).toList(),
+                items: items.take(12).toList(),
                 mainAxisExtent: 220,
               ),
             ),

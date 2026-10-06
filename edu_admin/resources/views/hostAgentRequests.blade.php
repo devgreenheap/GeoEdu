@@ -1,6 +1,48 @@
 @extends('include.app')
 @section('script')
-<script src="{{ asset('assets/script/hostAgentRequests.js') }}"></script>
+<script src="{{ asset('assets/script/hostAgentRequests.js') }}?v={{ @filemtime(public_path('assets/script/hostAgentRequests.js')) }}"></script>
+<script>
+window.playInterviewVideo = window.playInterviewVideo || function (btn) {
+    var $btn = $(btn);
+    var videoUrl = $btn.attr("data-video-url") || $btn.data("video-url");
+    var userName = $btn.attr("data-user-name") || $btn.data("user-name") || "";
+    if (!videoUrl) return;
+
+    var videoElem = document.getElementById("modalInterviewVideo");
+    if (videoElem) {
+        $("#modalInterviewVideo source").attr("src", videoUrl);
+        videoElem.src = videoUrl;
+        videoElem.load();
+    }
+    $("#modalVideoUserInfo").text(userName ? "Candidate: " + userName : "");
+    $("#modalVideoDirectLink").attr("href", videoUrl);
+
+    var opened = false;
+    if (typeof $ !== "undefined" && typeof $("#videoPlayerModal").modal === "function") {
+        try {
+            $("#videoPlayerModal").modal("show");
+            opened = true;
+        } catch (e) {}
+    }
+    if (!opened && typeof bootstrap !== "undefined" && bootstrap.Modal) {
+        try {
+            var modal = bootstrap.Modal.getInstance(document.getElementById("videoPlayerModal")) ||
+                        new bootstrap.Modal(document.getElementById("videoPlayerModal"));
+            modal.show();
+            opened = true;
+        } catch (e) {}
+    }
+    if (!opened) {
+        window.open(videoUrl, "_blank");
+    }
+
+    if (videoElem) {
+        try {
+            videoElem.play().catch(function () {});
+        } catch (e) {}
+    }
+};
+</script>
 @endsection
 @section('content')
 
@@ -82,7 +124,7 @@
 </div>
 
 {{-- Interview Video Player Modal --}}
-<div class="modal fade" id="videoPlayerModal" tabindex="-1" aria-labelledby="videoPlayerModalLabel" aria-hidden="true">
+<div class="modal fade" id="videoPlayerModal" tabindex="-1" role="dialog" aria-labelledby="videoPlayerModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content bg-dark text-white rounded-3 shadow">
             <div class="modal-header border-secondary">
@@ -90,13 +132,18 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-0 text-center bg-black">
-                <video id="modalInterviewVideo" controls class="w-100" style="max-height: 70vh; outline: none; background: #000;" playsinline>
+                <video id="modalInterviewVideo" controls class="w-100" style="max-height: 70vh; outline: none; background: #000;" playsinline preload="auto">
                     <source src="" type="video/mp4">
                     {{ __('Your browser does not support the video tag.') }}
                 </video>
             </div>
             <div class="modal-footer border-secondary justify-content-between">
-                <span id="modalVideoUserInfo" class="text-white-50 small"></span>
+                <div class="d-flex align-items-center gap-2">
+                    <span id="modalVideoUserInfo" class="text-white-50 small"></span>
+                    <a id="modalVideoDirectLink" href="#" target="_blank" class="btn btn-sm btn-outline-info">
+                        <i class="uil-external-link-alt me-1"></i> {{ __('Open in New Tab') }}
+                    </a>
+                </div>
                 <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">{{ __('Close') }}</button>
             </div>
         </div>

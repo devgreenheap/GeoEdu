@@ -35,17 +35,17 @@ class LiveSummaryDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final timeStr = DateFormat('h:mm a').format(startTime);
+    final timeStr = DateFormat('hh:mm a').format(startTime);
 
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 30),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28),
       child: Container(
         width: double.infinity,
-        constraints: const BoxConstraints(maxWidth: 360),
+        constraints: const BoxConstraints(maxWidth: 350),
         padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
         decoration: BoxDecoration(
-          color: const Color(0xFF282B36),
+          color: const Color(0xFF2C2D32),
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
@@ -59,29 +59,29 @@ class LiveSummaryDialog extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Title: e.g. Audio Live Show / Live Stream
+            // Title: e.g. Party Room
             Text(
               title,
               style: const TextStyle(
-                color: Color(0xFFFF5E3A),
-                fontSize: 18,
+                color: Color(0xFFFF6E00),
+                fontSize: 18.5,
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 5),
 
-            // Start time
+            // Start time e.g. 03:24 PM
             Text(
               timeStr,
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.7),
                 fontSize: 13,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w400,
               ),
             ),
             const SizedBox(height: 16),
 
-            // Statistics rows
+            // Statistics rows matching screenshot
             _buildStatRow(
               icon: Icons.access_time_rounded,
               label: 'Duration (in minutes)',
@@ -93,12 +93,12 @@ class LiveSummaryDialog extends StatelessWidget {
               value: '$followersCount',
             ),
             _buildStatRow(
-              icon: Icons.visibility_rounded,
+              icon: Icons.remove_red_eye_outlined,
               label: 'Viewers',
               value: '$viewersCount',
             ),
             _buildStatRow(
-              icon: Icons.call_rounded,
+              icon: Icons.add_call,
               label: 'Calls',
               value: '$callsCount',
             ),
@@ -121,7 +121,7 @@ class LiveSummaryDialog extends StatelessWidget {
               icon: Icons.power_settings_new_rounded,
               label: 'Ended',
               value: endedBy,
-              valueColor: const Color(0xFF4CAF50),
+              valueColor: const Color(0xFF00E676),
             ),
 
             const SizedBox(height: 20),

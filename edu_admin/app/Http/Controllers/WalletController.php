@@ -1540,9 +1540,11 @@ class WalletController extends Controller
 
             $interviewVideoHtml = "<span class='badge bg-light text-muted border'>Not Uploaded</span>";
             if (!empty($item->video)) {
-                $videoUrl = GlobalFunction::generateFileUrl($item->video);
-                $userName = e($userModel->fullname ?? $userModel->username ?? ('User #' . $item->user_id));
-                $interviewVideoHtml = "<button type='button' class='btn btn-sm btn-primary play-interview-video d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1' data-video-url='{$videoUrl}' data-user-name='{$userName}' title='Watch Interview Video'>
+                $rawVideoUrl = GlobalFunction::generateFileUrl($item->video);
+                $videoUrl = htmlspecialchars($rawVideoUrl, ENT_QUOTES, 'UTF-8');
+                $rawUserName = $userModel->fullname ?? $userModel->username ?? ('User #' . $item->user_id);
+                $userName = htmlspecialchars($rawUserName, ENT_QUOTES, 'UTF-8');
+                $interviewVideoHtml = "<button type='button' class='btn btn-sm btn-success play-interview-video d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1' data-video-url='{$videoUrl}' data-user-name='{$userName}' onclick='playInterviewVideo(this)' title='Watch Interview Video'>
                     <i class='uil-play-circle fs-5'></i>
                     <span>Watch Video</span>
                 </button>";

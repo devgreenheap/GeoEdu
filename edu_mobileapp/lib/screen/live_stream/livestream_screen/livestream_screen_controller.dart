@@ -39,7 +39,6 @@ import 'package:geoedu/screen/live_stream/live_stream_search_screen/live_stream_
 import 'package:geoedu/screen/gift_sheet/send_gift_sheet.dart';
 import 'package:geoedu/screen/gift_sheet/send_gift_sheet_controller.dart';
 import 'package:geoedu/utilities/color_res.dart';
-import 'package:geoedu/screen/live_stream/live_stream_end_screen/live_stream_end_screen.dart';
 import 'package:geoedu/screen/live_stream/live_stream_end_screen/widget/livestream_summary.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/audience/widget/live_stream_join_sheet.dart';
 import 'package:geoedu/screen/report_sheet/report_sheet.dart';
@@ -51,6 +50,7 @@ import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:zego_express_engine/zego_express_engine.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requested_sheet.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requests_sheet.dart';
 import 'package:geoedu/common/widget/live_room/favourite_gift_sheet.dart';
 
 import '../../../common/extensions/string_extension.dart';
@@ -993,18 +993,28 @@ class LivestreamScreenController extends BaseController {
           for (final stream in streamList) {
             if (liveData.value.roomID == stream.streamID ||
                 liveData.value.hostId.toString() == stream.streamID) {
-              if (Get.isBottomSheetOpen == false) {
-                Get.back();
-              }
-              for (var element in liveUsersStates) {
-                if (element.type == LivestreamUserType.coHost) {
-                  streamEnded();
+              if (!isHost) {
+                if (Get.isBottomSheetOpen == false) {
+                  Get.back();
                 }
+                for (var element in liveUsersStates) {
+                  if (element.type == LivestreamUserType.coHost) {
+                    streamEnded();
+                  }
+                }
+                // Empty LiveData
+                logoutRoom();
+                stopListenEvent();
+                liveData.value = Livestream();
               }
-              // Empty LiveData
-              logoutRoom();
-              stopListenEvent();
-              liveData.value = Livestream();
+              continue;
+            }
+            // Host should never remove their own preview or stop own stream
+            if (isHost &&
+                (stream.streamID == liveData.value.roomID ||
+                    stream.streamID == liveData.value.hostId.toString() ||
+                    stream.streamID == myUserId.toString())) {
+              continue;
             }
             streamViews.removeWhere((element) => element.streamId == stream.streamID);
             stopPlayStream(stream.streamID);
@@ -1620,6 +1630,23 @@ class LivestreamScreenController extends BaseController {
   RxBool isAudioOn = true.obs;
   RxBool isVideoOn = true.obs;
 
+  void toggleAutoCall(bool value) {
+    liveData.value.isAutoMode = value;
+    liveData.refresh();
+    liveStreamDocRef.update({FirebaseConst.isAutoMode: value}).catchError((e) {
+      Loggers.error('Failed to update is_auto_mode on Firestore: $e');
+    });
+    if (value && requestList.isNotEmpty && coHostList.length < AppRes.maxVideoCoHosts) {
+      final freeSeats = AppRes.maxVideoCoHosts - coHostList.length;
+      for (final state in requestList.take(freeSeats)) {
+        handleRequestResponse(
+          user: state.getUser(firestoreController.users),
+          isRefused: false,
+        );
+      }
+    }
+  }
+
   void toggleFlipCamera() {
     isFrontCamera = !isFrontCamera;
     ZegoExpressEngine.instance.useFrontCamera(isFrontCamera, channel: ZegoPublishChannel.Main);
@@ -2223,6 +2250,10 @@ class LivestreamScreenController extends BaseController {
     if (streamId == null) return;
 
     if (streamId == myUserId) {
+      if (isHost) {
+        // Host must NEVER end their own live broadcast from closeCoHostStream
+        return;
+      }
       StreamView? view = streamViews
           .firstWhereOrNull((element) => element.streamId == '$streamId');
       if (view != null) {
@@ -2247,12 +2278,18 @@ class LivestreamScreenController extends BaseController {
         comment: 'Left the call',
       );
       streamViews.removeWhere((element) => element.streamId == '$streamId');
-      streamEnded();
+      // The participant was kicked or left: revert to audience without closing room
     } else {
       stopPlayStream(streamId.toString());
       streamViews.removeWhere((element) => element.streamId == '$streamId');
       if (isHost) {
-        updateLiveStreamData(coHostId: FieldValue.arrayRemove([streamId]));
+        isMinViewerTimeout.value = false;
+        bool isBattleOn = liveData.value.type == LivestreamType.battle;
+        updateLiveStreamData(
+          coHostId: FieldValue.arrayRemove([streamId]),
+          type: isBattleOn ? LivestreamType.livestream : null,
+          battleType: isBattleOn ? BattleType.initiate : null,
+        );
         updateUserStateToFirestore(streamId,
             type: LivestreamUserType.audience,
             audioStatus: VideoAudioStatus.offByMe,
@@ -2261,7 +2298,6 @@ class LivestreamScreenController extends BaseController {
             currentBattleCoin: 0);
         notifyCoHostLeft(streamId);
       }
-      streamEnded();
     }
   }
 
@@ -2386,6 +2422,7 @@ class LivestreamScreenController extends BaseController {
 
   void hostKickUser(int userId) {
     if (!isHost) return;
+    if (userId == myUserId || userId == liveData.value.hostId) return;
     closeCoHostStream(userId);
   }
 
@@ -2566,9 +2603,41 @@ class LivestreamScreenController extends BaseController {
   }
 
   Future<void> hostEndStream() async {
+    // 0. Snapshot real-time metrics before cleaning up state
     LivestreamUserState? endedUserState = liveUsersStates
         .firstWhereOrNull((element) => element.userId == myUserId);
     int endedViewers = liveUsersStates.length;
+    final int liveWatchCount = liveData.value.watchingCount ?? 0;
+    final int peakViewers = max(
+        liveWatchCount, max(endedViewers, audienceList.length));
+
+    final int joinTimeMs = (endedUserState?.joinStreamTime != null &&
+            endedUserState!.joinStreamTime > 0)
+        ? endedUserState.joinStreamTime
+        : (liveData.value.createdAt ?? DateTime.now().millisecondsSinceEpoch);
+    final DateTime startTime = DateTime.fromMillisecondsSinceEpoch(joinTimeMs);
+    final int durationMinutes = max(
+        1,
+        ((DateTime.now().millisecondsSinceEpoch - joinTimeMs) / 60000).ceil());
+
+    final int followersCount = endedUserState?.followersGained.length ?? 0;
+    final int viewersCount = peakViewers;
+    final int acceptedCallsCount = CallRequestsSheet.sessionHistory
+        .where((e) => e['status'] == 'Accepted')
+        .length;
+    final int callsCount =
+        max(acceptedCallsCount, liveData.value.coHostIds?.length ?? 0);
+    final int commentsCount = comments.length;
+    final int starsEarned = (endedUserState?.totalCoin ??
+            (hostUserState?.totalCoin ?? 0))
+        .toInt();
+    final int giftsCount = hostGiftCount;
+
+    final String streamTitle = (liveData.value.topicName?.isNotEmpty == true)
+        ? liveData.value.topicName!
+        : ((liveData.value.description?.isNotEmpty == true)
+            ? liveData.value.description!
+            : 'Party Room');
 
     // 1. Clean up Firestore documents immediately so stream disappears from all screens
     await deleteStreamOnFirebase();
@@ -2587,24 +2656,10 @@ class LivestreamScreenController extends BaseController {
     // 4. Leave Zego room
     logoutRoom();
 
-    final startTime = DateTime.fromMillisecondsSinceEpoch(
-        endedUserState?.joinStreamTime ?? DateTime.now().millisecondsSinceEpoch);
-    final durationMinutes = max(
-        1,
-        ((DateTime.now().millisecondsSinceEpoch -
-                (endedUserState?.joinStreamTime ??
-                    DateTime.now().millisecondsSinceEpoch)) /
-            60000).ceil());
-    final followersCount = endedUserState?.followersGained.length ?? 0;
-    final viewersCount = (endedViewers - 1).clamp(0, endedViewers);
-    final callsCount = liveData.value.coHostIds?.length ?? 0;
-    final commentsCount = comments.length;
-    final starsEarned = endedUserState?.totalCoin ?? 0;
-    final giftsCount = hostGiftCount;
-
+    // 5. Present real-time summary card dialog matching reference UI
     Get.dialog(
       LiveSummaryDialog(
-        title: 'Live Stream',
+        title: streamTitle,
         startTime: startTime,
         durationMinutes: durationMinutes,
         followersCount: followersCount,
@@ -2615,8 +2670,17 @@ class LivestreamScreenController extends BaseController {
         starsEarned: starsEarned,
         endedBy: 'Host',
         onClose: () {
-          Get.back(); // close dialog
-          Get.back(); // exit host screen to home
+          // Close summary dialog first
+          Get.back();
+          // Navigate back to root/home
+          try {
+            Navigator.of(Get.context!, rootNavigator: true)
+                .popUntil((route) => route.isFirst);
+          } catch (_) {
+            try {
+              Get.back();
+            } catch (_) {}
+          }
         },
       ),
       barrierDismissible: false,
@@ -2634,32 +2698,30 @@ class LivestreamScreenController extends BaseController {
   }
 
   void streamEnded({LivestreamUserState? capturedUserState, int? capturedViewers}) {
+    if (isHost) {
+      // Host must only end via explicit hostEndStream() to prevent premature termination
+      return;
+    }
     LivestreamUserState? userState = capturedUserState ??
         liveUsersStates.firstWhereOrNull((element) => element.userId == myUserId);
     AppUser? user = firestoreController.users.firstWhereOrNull((element) => element.userId == myUserId);
     userState?.user = user;
     int viewers = capturedViewers ?? liveUsersStates.length;
-    if (isHost) {
-      Get.back();
-      Get.off(() => LiveStreamEndScreen(
-          userState: userState, isHost: isHost, viewers: viewers));
-    } else {
-      if (userState?.type == LivestreamUserType.coHost) {
-        Get.bottomSheet(
-                LiveStreamSummary(
-                    userState: userState, isHost: isHost, viewers: viewers),
-                isScrollControlled: true)
-            .then((value) {
-          updateUserStateToFirestore(myUserId,
-              battleCoin: 0,
-              liveCoin: 0,
-              currentBattleCoin: 0,
-              type: LivestreamUserType.audience);
-          if ((liveData.value.roomID ?? '').isEmpty) {
-            Get.back();
-          }
-        });
-      }
+    if (userState?.type == LivestreamUserType.coHost) {
+      Get.bottomSheet(
+              LiveStreamSummary(
+                  userState: userState, isHost: isHost, viewers: viewers),
+              isScrollControlled: true)
+          .then((value) {
+        updateUserStateToFirestore(myUserId,
+            battleCoin: 0,
+            liveCoin: 0,
+            currentBattleCoin: 0,
+            type: LivestreamUserType.audience);
+        if ((liveData.value.roomID ?? '').isEmpty) {
+          Get.back();
+        }
+      });
     }
   }
 

@@ -151,22 +151,64 @@ $(document).ready(function () {
     });
 
     // Interview Video playback modal handling
-    $(document).on("click", ".play-interview-video", function (e) {
-        e.preventDefault();
-        var videoUrl = $(this).data("video-url");
-        var userName = $(this).data("user-name") || "";
-        if (videoUrl) {
-            var videoElem = document.getElementById("modalInterviewVideo");
-            if (videoElem) {
-                videoElem.src = videoUrl;
-                $("#modalVideoUserInfo").text(userName ? "Candidate: " + userName : "");
-                var modal = new bootstrap.Modal(document.getElementById("videoPlayerModal"));
-                modal.show();
-                videoElem.play().catch(function (err) {
-                    console.log("Auto-play blocked or failed: ", err);
-                });
+    window.playInterviewVideo = function (btn) {
+        var $btn = $(btn);
+        var videoUrl = $btn.attr("data-video-url") || $btn.data("video-url");
+        var userName = $btn.attr("data-user-name") || $btn.data("user-name") || "";
+        if (!videoUrl) {
+            console.error("No video URL provided");
+            return;
+        }
+
+        var videoElem = document.getElementById("modalInterviewVideo");
+        if (videoElem) {
+            $("#modalInterviewVideo source").attr("src", videoUrl);
+            videoElem.src = videoUrl;
+            videoElem.load();
+        }
+        $("#modalVideoUserInfo").text(userName ? "Candidate: " + userName : "");
+        $("#modalVideoDirectLink").attr("href", videoUrl);
+
+        var opened = false;
+        if (typeof $ !== "undefined" && typeof $("#videoPlayerModal").modal === "function") {
+            try {
+                $("#videoPlayerModal").modal("show");
+                opened = true;
+            } catch (err) {
+                console.log("jQuery modal error: ", err);
             }
         }
+        if (!opened && typeof bootstrap !== "undefined" && bootstrap.Modal) {
+            try {
+                var modal = bootstrap.Modal.getInstance(document.getElementById("videoPlayerModal")) ||
+                            new bootstrap.Modal(document.getElementById("videoPlayerModal"));
+                modal.show();
+                opened = true;
+            } catch (err) {
+                console.log("Bootstrap modal error: ", err);
+            }
+        }
+        if (!opened) {
+            window.open(videoUrl, "_blank");
+        }
+
+        if (videoElem) {
+            try {
+                var playPromise = videoElem.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(function (e) {
+                        console.log("Auto-play waiting for user interaction: ", e);
+                    });
+                }
+            } catch (e) {
+                console.log("Video play error: ", e);
+            }
+        }
+    };
+
+    $(document).on("click", ".play-interview-video", function (e) {
+        e.preventDefault();
+        window.playInterviewVideo(this);
     });
 
     $("#videoPlayerModal").on("hidden.bs.modal", function () {
@@ -174,6 +216,7 @@ $(document).ready(function () {
         if (videoElem) {
             videoElem.pause();
             videoElem.currentTime = 0;
+            $("#modalInterviewVideo source").attr("src", "");
             videoElem.src = "";
         }
     });

@@ -143,22 +143,30 @@ class LiveStreamSearchScreenController extends BaseController {
         Get.to(() => RecordedVideoPlayerScreen(videoUrl: url));
       }));
     }
-    if (selectedCategoryIndex.value == 0 && myInterests.isNotEmpty) {
-      final interestNames = myInterests
-          .map((i) => i.name?.toLowerCase().trim() ?? '')
-          .where((n) => n.isNotEmpty)
-          .toSet();
-      items.sort((a, b) {
+    items.sort((a, b) {
+      // 1. Actively LIVE rooms (video / audio) ALWAYS come before recorded videos!
+      final aIsLive = a.variant != RoomCardVariant.recorded ? 1 : 0;
+      final bIsLive = b.variant != RoomCardVariant.recorded ? 1 : 0;
+      if (aIsLive != bIsLive) {
+        return bIsLive.compareTo(aIsLive);
+      }
+
+      // 2. Prioritize matching user interests when in "All" tab
+      if (selectedCategoryIndex.value == 0 && myInterests.isNotEmpty) {
+        final interestNames = myInterests
+            .map((i) => i.name?.toLowerCase().trim() ?? '')
+            .where((n) => n.isNotEmpty)
+            .toSet();
         final aMatch = interestNames.contains(a.categoryName.toLowerCase().trim()) ? 1 : 0;
         final bMatch = interestNames.contains(b.categoryName.toLowerCase().trim()) ? 1 : 0;
         if (aMatch != bMatch) {
           return bMatch.compareTo(aMatch);
         }
-        return b.sortTimestamp.compareTo(a.sortTimestamp);
-      });
-    } else {
-      items.sort((a, b) => b.sortTimestamp.compareTo(a.sortTimestamp));
-    }
+      }
+
+      // 3. Most recent first
+      return b.sortTimestamp.compareTo(a.sortTimestamp);
+    });
     return items;
   }
 
@@ -235,6 +243,8 @@ class LiveStreamSearchScreenController extends BaseController {
     // Reorder categories to show user's interests first right after All
     _reorderCategoriesByInterests();
 
+    ever(firebaseFirestoreController.users, (_) => _assignHostUsersToStreams());
+
     fetchRecordedLives();
   }
 
@@ -267,14 +277,21 @@ class LiveStreamSearchScreenController extends BaseController {
     livestreamListListener = db
         .collection(FirebaseConst.liveStreams)
         .withConverter(
-          fromFirestore: (snapshot, options) =>
-              Livestream.fromJson(snapshot.data()!),
+          fromFirestore: (snapshot, options) {
+            try {
+              final data = snapshot.data();
+              if (data == null) return Livestream();
+              return Livestream.fromJson(data);
+            } catch (e) {
+              Loggers.error('Error parsing livestream doc ${snapshot.id}: $e');
+              return Livestream();
+            }
+          },
           toFirestore: (Livestream livestream, options) => livestream.toJson(),
         )
         .snapshots()
         .listen((snapshot) {
       final activeStreams = <Livestream>[];
-      final myId = SessionManager.instance.getUserID();
       for (var doc in snapshot.docs) {
         final stream = doc.data();
         if (stream.roomID != null && stream.roomID!.isNotEmpty) {
@@ -285,12 +302,6 @@ class LiveStreamSearchScreenController extends BaseController {
           }
           // If explicitly marked inactive, skip it
           if (stream.isActive == false) {
-            continue;
-          }
-          // If this is my own stream and I am on the home/search screen, it's a stale stream left behind!
-          if (stream.hostId == myId) {
-            Loggers.info('LiveStreamSearch: purging leftover stale host stream $myId');
-            doc.reference.delete().catchError((_) {});
             continue;
           }
           // If the stream is older than 12 hours, treat as expired stale live
@@ -315,6 +326,9 @@ class LiveStreamSearchScreenController extends BaseController {
       _applyFilter();
       _assignHostUsersToStreams();
       isLoading.value = false;
+    }, onError: (e) {
+      Loggers.error('LiveStreamSearch: listen live streams error: $e');
+      isLoading.value = false;
     });
   }
 
@@ -330,6 +344,8 @@ class LiveStreamSearchScreenController extends BaseController {
     for (var stream in livestreamList) {
       stream.hostUser = userMap[stream.hostId];
     }
+    livestreamList.refresh();
+    livestreamFilterList.refresh();
   }
 
   Map<int, AppUser> _userMapFromList(List<AppUser> list) {

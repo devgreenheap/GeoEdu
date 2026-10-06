@@ -24,6 +24,8 @@ class _InterestCategoryScreenState extends State<InterestCategoryScreen>
   final Set<Category> _selected = {};
   bool _isLoading = true;
   List<Category> _categories = [];
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
 
@@ -41,6 +43,7 @@ class _InterestCategoryScreenState extends State<InterestCategoryScreen>
   @override
   void dispose() {
     _animCtrl.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -98,6 +101,15 @@ class _InterestCategoryScreenState extends State<InterestCategoryScreen>
     Icons.health_and_safety_rounded,
   ];
 
+  List<Category> get _filteredCategories {
+    if (_searchQuery.isEmpty) return _categories;
+    final q = _searchQuery.toLowerCase();
+    return _categories.where((cat) {
+      final name = cat.name?.toLowerCase() ?? '';
+      return name.contains(q);
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -108,6 +120,7 @@ class _InterestCategoryScreenState extends State<InterestCategoryScreen>
           child: Column(
             children: [
               _buildHeader(),
+              if (!_isLoading && _categories.isNotEmpty) _buildSearchBar(),
               Expanded(
                 child: _isLoading
                     ? const Center(
@@ -115,7 +128,9 @@ class _InterestCategoryScreenState extends State<InterestCategoryScreen>
                             color: AuthColors.primaryOrange))
                     : _categories.isEmpty
                         ? _buildEmpty()
-                        : _buildGrid(),
+                        : _filteredCategories.isEmpty
+                            ? _buildNoSearchResults()
+                            : _buildGrid(),
               ),
               _buildBottomBar(),
             ],
@@ -125,9 +140,105 @@ class _InterestCategoryScreenState extends State<InterestCategoryScreen>
     );
   }
 
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+      child: Container(
+        height: 46,
+        decoration: BoxDecoration(
+          color: AuthColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: _searchQuery.isNotEmpty
+                ? AuthColors.primaryOrange.withValues(alpha: 0.6)
+                : AuthColors.border.withValues(alpha: 0.7),
+            width: 1,
+          ),
+        ),
+        child: TextField(
+          controller: _searchCtrl,
+          onChanged: (val) {
+            setState(() {
+              _searchQuery = val.trim();
+            });
+          },
+          style: const TextStyle(
+            color: AuthColors.textPrimary,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+          decoration: InputDecoration(
+            hintText: 'Search categories...',
+            hintStyle: TextStyle(
+              color: AuthColors.textSecondary.withValues(alpha: 0.55),
+              fontSize: 14,
+            ),
+            prefixIcon: const Icon(
+              Icons.search_rounded,
+              color: AuthColors.textSecondary,
+              size: 20,
+            ),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? GestureDetector(
+                    onTap: () {
+                      _searchCtrl.clear();
+                      setState(() {
+                        _searchQuery = '';
+                      });
+                    },
+                    child: const Icon(
+                      Icons.close_rounded,
+                      color: AuthColors.textSecondary,
+                      size: 18,
+                    ),
+                  )
+                : null,
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoSearchResults() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off_rounded,
+                color: AuthColors.textSecondary.withValues(alpha: 0.6), size: 44),
+            const SizedBox(height: 12),
+            Text(
+              'No categories match "$_searchQuery"',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AuthColors.textSecondary,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                _searchCtrl.clear();
+                setState(() => _searchQuery = '');
+              },
+              child: const Text('Clear search',
+                  style: TextStyle(
+                      color: AuthColors.primaryOrange,
+                      fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -154,11 +265,11 @@ class _InterestCategoryScreenState extends State<InterestCategoryScreen>
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          Center(
-            child: Image.asset(AssetRes.appLogo, width: 52, height: 52),
-          ),
           const SizedBox(height: 16),
+          Center(
+            child: Image.asset(AssetRes.appLogo, width: 48, height: 48),
+          ),
+          const SizedBox(height: 14),
           const Center(
             child: Text('What are you\ninterested in?',
                 textAlign: TextAlign.center,
@@ -168,7 +279,7 @@ class _InterestCategoryScreenState extends State<InterestCategoryScreen>
                     fontWeight: FontWeight.w800,
                     height: 1.25)),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           const Center(
             child: Text(
               'Pick categories that interest you.\nWe\'ll personalise your learning feed.',
@@ -176,10 +287,10 @@ class _InterestCategoryScreenState extends State<InterestCategoryScreen>
               style: TextStyle(
                   color: AuthColors.textSecondary,
                   fontSize: 13,
-                  height: 1.5),
+                  height: 1.4),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
         ],
       ),
     );
@@ -207,7 +318,7 @@ class _InterestCategoryScreenState extends State<InterestCategoryScreen>
       child: Wrap(
         spacing: 10,
         runSpacing: 10,
-        children: _categories.asMap().entries.map((entry) {
+        children: _filteredCategories.asMap().entries.map((entry) {
           final idx = entry.key;
           final cat = entry.value;
           final icon = _categoryIcons[idx % _categoryIcons.length];

@@ -1,6 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:keyboard_avoider/keyboard_avoider.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/view/livestream_view.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requests_sheet.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/followers_gained_sheet.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_host_more_sheet.dart';
 import 'package:geoedu/common/controller/follow_controller.dart';
 import 'package:geoedu/common/extensions/common_extension.dart';
 import 'package:geoedu/common/extensions/string_extension.dart';
@@ -10,10 +15,8 @@ import 'package:geoedu/common/widget/live_room/live_share_sheet.dart';
 import 'package:geoedu/common/widget/live_summary_dialog.dart';
 import 'package:geoedu/model/livestream/livestream.dart';
 import 'package:geoedu/model/livestream/livestream_comment.dart';
-import 'package:geoedu/model/livestream/livestream_user_state.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
-import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requested_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_stream_like_button.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/members_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/other_lives_side_panel.dart';
@@ -58,10 +61,15 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
   bool _showOtherLives = false;
   final ScrollController _chatScrollController = ScrollController();
   int _prevCommentCount = 0;
+  Timer? _liveDurationTimer;
+  int _elapsedSeconds = 0;
+  final RxInt _hostTargetDiamonds = 500.obs;
+  final Set<String> _wavedUserIds = <String>{};
 
   @override
   void initState() {
     super.initState();
+    _startLiveTimer();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollChatToBottom(animated: false);
     });
@@ -69,8 +77,31 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
 
   @override
   void dispose() {
+    _liveDurationTimer?.cancel();
     _chatScrollController.dispose();
     super.dispose();
+  }
+
+  void _startLiveTimer() {
+    final createdAt = widget.controller.liveData.value.createdAt ??
+        DateTime.now().millisecondsSinceEpoch;
+    final diffSec =
+        ((DateTime.now().millisecondsSinceEpoch - createdAt) / 1000).floor();
+    _elapsedSeconds = diffSec > 0 ? diffSec : 0;
+    _liveDurationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          _elapsedSeconds++;
+        });
+      }
+    });
+  }
+
+  String get _formattedDuration {
+    final hours = (_elapsedSeconds ~/ 3600).toString().padLeft(2, '0');
+    final minutes = ((_elapsedSeconds % 3600) ~/ 60).toString().padLeft(2, '0');
+    final seconds = (_elapsedSeconds % 60).toString().padLeft(2, '0');
+    return '$hours:$minutes:$seconds';
   }
 
   void _scrollChatToBottom({bool animated = true}) {
@@ -204,223 +235,47 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
       return;
     }
 
-    // Host Settings & Management sheet
-    Get.bottomSheet(
-      Container(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-        decoration: const BoxDecoration(
-          color: Color(0xFF1B1E28),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Live Settings & Management',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(height: 12),
-
-              // 1. Members & Calls (Requests, Audience, Invited, Co-hosts)
-              ListTile(
-                leading: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    const Icon(Icons.people_alt_rounded,
-                        color: Color(0xFFFF9500), size: 24),
-                    Obx(() {
-                      if (controller.requestList.isEmpty) {
-                        return const SizedBox.shrink();
-                      }
-                      return Positioned(
-                        top: -3,
-                        right: -5,
-                        child: Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFFF1744),
-                            shape: BoxShape.circle,
-                          ),
-                          constraints: const BoxConstraints(
-                              minWidth: 15, minHeight: 15),
-                          alignment: Alignment.center,
-                          child: Text(
-                            '${controller.requestList.length}',
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      );
-                    }),
-                  ],
-                ),
-                title: const Text('Members & Requests',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.bold)),
-                subtitle: Obx(() => Text(
-                  controller.requestList.isNotEmpty
-                      ? '${controller.requestList.length} join request(s) waiting'
-                      : 'Requests, Audience, Invited & Co-hosts',
-                  style: const TextStyle(color: Colors.white54, fontSize: 11.5),
-                )),
-                onTap: () {
-                  Get.back();
-                  Get.bottomSheet(
-                    const MembersSheet(isHost: true),
-                    isScrollControlled: true,
-                  );
-                },
-              ),
-
-              // 2. Start PK Battle (Host with connected co-host)
-              Obx(() {
-                final stream = controller.liveData.value;
-                final hasCoHost = controller.streamViews.length >= 2 ||
-                    (stream.coHostIds != null && stream.coHostIds!.isNotEmpty);
-                final isBattleRunning = stream.battleType == BattleType.running ||
-                    stream.battleType == BattleType.waiting;
-                if (!hasCoHost || isBattleRunning) return const SizedBox.shrink();
-                return ListTile(
-                  leading: const Icon(Icons.sports_kabaddi_rounded,
-                      color: Color(0xFFFF1744), size: 24),
-                  title: const Text('Start PK Battle',
-                      style: TextStyle(
-                          color: Color(0xFFFF5252),
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Challenge connected co-host to a PK battle',
-                      style: TextStyle(color: Colors.white54, fontSize: 11.5)),
-                  onTap: () {
-                    Get.back();
-                    HapticManager.shared.medium();
-                    controller.startBattle();
-                  },
-                );
-              }),
-
-              ListTile(
-                leading: const Icon(Icons.push_pin_outlined,
-                    color: Color(0xFFFFB300)),
-                title: const Text('Pin a Comment',
-                    style: TextStyle(color: Colors.white, fontSize: 14)),
-                subtitle: const Text('Keep an announcement at the top of chat',
-                    style: TextStyle(color: Colors.white54, fontSize: 11.5)),
-                onTap: () {
-                  Get.back();
-                  controller.isPinInputOpen.value = true;
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.card_giftcard_rounded,
-                    color: Color(0xFFFF7A19)),
-                title: const Text('Set Favourite Gift',
-                    style: TextStyle(color: Colors.white, fontSize: 14)),
-                subtitle: const Text('Highlight a gift for your audience to send',
-                    style: TextStyle(color: Colors.white54, fontSize: 11.5)),
-                onTap: () {
-                  Get.back();
-                  controller.showFavouriteGiftSheet(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.face_retouching_natural_rounded,
-                    color: Color(0xFFFFB300)),
-                title: const Text('Beauty & Filters',
-                    style: TextStyle(color: Colors.white, fontSize: 14)),
-                subtitle: const Text('Smooth skin, Brighten, Blush, Sharpen',
-                    style: TextStyle(color: Colors.white54, fontSize: 11.5)),
-                onTap: () {
-                  Get.back();
-                  LiveBeautyFilterSheet.show(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.flip_camera_ios_rounded,
-                    color: Color(0xFF00ADB5)),
-                title: const Text('Flip Camera',
-                    style: TextStyle(color: Colors.white, fontSize: 14)),
-                onTap: () {
-                  Get.back();
-                  controller.toggleFlipCamera();
-                },
-              ),
-              ListTile(
-                leading: Obx(() => Icon(
-                    controller.isVideoOn.value
-                        ? Icons.videocam_rounded
-                        : Icons.videocam_off_rounded,
-                    color: controller.isVideoOn.value
-                        ? Colors.white
-                        : const Color(0xFFFF5252))),
-                title: Obx(() => Text(
-                    controller.isVideoOn.value ? 'Turn Off Camera' : 'Turn On Camera',
-                    style: const TextStyle(color: Colors.white, fontSize: 14))),
-                onTap: () {
-                  Get.back();
-                  controller.toggleVideo(null);
-                },
-              ),
-              ListTile(
-                leading: Obx(() => Icon(
-                    controller.isAudioOn.value
-                        ? Icons.mic_rounded
-                        : Icons.mic_off_rounded,
-                    color: controller.isAudioOn.value
-                        ? Colors.white
-                        : const Color(0xFFFF5252))),
-                title: Obx(() => Text(
-                    controller.isAudioOn.value ? 'Mute Microphone' : 'Unmute Microphone',
-                    style: const TextStyle(color: Colors.white, fontSize: 14))),
-                onTap: () {
-                  Get.back();
-                  controller.toggleMic(null);
-                },
-              ),
-              const Divider(color: Colors.white12, height: 16),
-              ListTile(
-                leading: const Icon(Icons.stop_circle_outlined,
-                    color: Color(0xFFFF5252)),
-                title: const Text('End Live Stream',
-                    style: TextStyle(
-                        color: Color(0xFFFF5252),
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.bold)),
-                onTap: () {
-                  Get.back();
-                  _handleBackOrClose();
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
+    LiveHostMoreSheet.show(
+      context: context,
+      controller: controller,
+      onShare: _shareLive,
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
+
+    if (widget.isHost) {
+      return Stack(
+        children: [
+          _buildHostLiveLayout(controller),
+          if (_showOtherLives) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  setState(() {
+                    _showOtherLives = false;
+                  });
+                },
+                child: Container(
+                  color: Colors.black.withValues(alpha: 0.35),
+                ),
+              ),
+            ),
+            OtherLivesSidePanel(
+              currentAudioHostId: controller.liveData.value.hostId,
+              onClose: () {
+                setState(() {
+                  _showOtherLives = false;
+                });
+              },
+            ),
+          ],
+        ],
+      );
+    }
 
     return Stack(
       children: [
@@ -473,19 +328,7 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                         const SizedBox(height: 2),
                         SizedBox(
                           height: 125,
-                          child: Stack(
-                            children: [
-                              Positioned.fill(
-                                right: 68,
-                                child: _buildChatList(controller),
-                              ),
-                              Positioned(
-                                right: 0,
-                                bottom: 2,
-                                child: _buildFloatingJoinCallButton(controller),
-                              ),
-                            ],
-                          ),
+                          child: _buildChatList(controller),
                         ),
                       ],
                     ),
@@ -535,8 +378,1163 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
     );
   }
 
+  // =============================================================
+  // REDESIGNED HOST LIVE SCREEN (Matching Reference Image)
+  // =============================================================
+
+  Widget _buildHostLiveLayout(LivestreamScreenController controller) {
+    return SafeArea(
+      child: Column(
+        children: [
+          // 1. Top Header: Avatar + Name + ● LIVE + 👁 Count ... 📶 Wifi + ✕ Close
+          _buildHostTopHeader(controller),
+
+          // 2. Sub-Header: [🎁 | ⭐] & [💎 Target: ✏️] ... [Timer] [👤+ count]
+          _buildHostSubHeader(controller),
+
+          const SizedBox(height: 10),
+
+          // 3. Mid-Upper: Left Active Gift Card & Right Dashed Accept Call Card
+          _buildHostCardsRow(controller),
+
+          const Spacer(),
+
+          // 4. Middle-Lower: Pinned Song Bar
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _buildHostMusicBar(controller),
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          // 5. Chat & Right-Side Controls: Join notifications + [Calls, Themes, More]
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 190,
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: _buildHostJoinNotificationsAndChat(controller),
+                        ),
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.35),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.open_in_full_rounded,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                _buildHostRightVerticalControls(controller),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // 6. Bottom Bar: Requests (0) & PK Battle
+          _buildHostBottomBar(controller),
+
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHostTopHeader(LivestreamScreenController controller) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      child: Obx(() {
+        final stream = controller.liveData.value;
+        final hostUser = controller.effectiveHostUser ?? stream.hostUser;
+        final hostName = hostUser?.fullname ?? hostUser?.username ?? 'Host';
+        final hostPhoto = hostUser?.profile?.addBaseURL();
+        final watchingCount = stream.watchingCount ?? 0;
+
+        return Row(
+          children: [
+            CustomImage(
+              size: const Size(36, 36),
+              image: hostPhoto,
+              radius: 18,
+              strokeWidth: 2,
+              strokeColor: const Color(0xFFFFB300),
+              fullName: hostName,
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                hostName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE53935),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                '● LIVE',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.remove_red_eye_rounded,
+                    color: Colors.white, size: 14),
+                const SizedBox(width: 3),
+                Text(
+                  '$watchingCount',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const Spacer(),
+            const Icon(
+              Icons.wifi_rounded,
+              color: Color(0xFF00E676),
+              size: 18,
+            ),
+            const SizedBox(width: 14),
+            GestureDetector(
+              onTap: _handleBackOrClose,
+              child: const Icon(
+                Icons.close_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+
+  Widget _buildHostSubHeader(LivestreamScreenController controller) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+      child: Obx(() {
+        final coins = (controller.hostUserState?.totalCoin ?? 0).toInt();
+        final giftCount = controller.hostGiftCount;
+        final followersCount =
+            controller.hostUserState?.followersGained.length ?? 0;
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.card_giftcard_rounded,
+                          color: Color(0xFFFF5252), size: 13),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$giftCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(width: 1, height: 10, color: Colors.white30),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.star_rounded,
+                          color: Color(0xFFFFB300), size: 14),
+                      const SizedBox(width: 2),
+                      Text(
+                        '$coins',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 5),
+                GestureDetector(
+                  onTap: () => _showHostTargetDialog(controller),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.diamond_rounded,
+                            color: Color(0xFFBA68C8), size: 13),
+                        const SizedBox(width: 4),
+                        Text(
+                          _hostTargetDiamonds.value > 0
+                              ? 'Target: ${_hostTargetDiamonds.value}'
+                              : 'Target: ',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 3),
+                        const Icon(Icons.edit_rounded,
+                            color: Colors.white70, size: 11),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _formattedDuration,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => FollowersGainedSheet.show(context, controller),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 7, vertical: 3.5),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.person_add_alt_1_rounded,
+                            color: Colors.white, size: 13),
+                        const SizedBox(width: 3),
+                        Text(
+                          '$followersCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      }),
+    );
+  }
+
+  Widget _buildHostCardsRow(LivestreamScreenController controller) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildHostActiveGiftCard(controller),
+          _buildHostAcceptCallCard(controller),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHostActiveGiftCard(LivestreamScreenController controller) {
+    return Obx(() {
+      final topGift = controller.featuredGift ??
+          (controller.availableGifts.isNotEmpty
+              ? controller.availableGifts.first
+              : null);
+      final diamondPrice = topGift?.coinPrice ?? 148;
+      final giftImage = topGift?.image?.addBaseURL();
+
+      return GestureDetector(
+        onTap: () => VideoRoomGiftCategorySheet.show(
+          context: context,
+          controller: controller,
+        ),
+        child: Container(
+          width: 74,
+          height: 98,
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.32),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.15),
+              width: 0.8,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Positioned(
+                top: 0,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFB300),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'New',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontSize: 7.5,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 16),
+                    child: giftImage != null
+                        ? CustomImage(
+                            size: const Size(40, 40),
+                            image: giftImage,
+                            fit: BoxFit.contain,
+                          )
+                        : const Icon(
+                            Icons.favorite_rounded,
+                            color: Color(0xFFFF4081),
+                            size: 34,
+                          ),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 2,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.diamond_rounded,
+                        color: Color(0xFFBA68C8), size: 12),
+                    const SizedBox(width: 3),
+                    Text(
+                      '$diamondPrice',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    });
+  }
+
+  Widget _buildHostAcceptCallCard(LivestreamScreenController controller) {
+    return GestureDetector(
+      onTap: () {
+        CallRequestsSheet.show(context);
+      },
+      child: Container(
+        width: 88,
+        height: 98,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.32),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: CustomPaint(
+          painter: DashedRRectPainter(
+            color: Colors.white.withValues(alpha: 0.75),
+            strokeWidth: 1.5,
+            radius: 14,
+            dash: 5,
+            gap: 4,
+          ),
+          child: const Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.add_rounded,
+                  color: Colors.white,
+                  size: 30,
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Accept Call',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHostMusicBar(LivestreamScreenController controller) {
+    return Obx(() {
+      final stream = controller.liveData.value;
+      final hostUser = controller.effectiveHostUser ?? stream.hostUser;
+      final hostName = hostUser?.fullname ?? hostUser?.username ?? 'Host';
+      final hostPhoto = hostUser?.profile?.addBaseURL();
+
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.push_pin_rounded,
+              color: Color(0xFF00E676), size: 15),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: () => _showMusicOrTopicSheet(controller),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  width: 0.8,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CustomImage(
+                    size: const Size(18, 18),
+                    image: hostPhoto,
+                    radius: 9,
+                    fullName: hostName,
+                  ),
+                  const SizedBox(width: 6),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 190),
+                    child: Text(
+                      '$hostName : Songs 🎶',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.keyboard_arrow_down_rounded,
+                      color: Colors.white70, size: 16),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    });
+  }
+
+  Widget _buildHostJoinNotificationsAndChat(
+      LivestreamScreenController controller) {
+    return Obx(() {
+      final joinedComments = controller.comments
+          .where((c) => c.commentType == LivestreamCommentType.joined)
+          .toList();
+
+      final joinItems = joinedComments.isNotEmpty
+          ? joinedComments.map((c) {
+              final user = c.senderUser;
+              return {
+                'id': c.senderId ?? '',
+                'name': user?.fullname ?? user?.username ?? 'User',
+                'photo': user?.profile?.addBaseURL(),
+              };
+            }).toList()
+          : controller.audienceList.take(4).map((u) {
+              final user = u.user;
+              return {
+                'id': '${user?.userId ?? u.userId}',
+                'name': user?.fullname ?? user?.username ?? 'Viewer',
+                'photo': user?.profile?.addBaseURL(),
+              };
+            }).toList();
+
+      final otherComments = controller.comments
+          .where((c) => c.commentType != LivestreamCommentType.joined)
+          .toList();
+
+      return ListView(
+        controller: _chatScrollController,
+        padding: EdgeInsets.zero,
+        physics: const BouncingScrollPhysics(),
+        children: [
+          ...joinItems.map((item) {
+            final id = item['id'] as String;
+            final name = item['name'] as String;
+            final photo = item['photo'] as String?;
+            final isWaved = _wavedUserIds.contains(id);
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.2),
+                    ),
+                    child: CustomImage(
+                      size: const Size(32, 32),
+                      image: photo,
+                      fullName: name,
+                      radius: 16,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              color: Color(0xFF29B6F6),
+                              size: 13,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 1),
+                        const Text(
+                          'has joined the Chatroom',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () {
+                      HapticManager.shared.light();
+                      setState(() {
+                        _wavedUserIds.add(id);
+                      });
+                      controller.sendWaveTo(name);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: isWaved
+                            ? const Color(0xFF00E676).withValues(alpha: 0.25)
+                            : const Color(0xFF2C3243).withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isWaved
+                              ? const Color(0xFF00E676)
+                              : Colors.white24,
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Text(
+                        isWaved ? 'Waved 👋' : 'Wave 👋',
+                        style: TextStyle(
+                          color:
+                              isWaved ? const Color(0xFF00E676) : Colors.white,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          ...otherComments.reversed.map((comment) {
+            final senderUser = comment.senderUser;
+            final senderName =
+                senderUser?.fullname ?? senderUser?.username ?? 'User';
+            final senderPhoto = senderUser?.profile?.addBaseURL();
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CustomImage(
+                    size: const Size(20, 20),
+                    image: senderPhoto,
+                    fullName: senderName,
+                    radius: 10,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: _buildCommentContent(
+                        controller, comment, senderName),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      );
+    });
+  }
+
+  Widget _buildHostRightVerticalControls(
+      LivestreamScreenController controller) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: () {
+            CallRequestsSheet.show(context);
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    width: 0.8,
+                  ),
+                ),
+                child: const Icon(Icons.weekend_rounded,
+                    color: Colors.white, size: 22),
+              ),
+              const SizedBox(height: 3),
+              const Text(
+                'Calls',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: () {
+            HapticManager.shared.light();
+            LiveBeautyFilterSheet.show(context);
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    width: 0.8,
+                  ),
+                ),
+                child: const Icon(Icons.auto_awesome_rounded,
+                    color: Colors.white, size: 22),
+              ),
+              const SizedBox(height: 3),
+              const Text(
+                'Themes',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: () {
+            HapticManager.shared.light();
+            _showMoreSheet();
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    width: 0.8,
+                  ),
+                ),
+                child: const Icon(Icons.more_vert_rounded,
+                    color: Colors.white, size: 22),
+              ),
+              const SizedBox(height: 3),
+              const Text(
+                'More',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHostBottomBar(LivestreamScreenController controller) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Obx(() {
+        final requestCount = controller.requestList.length;
+
+        return Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  CallRequestsSheet.show(context);
+                },
+                child: Container(
+                  height: 48,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFF6E00), Color(0xFFFF3D00)],
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFFF5722).withValues(alpha: 0.4),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.weekend_rounded,
+                          color: Colors.white, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Requests ($requestCount)',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  HapticManager.shared.light();
+                  _handlePKBattleTap(controller);
+                },
+                child: Container(
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1B1E28),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFAB47BC), Color(0xFFEC407A)],
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'PK',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Battle',
+                        style: TextStyle(
+                          color: Color(0xFFFF9800),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+
+  void _handlePKBattleTap(LivestreamScreenController controller) {
+    final stream = controller.liveData.value;
+    final hasCoHost = (stream.coHostIds ?? []).isNotEmpty;
+    if (hasCoHost) {
+      controller.startBattle();
+    } else {
+      Get.bottomSheet(
+        Container(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          decoration: const BoxDecoration(
+            color: Color(0xFF1B1E28),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2)),
+              ),
+              const Text('PK Battle',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              const Text(
+                'To start a PK Battle, invite a co-host or accept a call first.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+              const SizedBox(height: 18),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF6E00),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20)),
+                  minimumSize: const Size(double.infinity, 44),
+                ),
+                onPressed: () {
+                  Get.back();
+                  Get.bottomSheet(const MembersSheet(isHost: true),
+                      isScrollControlled: true);
+                },
+                icon: const Icon(Icons.people_alt_rounded, color: Colors.white),
+                label: const Text('Invite / Accept Co-host',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+        isScrollControlled: true,
+      );
+    }
+  }
+
+  void _showHostTargetDialog(LivestreamScreenController controller) {
+    final textController = TextEditingController(
+      text:
+          _hostTargetDiamonds.value > 0 ? '${_hostTargetDiamonds.value}' : '',
+    );
+    Get.dialog(
+      Dialog(
+        backgroundColor: const Color(0xFF1B1E28),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.diamond_rounded,
+                      color: Color(0xFFBA68C8), size: 22),
+                  SizedBox(width: 8),
+                  Text('Set Live Target',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const Text('Set your diamond goal for this live session.',
+                  style: TextStyle(color: Colors.white70, fontSize: 12.5)),
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [100, 500, 1000, 5000].map((preset) {
+                  return GestureDetector(
+                    onTap: () {
+                      textController.text = '$preset';
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text('💎 $preset',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.bold)),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: textController,
+                keyboardType: TextInputType.number,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Enter diamond target',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.08),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Get.back(),
+                    child: const Text('Cancel',
+                        style: TextStyle(color: Colors.white54)),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF6E00),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () {
+                      final val =
+                          int.tryParse(textController.text.trim()) ?? 0;
+                      _hostTargetDiamonds.value = val;
+                      Get.back();
+                    },
+                    child: const Text('Save',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showMusicOrTopicSheet(LivestreamScreenController controller) {
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+        decoration: const BoxDecoration(
+          color: Color(0xFF1B1E28),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2))),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Live Music & Songs 🎶',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              leading: const Icon(Icons.music_note_rounded,
+                  color: Color(0xFFFFB300), size: 24),
+              title: const Text('Current Playlist / Topic',
+                  style: TextStyle(color: Colors.white, fontSize: 14)),
+              subtitle: Text(
+                controller.liveData.value.topicName ??
+                    controller.liveData.value.description ??
+                    'Songs 🎶',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.queue_music_rounded,
+                  color: Color(0xFF00E676), size: 24),
+              title: const Text('Change Background Music',
+                  style: TextStyle(color: Colors.white, fontSize: 14)),
+              onTap: () {
+                Get.back();
+              },
+            ),
+          ],
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
   // -------------------------------------------------------------
-  // Header Component
+  // Header Component (Audience View)
   // -------------------------------------------------------------
   Widget _buildHeader(LivestreamScreenController controller) {
     return Padding(
@@ -997,239 +1995,9 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
     });
   }
 
-  // -------------------------------------------------------------
-  // Floating Join Call Button (Right side)
-  // -------------------------------------------------------------
-  Widget _buildFloatingJoinCallButton(LivestreamScreenController controller) {
-    return Obx(() {
-      final liveData = controller.liveData.value;
-      final isBattleOn = liveData.type == LivestreamType.battle;
-      final isCoHost =
-          (liveData.coHostIds ?? []).contains(controller.myUserId);
 
-      if (isBattleOn || (!widget.isHost && liveData.isRestrictToJoin != 0)) {
-        return const SizedBox.shrink();
-      }
 
-      final pendingCount = controller.requestList.length;
 
-      String label = 'Join Call';
-      IconData icon = Icons.video_call_rounded;
-      Color bgColor = Colors.white;
-      Color iconColor = const Color(0xFF1E1E24);
-      Color textColor = const Color(0xFF1E1E24);
-      bool showRedDot = true;
-
-      if (widget.isHost) {
-        label = pendingCount > 0 ? 'Calls ($pendingCount)' : 'Join Call';
-        icon = Icons.video_call_rounded;
-        bgColor = Colors.white;
-        iconColor = const Color(0xFF1E1E24);
-        textColor = const Color(0xFF1E1E24);
-        showRedDot = pendingCount > 0;
-      } else if (isCoHost) {
-        label = 'In Call';
-        icon = Icons.videocam_rounded;
-        bgColor = const Color(0xFFFFB300);
-        iconColor = Colors.black;
-        textColor = Colors.black;
-        showRedDot = false;
-      } else {
-        final myState = controller.liveUsersStates
-            .firstWhereOrNull((u) => u.userId == controller.myUserId);
-        final isRequested =
-            myState?.type == LivestreamUserType.requested;
-        if (isRequested) {
-          label = 'Requested';
-          icon = Icons.hourglass_top_rounded;
-          bgColor = const Color(0xFFFF9500);
-          iconColor = Colors.white;
-          textColor = Colors.white;
-          showRedDot = false;
-        }
-      }
-
-      return GestureDetector(
-        onTap: () {
-          HapticManager.shared.light();
-          if (widget.isHost) {
-            Get.bottomSheet(
-              const MembersSheet(isHost: true),
-              isScrollControlled: true,
-            );
-          } else if (isCoHost) {
-            _showCoHostCallControlsSheet(context, controller);
-          } else {
-            final myState = controller.liveUsersStates
-                .firstWhereOrNull((u) => u.userId == controller.myUserId);
-            final isRequested =
-                myState?.type == LivestreamUserType.requested;
-            if (isRequested) {
-              CallRequestedSheet.show(context);
-            } else {
-              controller.onVideoRequestSend(liveData);
-            }
-          }
-        },
-        child: Container(
-          width: 56,
-          height: 54,
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.35),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, color: iconColor, size: 24),
-                  const SizedBox(height: 2),
-                  Text(
-                    label,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: textColor,
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-              if (showRedDot)
-                Positioned(
-                  top: 6,
-                  right: 10,
-                  child: Container(
-                    width: 7,
-                    height: 7,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFFF1744),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      );
-    });
-  }
-
-  void _showCoHostCallControlsSheet(
-      BuildContext context, LivestreamScreenController controller) {
-    Get.bottomSheet(
-      Container(
-        padding: const EdgeInsets.all(18),
-        decoration: const BoxDecoration(
-          color: Color(0xFF1B1E28),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Video Call Controls',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(height: 10),
-              Obx(() => ListTile(
-                    leading: Icon(
-                      controller.isAudioOn.value
-                          ? Icons.mic_rounded
-                          : Icons.mic_off_rounded,
-                      color: controller.isAudioOn.value
-                          ? Colors.white
-                          : const Color(0xFFFF5252),
-                    ),
-                    title: Text(
-                      controller.isAudioOn.value
-                          ? 'Mute Microphone'
-                          : 'Unmute Microphone',
-                      style: const TextStyle(color: Colors.white, fontSize: 14),
-                    ),
-                    onTap: () {
-                      controller.toggleMic(null);
-                    },
-                  )),
-              Obx(() => ListTile(
-                    leading: Icon(
-                      controller.isVideoOn.value
-                          ? Icons.videocam_rounded
-                          : Icons.videocam_off_rounded,
-                      color: controller.isVideoOn.value
-                          ? Colors.white
-                          : const Color(0xFFFF5252),
-                    ),
-                    title: Text(
-                      controller.isVideoOn.value
-                          ? 'Turn Off Camera'
-                          : 'Turn On Camera',
-                      style: const TextStyle(color: Colors.white, fontSize: 14),
-                    ),
-                    onTap: () {
-                      controller.toggleVideo(null);
-                    },
-                  )),
-              ListTile(
-                leading: const Icon(Icons.flip_camera_ios_rounded,
-                    color: Colors.white),
-                title: const Text('Flip Camera',
-                    style: TextStyle(color: Colors.white, fontSize: 14)),
-                onTap: () {
-                  controller.toggleFlipCamera();
-                },
-              ),
-              const Divider(color: Colors.white12, height: 16),
-              ListTile(
-                leading: const Icon(Icons.call_end_rounded,
-                    color: Color(0xFFFF5252), size: 24),
-                title: const Text('Leave Call',
-                    style: TextStyle(
-                        color: Color(0xFFFF5252),
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.bold)),
-                subtitle: const Text(
-                    'Disconnect from video call and return to audience',
-                    style: TextStyle(color: Colors.white54, fontSize: 11.5)),
-                onTap: () {
-                  Get.back();
-                  controller.leaveCoHostCall();
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-      isScrollControlled: true,
-    );
-  }
 
   // -------------------------------------------------------------
   // PK Battle Start Action (Host when co-host is connected)

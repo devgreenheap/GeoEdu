@@ -10,4 +10,12 @@ class HapticManager {
   void medium() {
     HapticFeedback.mediumImpact();
   }
+
+  void heavy() {
+    HapticFeedback.heavyImpact();
+  }
+
+  void selection() {
+    HapticFeedback.selectionClick();
+  }
 }

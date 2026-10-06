@@ -31,6 +31,8 @@ class InterestTopicScreen extends StatefulWidget {
 class _InterestTopicScreenState extends State<InterestTopicScreen>
     with SingleTickerProviderStateMixin {
   final Set<Topic> _selected = {};
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
 
@@ -47,6 +49,7 @@ class _InterestTopicScreenState extends State<InterestTopicScreen>
   @override
   void dispose() {
     _animCtrl.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -89,6 +92,15 @@ class _InterestTopicScreenState extends State<InterestTopicScreen>
   Color _colorFor(int index) =>
       _chipColors[index % _chipColors.length];
 
+  List<Topic> get _filteredTopics {
+    if (_searchQuery.isEmpty) return widget.allTopics;
+    final q = _searchQuery.toLowerCase();
+    return widget.allTopics.where((topic) {
+      final name = topic.name?.toLowerCase() ?? '';
+      return name.contains(q);
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -99,10 +111,13 @@ class _InterestTopicScreenState extends State<InterestTopicScreen>
           child: Column(
             children: [
               _buildHeader(),
+              if (widget.allTopics.isNotEmpty) _buildSearchBar(),
               Expanded(
                 child: widget.allTopics.isEmpty
                     ? _buildEmpty()
-                    : _buildTopicCloud(),
+                    : _filteredTopics.isEmpty
+                        ? _buildNoSearchResults()
+                        : _buildTopicCloud(),
               ),
               _buildBottomBar(),
             ],
@@ -112,9 +127,105 @@ class _InterestTopicScreenState extends State<InterestTopicScreen>
     );
   }
 
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+      child: Container(
+        height: 46,
+        decoration: BoxDecoration(
+          color: AuthColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: _searchQuery.isNotEmpty
+                ? AuthColors.primaryOrange.withValues(alpha: 0.6)
+                : AuthColors.border.withValues(alpha: 0.7),
+            width: 1,
+          ),
+        ),
+        child: TextField(
+          controller: _searchCtrl,
+          onChanged: (val) {
+            setState(() {
+              _searchQuery = val.trim();
+            });
+          },
+          style: const TextStyle(
+            color: AuthColors.textPrimary,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+          decoration: InputDecoration(
+            hintText: 'Search topics...',
+            hintStyle: TextStyle(
+              color: AuthColors.textSecondary.withValues(alpha: 0.55),
+              fontSize: 14,
+            ),
+            prefixIcon: const Icon(
+              Icons.search_rounded,
+              color: AuthColors.textSecondary,
+              size: 20,
+            ),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? GestureDetector(
+                    onTap: () {
+                      _searchCtrl.clear();
+                      setState(() {
+                        _searchQuery = '';
+                      });
+                    },
+                    child: const Icon(
+                      Icons.close_rounded,
+                      color: AuthColors.textSecondary,
+                      size: 18,
+                    ),
+                  )
+                : null,
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoSearchResults() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off_rounded,
+                color: AuthColors.textSecondary.withValues(alpha: 0.6), size: 44),
+            const SizedBox(height: 12),
+            Text(
+              'No topics match "$_searchQuery"',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AuthColors.textSecondary,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                _searchCtrl.clear();
+                setState(() => _searchQuery = '');
+              },
+              child: const Text('Clear search',
+                  style: TextStyle(
+                      color: AuthColors.primaryOrange,
+                      fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -251,7 +362,7 @@ class _InterestTopicScreenState extends State<InterestTopicScreen>
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: widget.allTopics.asMap().entries.map((e) {
+        children: _filteredTopics.asMap().entries.map((e) {
           final idx = e.key;
           final topic = e.value;
           final isSelected = _selected.contains(topic);

@@ -126,65 +126,53 @@ class EloeloStyleLayout extends StatelessWidget {
           ),
         ),
 
-        // 2. Large, prominent Participant Video Cards row (Matching Reference Image 2)
+        // 2. Vertical Participant Video Cards column on the RIGHT side (Matching Reference Image)
         Positioned(
-          left: 0,
-          right: 0,
-          top: MediaQuery.of(context).padding.top + 74,
+          right: 12,
+          top: MediaQuery.of(context).padding.top + 78,
+          bottom: MediaQuery.of(context).padding.bottom + 150,
           child: Obx(() {
             final liveData = controller.liveData.value;
             final isRestricted = liveData.isRestrictToJoin != 0;
             final showJoinSlot =
-                (controller.isHost || !isRestricted) && members.length < 8;
+                !controller.isHost && !isRestricted && members.length < 8;
 
-            // Responsive card sizing: 1 participant -> larger card; multiple -> properly sized cards
-            final double cardWidth = members.length <= 1 ? 116.0 : 108.0;
-            final double cardHeight = members.length <= 1 ? 136.0 : 126.0;
+            const double cardWidth = 104.0;
+            const double cardHeight = 128.0;
 
             if (members.isEmpty && !showJoinSlot) {
               return const SizedBox.shrink();
             }
 
             return SizedBox(
-              height: cardHeight + 10,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    reverse: true,
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minWidth: constraints.maxWidth - 24,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ...List.generate(
-                            members.length,
-                            (index) => Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: ParticipantVideoCard(
-                                controller: controller,
-                                streamingView: members[index],
-                                width: cardWidth,
-                                height: cardHeight,
-                              ),
-                            ),
-                          ),
-                          if (showJoinSlot)
-                            _JoinCallSlot(
-                              controller: controller,
-                              width: cardWidth,
-                              height: cardHeight,
-                            ),
-                        ],
+              width: cardWidth,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.vertical,
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    ...List.generate(
+                      members.length,
+                      (index) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: ParticipantVideoCard(
+                          controller: controller,
+                          streamingView: members[index],
+                          width: cardWidth,
+                          height: cardHeight,
+                        ),
                       ),
                     ),
-                  );
-                },
+                    if (showJoinSlot)
+                      _JoinCallSlot(
+                        controller: controller,
+                        width: cardWidth,
+                        height: cardHeight,
+                      ),
+                  ],
+                ),
               ),
             );
           }),
@@ -333,10 +321,10 @@ class ParticipantVideoCard extends StatelessWidget {
                       : streamingView.streamView,
                 ),
 
-                // 2. Top-left Chevron Icon (matching Reference Image 2)
+                // 2. Top-right Chevron Icon (matching Reference Image)
                 Positioned(
-                  top: 5,
-                  left: 5,
+                  top: 6,
+                  right: 6,
                   child: Container(
                     padding: const EdgeInsets.all(3),
                     decoration: BoxDecoration(
@@ -351,46 +339,14 @@ class ParticipantVideoCard extends StatelessWidget {
                   ),
                 ),
 
-                // 3. Bottom-right Microphone Status Badge (matching Reference Image 2)
-                Positioned(
-                  bottom: 6,
-                  right: 6,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: isAudioOff
-                          ? const Color(0xFFD32F2F).withValues(alpha: 0.95)
-                          : const Color(0xFF2E7D32).withValues(alpha: 0.95),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.35),
-                        width: 0.8,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          blurRadius: 4,
-                        ),
-                      ],
-                    ),
-                    child: Icon(
-                      isAudioOff
-                          ? Icons.mic_off_rounded
-                          : Icons.mic_rounded,
-                      color: Colors.white,
-                      size: 12,
-                    ),
-                  ),
-                ),
-
-                // 4. Bottom User Name Overlay
+                // 3. Bottom User Name Overlay
                 Positioned(
                   bottom: 0,
                   left: 0,
                   right: 0,
                   child: Container(
                     padding: const EdgeInsets.only(
-                        left: 7, right: 28, top: 12, bottom: 4),
+                        left: 28, right: 6, top: 12, bottom: 4),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
@@ -415,6 +371,38 @@ class ParticipantVideoCard extends StatelessWidget {
                     ),
                   ),
                 ),
+
+                // 4. Bottom-left Microphone Status Badge (Rendered on top of name overlay)
+                Positioned(
+                  bottom: 6,
+                  left: 6,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: isAudioOff
+                          ? const Color(0xFFD32F2F).withValues(alpha: 0.95)
+                          : Colors.black.withValues(alpha: 0.6),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.35),
+                        width: 0.8,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      isAudioOff
+                          ? Icons.mic_off_rounded
+                          : Icons.mic_rounded,
+                      color: Colors.white,
+                      size: 12,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -431,8 +419,8 @@ class _JoinCallSlot extends StatelessWidget {
 
   const _JoinCallSlot({
     required this.controller,
-    this.width = 108.0,
-    this.height = 126.0,
+    this.width = 104.0,
+    this.height = 128.0,
   });
 
   @override
@@ -481,63 +469,87 @@ class _JoinCallSlot extends StatelessWidget {
           child: Stack(
             children: [
               Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
+                child: Obx(() {
+                  final myState = controller.liveUsersStates
+                      .firstWhereOrNull((u) => u.userId == controller.myUserId);
+                  final isRequested = !controller.isHost &&
+                      myState?.type == LivestreamUserType.requested;
+
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: isRequested
+                              ? const Color(0xFFFF9500).withValues(alpha: 0.25)
+                              : Colors.white.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          isRequested
+                              ? Icons.hourglass_top_rounded
+                              : Icons.video_call_rounded,
+                          color: isRequested
+                              ? const Color(0xFFFFB300)
+                              : Colors.white,
+                          size: 26,
+                        ),
                       ),
-                      child: const Icon(
-                        Icons.video_call_rounded,
-                        color: Colors.white,
-                        size: 26,
+                      const SizedBox(height: 6),
+                      Text(
+                        isRequested ? 'Requested' : 'Join Call',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: isRequested
+                              ? const Color(0xFFFFB300)
+                              : Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Join Call',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                  ],
-                ),
+                    ],
+                  );
+                }),
               ),
-              // Request count badge on top-right corner
+              // Request count badge on top-right corner (Host only, when requests exist)
               Positioned(
                 top: 6,
                 right: 6,
-                child: Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF1E88E5),
-                    shape: BoxShape.circle,
-                  ),
-                  constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                  alignment: Alignment.center,
-                  child: Obx(() {
-                    final count = controller.isHost
-                        ? (controller.requestList.isNotEmpty ? controller.requestList.length : 1)
-                        : 1;
-                    return Text(
+                child: Obx(() {
+                  if (!controller.isHost || controller.requestList.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  final count = controller.requestList.length;
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E88E5),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          blurRadius: 4,
+                        ),
+                      ],
+                    ),
+                    constraints:
+                        const BoxConstraints(minWidth: 18, minHeight: 18),
+                    alignment: Alignment.center,
+                    child: Text(
                       '$count',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 9,
+                        fontSize: 9.5,
                         fontWeight: FontWeight.w900,
                       ),
-                    );
-                  }),
-                ),
+                    ),
+                  );
+                }),
               ),
             ],
           ),

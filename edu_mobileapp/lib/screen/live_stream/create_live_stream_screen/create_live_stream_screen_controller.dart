@@ -434,6 +434,8 @@ class CreateLiveStreamScreenController extends BaseController {
       thumbnailUrl: thumbnailPath ?? user.profilePhoto,
     );
 
+    livestream.isActive = true;
+
     AppUser livestreamUser = AppUser(
       username: user.username,
       userId: user.id,
@@ -478,7 +480,7 @@ class CreateLiveStreamScreenController extends BaseController {
       batch.set(usersRef, livestreamUser.toJson());
       batch.set(userStateRef, livestreamUserState.toJson());
 
-      batch.commit();
+      await batch.commit();
 
       Loggers.success('Livestream started successfully!');
 
