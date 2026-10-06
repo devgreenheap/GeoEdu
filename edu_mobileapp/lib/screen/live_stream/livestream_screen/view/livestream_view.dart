@@ -147,33 +147,44 @@ class EloeloStyleLayout extends StatelessWidget {
 
             return SizedBox(
               height: cardHeight + 10,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ...List.generate(
-                      members.length,
-                      (index) => Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ParticipantVideoCard(
-                          controller: controller,
-                          streamingView: members[index],
-                          width: cardWidth,
-                          height: cardHeight,
-                        ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    reverse: true,
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minWidth: constraints.maxWidth - 24,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ...List.generate(
+                            members.length,
+                            (index) => Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ParticipantVideoCard(
+                                controller: controller,
+                                streamingView: members[index],
+                                width: cardWidth,
+                                height: cardHeight,
+                              ),
+                            ),
+                          ),
+                          if (showJoinSlot)
+                            _JoinCallSlot(
+                              controller: controller,
+                              width: cardWidth,
+                              height: cardHeight,
+                            ),
+                        ],
                       ),
                     ),
-                    if (showJoinSlot)
-                      _JoinCallSlot(
-                        controller: controller,
-                        width: cardWidth,
-                        height: cardHeight,
-                      ),
-                  ],
-                ),
+                  );
+                },
               ),
             );
           }),
@@ -1162,13 +1173,20 @@ class LiveStreamUserView extends StatelessWidget {
         liveUser = controller.liveData.value.hostUser;
       }
 
-      // CRITICAL FIX: Only hide video if camera is explicitly turned off.
-      // Default / null state must keep video visible so host video is not blocked
-      // by the blurred avatar placeholder while syncing with Firestore.
-      final bool isVideoOff = state?.videoStatus == VideoAudioStatus.offByMe ||
-          state?.videoStatus == VideoAudioStatus.offByHost;
-      final bool isAudioOff = state?.audioStatus == VideoAudioStatus.offByMe ||
-          state?.audioStatus == VideoAudioStatus.offByHost;
+      final bool isMyOwnStream = (isHost && controller.myUserId == controller.liveData.value.hostId) ||
+          (streamUserId != null && streamUserId == controller.myUserId);
+      final bool isVideoOff = isMyOwnStream
+          ? (!controller.isVideoOn.value ||
+              state?.videoStatus == VideoAudioStatus.offByMe ||
+              state?.videoStatus == VideoAudioStatus.offByHost)
+          : (state?.videoStatus == VideoAudioStatus.offByMe ||
+              state?.videoStatus == VideoAudioStatus.offByHost);
+      final bool isAudioOff = isMyOwnStream
+          ? (!controller.isAudioOn.value ||
+              state?.audioStatus == VideoAudioStatus.offByMe ||
+              state?.audioStatus == VideoAudioStatus.offByHost)
+          : (state?.audioStatus == VideoAudioStatus.offByMe ||
+              state?.audioStatus == VideoAudioStatus.offByHost);
       final bool isAudioOn = !isAudioOff;
 
       return Stack(

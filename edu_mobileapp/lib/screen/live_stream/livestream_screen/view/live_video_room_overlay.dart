@@ -367,6 +367,22 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
               ),
               ListTile(
                 leading: Obx(() => Icon(
+                    controller.isVideoOn.value
+                        ? Icons.videocam_rounded
+                        : Icons.videocam_off_rounded,
+                    color: controller.isVideoOn.value
+                        ? Colors.white
+                        : const Color(0xFFFF5252))),
+                title: Obx(() => Text(
+                    controller.isVideoOn.value ? 'Turn Off Camera' : 'Turn On Camera',
+                    style: const TextStyle(color: Colors.white, fontSize: 14))),
+                onTap: () {
+                  Get.back();
+                  controller.toggleVideo(null);
+                },
+              ),
+              ListTile(
+                leading: Obx(() => Icon(
                     controller.isAudioOn.value
                         ? Icons.mic_rounded
                         : Icons.mic_off_rounded,
@@ -627,18 +643,24 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  // Host flip camera
+                  // Host video camera toggle (turn camera on/off)
                   GestureDetector(
-                    onTap: controller.toggleFlipCamera,
+                    onTap: () => controller.toggleVideo(null),
                     child: Container(
                       padding: const EdgeInsets.all(5),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.14),
+                        color: !controller.isVideoOn.value
+                            ? const Color(0xFFFF1744).withValues(alpha: 0.3)
+                            : Colors.white.withValues(alpha: 0.14),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
-                        Icons.flip_camera_ios_rounded,
-                        color: Colors.white,
+                      child: Icon(
+                        controller.isVideoOn.value
+                            ? Icons.videocam_rounded
+                            : Icons.videocam_off_rounded,
+                        color: !controller.isVideoOn.value
+                            ? const Color(0xFFFF1744)
+                            : Colors.white,
                         size: 16,
                       ),
                     ),
@@ -1156,6 +1178,25 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                       controller.toggleMic(null);
                     },
                   )),
+              Obx(() => ListTile(
+                    leading: Icon(
+                      controller.isVideoOn.value
+                          ? Icons.videocam_rounded
+                          : Icons.videocam_off_rounded,
+                      color: controller.isVideoOn.value
+                          ? Colors.white
+                          : const Color(0xFFFF5252),
+                    ),
+                    title: Text(
+                      controller.isVideoOn.value
+                          ? 'Turn Off Camera'
+                          : 'Turn On Camera',
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                    ),
+                    onTap: () {
+                      controller.toggleVideo(null);
+                    },
+                  )),
               ListTile(
                 leading: const Icon(Icons.flip_camera_ios_rounded,
                     color: Colors.white),
@@ -1365,9 +1406,10 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
   // -------------------------------------------------------------
   Widget _buildTopGifterPill(LivestreamScreenController controller) {
     return Obx(() {
-      final topUser = controller.topGifterName.value.isNotEmpty
-          ? controller.topGifterName.value
-          : 'Aman';
+      final topUser = controller.topGifterName.value.trim();
+      if (topUser.isEmpty) {
+        return const SizedBox.shrink();
+      }
 
       return GestureDetector(
         behavior: HitTestBehavior.opaque,

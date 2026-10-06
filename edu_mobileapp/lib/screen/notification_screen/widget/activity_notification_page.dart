@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:geoedu/common/extensions/common_extension.dart';
 import 'package:geoedu/common/extensions/string_extension.dart';
 import 'package:geoedu/common/widget/custom_image.dart';
 import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/model/general/settings_model.dart';
 import 'package:geoedu/model/misc/activity_notification_model.dart';
+import 'package:geoedu/common/service/api/post_service.dart';
+import 'package:geoedu/model/post_story/post_model.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/screen/comment_sheet/helper/comment_helper.dart';
 import 'package:geoedu/screen/notification_screen/notification_screen_controller.dart';
 import 'package:geoedu/utilities/asset_res.dart';
+import 'package:geoedu/utilities/text_style_custom.dart';
+import 'package:geoedu/utilities/theme_res.dart';
 
 class ActivityNotificationPage extends StatelessWidget {
   final ActivityNotification data;
@@ -394,6 +399,45 @@ enum ActivityNotifyType {
     return ActivityNotifyType.values.firstWhere(
       (e) => e.type == value,
       orElse: () => ActivityNotifyType.none,
+    );
+  }
+}
+
+class NotificationGiftIcon extends StatelessWidget {
+  final Gift? gift;
+
+  const NotificationGiftIcon({super.key, this.gift});
+
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+      child: Container(
+        height: 35,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: textDarkGrey(context),
+          borderRadius: BorderRadius.circular(30),
+        ),
+        child: Row(
+          children: [
+            CustomImage(
+              size: const Size(25, 25),
+              image: gift?.image?.addBaseURL(),
+              isShowPlaceHolder: true,
+            ),
+            const SizedBox(width: 5),
+            Image.asset(AssetRes.icCoin, height: 18, width: 18),
+            const SizedBox(width: 5),
+            Text(
+              (gift?.coinPrice ?? 0).numberFormat,
+              style: TextStyleCustom.outFitRegular400(
+                color: whitePure(context),
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

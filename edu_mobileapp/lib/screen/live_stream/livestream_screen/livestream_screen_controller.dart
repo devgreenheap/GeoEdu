@@ -1753,18 +1753,43 @@ class LivestreamScreenController extends BaseController {
   }
 
   void _updateTopGifter() {
-    final giftComments = comments.where((c) => c.commentType == LivestreamCommentType.gift);
-    if (giftComments.isEmpty) return;
-    final Map<String, int> userTotals = {};
+    final giftComments =
+        comments.where((c) => c.commentType == LivestreamCommentType.gift);
+    if (giftComments.isEmpty) {
+      topGifterName.value = '';
+      topGifterCoins.value = 0;
+      return;
+    }
+    final Map<int, int> userTotals = {};
+    final Map<int, String> userNames = {};
     for (var c in giftComments) {
-      final name = c.senderUser?.username ?? c.senderUser?.fullname ?? 'User';
-      final coins = c.gift?.coinPrice?.toInt() ?? 0;
-      userTotals[name] = (userTotals[name] ?? 0) + coins;
+      final uid = c.senderId ?? 0;
+      if (uid <= 0) continue;
+      final name = c.senderUser?.username ?? c.senderUser?.fullname;
+      if (name != null && name.trim().isNotEmpty) {
+        userNames[uid] = name.trim();
+      }
+      final coins = (c.gift?.coinPrice?.toInt() ?? 0);
+      userTotals[uid] = (userTotals[uid] ?? 0) + coins;
     }
     if (userTotals.isNotEmpty) {
-      var topEntry = userTotals.entries.reduce((a, b) => a.value > b.value ? a : b);
-      topGifterName.value = topEntry.key;
-      topGifterCoins.value = topEntry.value;
+      var topEntry =
+          userTotals.entries.reduce((a, b) => a.value > b.value ? a : b);
+      final bestName = userNames[topEntry.key] ??
+          firestoreController.users
+              .firstWhereOrNull((u) => u.userId == topEntry.key)
+              ?.username ??
+          firestoreController.users
+              .firstWhereOrNull((u) => u.userId == topEntry.key)
+              ?.fullname ??
+          '';
+      if (bestName.isNotEmpty) {
+        topGifterName.value = bestName;
+        topGifterCoins.value = topEntry.value;
+      }
+    } else {
+      topGifterName.value = '';
+      topGifterCoins.value = 0;
     }
   }
 
