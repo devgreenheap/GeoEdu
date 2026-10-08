@@ -6,13 +6,16 @@ import 'package:geoedu/screen/effect_preview/effect_preview_screen.dart';
 import 'package:geoedu/screen/star_store_diamond_and_effect/widgets/Effectstoggle.dart';
 import 'package:get/get.dart';
 
+import 'package:geoedu/screen/star_store_diamond_and_effect/widgets/buy_effect_confirmation_dialog.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
 
 import '../../../model/star_store/effects_model.dart';
 
 class EffectsStoreScreen extends StatefulWidget {
-  const EffectsStoreScreen({super.key});
+  final VoidCallback? onSwitchToDiamondStore;
+
+  const EffectsStoreScreen({super.key, this.onSwitchToDiamondStore});
 
   @override
   State<EffectsStoreScreen> createState() => _EffectsStoreScreenState();
@@ -24,11 +27,26 @@ class _EffectsStoreScreenState extends State<EffectsStoreScreen> {
   bool isLoading = true;
   bool isMyEffectsLoading = false;
   int selectedTab = 0;
+  int diamondBalance = 0;
 
   @override
   void initState() {
     super.initState();
     fetchEntryEffects();
+    fetchDiamondWallet();
+  }
+
+  Future<void> fetchDiamondWallet() async {
+    try {
+      final result = await GiftWalletService.instance.fetchMyDiamondWallet();
+      if (result.data != null && mounted) {
+        setState(() {
+          diamondBalance = result.data!.diamondBalance ?? 0;
+        });
+      }
+    } catch (e) {
+      Loggers.error('fetchDiamondWallet error: $e');
+    }
   }
 
   Future<void> fetchEntryEffects() async {
@@ -62,22 +80,65 @@ class _EffectsStoreScreenState extends State<EffectsStoreScreen> {
     }
   }
 
-  Future<void> _buyEffect(EntryEffectModel effect) async {
-    if (effect.id == null) return;
+  /// Opens the attractive confirmation popup before purchasing.
+  void _showPurchaseConfirmation(EntryEffectModel effect) async {
+    if (diamondBalance == 0) {
+      await fetchDiamondWallet();
+    }
+    if (!mounted) return;
+
+    BuyEffectConfirmationDialog.show(
+      context: context,
+      effect: effect,
+      currentBalance: diamondBalance,
+      onTopUpDiamonds: widget.onSwitchToDiamondStore,
+      onConfirmPurchase: () => _executePurchase(effect),
+    );
+  }
+
+  Future<bool> _executePurchase(EntryEffectModel effect) async {
+    if (effect.id == null) return false;
     try {
       final result = await GiftWalletService.instance.buyEntryEffect(
         entryEffectId: effect.id!,
         diamonds: effect.currentPrice,
       );
       if (result.status == true) {
-        Get.snackbar(
-          'Purchase Successful',
-          'Entry effect purchased!',
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-          snackPosition: SnackPosition.TOP,
-        );
+        // 1. Immediately deduct diamonds locally
+        setState(() {
+          diamondBalance =
+              (diamondBalance - effect.currentPrice).clamp(0, 999999999);
+        });
+
+        // 2. Refresh server wallet & purchased effects in background
+        fetchDiamondWallet();
         fetchMyEntryEffects();
+
+        // 3. Extract duration text
+        String durationText = effect.duration.trim();
+        if (durationText.isEmpty) {
+          durationText =
+              effect.durationHours != null && effect.durationHours! > 0
+                  ? '${effect.durationHours} hours'
+                  : '24 hours';
+        } else if (!durationText.toLowerCase().contains('hour') &&
+            !durationText.toLowerCase().contains('day')) {
+          durationText = '$durationText hours';
+        }
+
+        // 4. Show clear celebration popup
+        if (!mounted) return true;
+        PurchaseEffectSuccessDialog.show(
+          context: context,
+          effectName: effect.title,
+          durationText: durationText,
+          updatedBalance: diamondBalance,
+          onViewMyEffects: () {
+            _onTabChanged(1); // Switch to "My Effects" tab
+          },
+        );
+
+        return true;
       } else {
         Get.snackbar(
           'Purchase Failed',
@@ -86,6 +147,7 @@ class _EffectsStoreScreenState extends State<EffectsStoreScreen> {
           colorText: Colors.white,
           snackPosition: SnackPosition.TOP,
         );
+        return false;
       }
     } catch (e) {
       Loggers.error('buyEntryEffect error: $e');
@@ -96,6 +158,7 @@ class _EffectsStoreScreenState extends State<EffectsStoreScreen> {
         colorText: Colors.white,
         snackPosition: SnackPosition.TOP,
       );
+      return false;
     }
   }
 
@@ -139,7 +202,85 @@ class _EffectsStoreScreenState extends State<EffectsStoreScreen> {
         ),
       );
     }
-    return _buildEffectsGrid(entryEffects, showBuyButton: true);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildBalanceBar(),
+        const SizedBox(height: 12),
+        _buildEffectsGrid(entryEffects, showBuyButton: true),
+      ],
+    );
+  }
+
+  Widget _buildBalanceBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141916),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF1DB954).withValues(alpha: 0.25),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset(AssetRes.coinIcon, width: 18, height: 18),
+              const SizedBox(width: 8),
+              const Text(
+                'Diamond Balance',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$diamondBalance',
+                style: const TextStyle(
+                  color: ColorRes.gold,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (widget.onSwitchToDiamondStore != null) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: widget.onSwitchToDiamondStore,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3.5),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFFFD700), Color(0xFFE6A800)],
+                      ),
+                    ),
+                    child: const Text(
+                      '+ Top Up',
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildMyEffects() {
@@ -194,7 +335,7 @@ class _EffectsStoreScreenState extends State<EffectsStoreScreen> {
         return _EffectCard(
           effect: effect,
           showBuyButton: showBuyButton,
-          onBuy: () => _buyEffect(effect),
+          onBuy: () => _showPurchaseConfirmation(effect),
         );
       },
     );

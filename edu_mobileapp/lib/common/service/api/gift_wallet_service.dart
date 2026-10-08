@@ -17,6 +17,7 @@ import 'package:geoedu/model/star_score/star_score_model.dart';
 import 'package:geoedu/model/star_store/diamond_info_model.dart';
 import 'package:geoedu/model/star_store/effects_model.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
+import 'package:geoedu/model/gift_wallet/star_conversion_model.dart';
 import 'package:geoedu/utilities/app_res.dart';
 
 class GiftWalletService {
@@ -460,5 +461,57 @@ class GiftWalletService {
         },
         fromJson: DiamondFaqModel.fromJson);
     return response;
+  }
+
+  Future<StatusModel> submitStarConversionRequest({
+    required int coins,
+    required String payoutMethod,
+    int? categoryId,
+    String? categoryName,
+    String? accountHolderName,
+    String? accountNumber,
+    String? ifscCode,
+    String? phoneNumber,
+    String? upiNumber,
+    String? upiId,
+  }) async {
+    StatusModel response = await ApiService.instance.call(
+      url: WebService.giftWallet.submitStarConversionRequest,
+      param: {
+        'coins': coins,
+        'payout_method': payoutMethod,
+        if (categoryId != null) 'category_id': categoryId,
+        if (categoryName != null) 'category_name': categoryName,
+        if (accountHolderName != null) 'account_holder_name': accountHolderName,
+        if (accountNumber != null) 'account_number': accountNumber,
+        if (ifscCode != null) 'ifsc_code': ifscCode,
+        if (phoneNumber != null) 'phone_number': phoneNumber,
+        if (upiNumber != null) 'upi_number': upiNumber,
+        if (upiId != null) 'upi_id': upiId,
+      },
+      fromJson: StatusModel.fromJson,
+    );
+    return response;
+  }
+
+  Future<List<StarConversionItem>> fetchStarConversionHistory() async {
+    StarConversionModel response = await ApiService.instance.call(
+      url: WebService.giftWallet.fetchStarConversionHistory,
+      param: {},
+      fromJson: StarConversionModel.fromJson,
+    );
+    return response.data ?? [];
+  }
+
+  Future<Map<String, dynamic>> fetchConversionRateInfo() async {
+    dynamic response = await ApiService.instance.call(
+      url: WebService.giftWallet.fetchConversionRateInfo,
+      param: {},
+      fromJson: (json) => json,
+    );
+    if (response is Map<String, dynamic>) {
+      return response;
+    }
+    return {};
   }
 }

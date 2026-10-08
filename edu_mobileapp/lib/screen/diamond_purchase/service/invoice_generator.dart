@@ -1,20 +1,18 @@
+import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show consolidateHttpClientResponseBytes;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:geoedu/common/manager/session_manager.dart';
 import 'package:geoedu/model/diamond_purchase/diamond_purchase_model.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 
 class InvoiceGenerator {
-  static const String companyName = 'Greenheap DigiEdu Private Limited';
-  static const String companyAddress =
-      'No 1090n, Sector 3, 18th Cross Road,\nBengaluru Urban, Karnataka, 560102';
-  static const String gstin = '29AAGCG1234F1Z5';
-  static const String hsnCode = '998439';
-
   /// Converts a number to words in Indian English currency format
   static String numberToWords(num amount) {
     final int val = amount.round();
@@ -96,33 +94,139 @@ class InvoiceGenerator {
     return result.trim();
   }
 
-  /// Builds the Tax Invoice PDF document exactly matching the reference template
+  /// Helper to safely load remote image bytes
+  static Future<pw.MemoryImage?> _fetchImageBytes(String url) async {
+    try {
+      final uri = Uri.parse(url);
+      final client = HttpClient();
+      client.badCertificateCallback =
+          ((X509Certificate cert, String host, int port) => true);
+      client.connectionTimeout = const Duration(seconds: 5);
+      final request = await client.getUrl(uri);
+      final response = await request.close();
+      if (response.statusCode == 200) {
+        final bytes = await consolidateHttpClientResponseBytes(response);
+        if (bytes.isNotEmpty) {
+          return pw.MemoryImage(bytes);
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Builds the Tax Invoice PDF document dynamically configured from Admin Panel
   static Future<Uint8List> generateInvoicePdf(
       DiamondTransactionModel transaction) async {
     final pdf = pw.Document();
+    final setting = SessionManager.instance.getSettings();
 
-    // Load App Logo
+    // 1. Dynamic Company & Invoice Configurations
+    final companyName = setting?.invoiceCompanyName?.trim().isNotEmpty == true
+        ? setting!.invoiceCompanyName!.trim()
+        : 'Greenheap DigiEdu Private Limited';
+
+    final companyAddress =
+        setting?.invoiceCompanyAddress?.trim().isNotEmpty == true
+            ? setting!.invoiceCompanyAddress!.trim()
+            : 'No 1090n, Sector 3, 18th Cross Road,\nBengaluru Urban, Karnataka, 560102';
+
+    final gstin = setting?.invoiceGstin?.trim().isNotEmpty == true
+        ? setting!.invoiceGstin!.trim()
+        : '29AAGCG1234F1Z5';
+
+    final hsnCode = setting?.invoiceHsnCode?.trim().isNotEmpty == true
+        ? setting!.invoiceHsnCode!.trim()
+        : '998439';
+
+    final invoiceTitle = setting?.invoiceTitle?.trim().isNotEmpty == true
+        ? setting!.invoiceTitle!.trim()
+        : 'Tax Invoice';
+
+    final prefix = setting?.invoicePrefix?.trim().isNotEmpty == true
+        ? setting!.invoicePrefix!.trim()
+        : 'GEO';
+
+    final currency = setting?.invoiceCurrency?.trim().isNotEmpty == true
+        ? setting!.invoiceCurrency!.trim()
+        : 'Rs.';
+
+    final signatoryName =
+        setting?.invoiceSignatoryName?.trim().isNotEmpty == true
+            ? setting!.invoiceSignatoryName!.trim()
+            : 'GeoEdu Auth';
+
+    final termsText = setting?.invoiceTermsText?.trim().isNotEmpty == true
+        ? setting!.invoiceTermsText!.trim()
+        : 'Refer to geoedu.com/terms for Policy, Terms & Conditions.';
+
+    final footerText = setting?.invoiceFooterText?.trim().isNotEmpty == true
+        ? setting!.invoiceFooterText!.trim()
+        : "Tax payable on reverse charge - No.\n*In case of inter-state supply IGST will be applicable. Within state supplies are liable for CGST & SGST.";
+
+    final defaultPlaceOfSupply =
+        setting?.invoicePlaceOfSupply?.trim().isNotEmpty == true
+            ? setting!.invoicePlaceOfSupply!.trim()
+            : 'Tamil Nadu, India';
+
+    // 2. Load Company Logo (Admin uploaded network logo -> local asset fallback)
     pw.MemoryImage? logoImage;
-    try {
-      final logoBytes = await rootBundle.load(AssetRes.appLogo);
-      logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
-    } catch (_) {}
+    if (setting?.invoiceCompanyLogo?.trim().isNotEmpty == true) {
+      logoImage = await _fetchImageBytes(setting!.invoiceCompanyLogo!.trim());
+    }
+    if (logoImage == null) {
+      try {
+        final logoBytes = await rootBundle.load(AssetRes.appLogo);
+        logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
+      } catch (_) {}
+    }
 
-    // Calculation values
-    final netAmount = transaction.amount ?? 0.0;
-    final originalPrice = (transaction.originalPrice != null &&
+    // 3. Load Authorized Signature Image (if configured)
+    pw.MemoryImage? signatureImage;
+    if (setting?.invoiceSignatureImage?.trim().isNotEmpty == true) {
+      signatureImage =
+          await _fetchImageBytes(setting!.invoiceSignatureImage!.trim());
+    }
+
+    // 4. Tax Configuration & Mathematical Calculation
+    final bool sgstEnabled = (setting?.invoiceSgstEnabled ?? 0) == 1;
+    final double sgstPercent = setting?.invoiceSgstPercent ?? 0.0;
+
+    final bool cgstEnabled = (setting?.invoiceCgstEnabled ?? 0) == 1;
+    final double cgstPercent = setting?.invoiceCgstPercent ?? 0.0;
+
+    final bool igstEnabled = (setting?.invoiceIgstEnabled ?? 1) == 1;
+    final double igstPercent = setting?.invoiceIgstPercent ?? 18.0;
+
+    final double effectiveSgstRate = sgstEnabled ? sgstPercent : 0.0;
+    final double effectiveCgstRate = cgstEnabled ? cgstPercent : 0.0;
+    final double effectiveIgstRate = igstEnabled ? igstPercent : 0.0;
+    final double totalTaxRate =
+        effectiveSgstRate + effectiveCgstRate + effectiveIgstRate;
+
+    final double netAmount = transaction.amount ?? 0.0;
+    final double originalPrice = (transaction.originalPrice != null &&
             transaction.originalPrice! >= netAmount)
         ? transaction.originalPrice!
         : netAmount;
-    final discount = (transaction.discount != null && transaction.discount! > 0)
-        ? transaction.discount!
-        : (originalPrice > netAmount ? (originalPrice - netAmount) : 0.0);
+    final double discount =
+        (transaction.discount != null && transaction.discount! > 0)
+            ? transaction.discount!
+            : (originalPrice > netAmount ? (originalPrice - netAmount) : 0.0);
 
-    final taxableValue =
-        netAmount > 0 ? (netAmount / 1.18) : 0.0;
-    final igst = netAmount - taxableValue;
+    // Taxable Value
+    final double taxableValue = (netAmount > 0 && totalTaxRate > 0)
+        ? (netAmount / (1.0 + (totalTaxRate / 100.0)))
+        : netAmount;
 
-    // Real-time metadata
+    // Individual Tax Amounts
+    final double sgstAmount =
+        sgstEnabled ? (taxableValue * (sgstPercent / 100.0)) : 0.0;
+    final double cgstAmount =
+        cgstEnabled ? (taxableValue * (cgstPercent / 100.0)) : 0.0;
+    final double igstAmount =
+        igstEnabled ? (taxableValue * (igstPercent / 100.0)) : 0.0;
+
+    // 5. Transaction Metadata
     final user = SessionManager.instance.getUser();
     final customerName = transaction.userName?.trim().isNotEmpty == true
         ? transaction.userName!
@@ -144,18 +248,18 @@ class InvoiceGenerator {
             ? '${transaction.dateTime!.year}-${transaction.dateTime!.month.toString().padLeft(2, '0')}-${transaction.dateTime!.day.toString().padLeft(2, '0')}; ${transaction.time ?? ''}'
             : '${transaction.date ?? ''}; ${transaction.time ?? ''}');
 
-    final paymentMode = transaction.paymentMode ?? 'UPI';
-    final placeOfSupply = transaction.placeOfSupply ?? 'Tamil Nadu, India';
+    final paymentMode = transaction.paymentMode ?? 'Online / Razorpay';
+    final placeOfSupply = transaction.placeOfSupply?.trim().isNotEmpty == true
+        ? transaction.placeOfSupply!
+        : defaultPlaceOfSupply;
 
-    // Invoice Number
+    // Dynamic Invoice Number
     final now = DateTime.now();
     final finYear = '${now.year}-${now.year + 1}';
     final invoiceNumber =
-        'GEO/$finYear/${now.month}/${transaction.id ?? 18620978}';
+        '$prefix/$finYear/${now.month}/${transaction.id ?? 18620978}';
 
-    final amountInWords =
-        'Rupees ${numberToWords(netAmount)} Only';
-
+    final amountInWords = 'Rupees ${numberToWords(netAmount)} Only';
     final headerGrey = PdfColor.fromHex('D6D6D6');
 
     pdf.addPage(
@@ -166,10 +270,10 @@ class InvoiceGenerator {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // 1. Centered Title: "Tax Invoice"
+              // 1. Centered Title
               pw.Center(
                 child: pw.Text(
-                  'Tax Invoice',
+                  invoiceTitle,
                   style: pw.TextStyle(
                     fontSize: 22,
                     fontWeight: pw.FontWeight.bold,
@@ -195,10 +299,10 @@ class InvoiceGenerator {
                               width: 36,
                               height: 36,
                               margin: const pw.EdgeInsets.only(right: 8),
-                              child: pw.Image(logoImage),
+                              child: pw.Image(logoImage, fit: pw.BoxFit.contain),
                             ),
                           pw.Text(
-                            'GeoEdu',
+                            setting?.appName ?? 'GeoEdu',
                             style: pw.TextStyle(
                               fontSize: 16,
                               fontWeight: pw.FontWeight.bold,
@@ -215,11 +319,14 @@ class InvoiceGenerator {
                         ),
                       ),
                       pw.SizedBox(height: 4),
-                      pw.Text(
-                        companyAddress,
-                        style: const pw.TextStyle(
-                          fontSize: 8.5,
-                          color: PdfColors.black,
+                      pw.SizedBox(
+                        width: 220,
+                        child: pw.Text(
+                          companyAddress,
+                          style: const pw.TextStyle(
+                            fontSize: 8.5,
+                            color: PdfColors.black,
+                          ),
                         ),
                       ),
                       pw.SizedBox(height: 4),
@@ -297,24 +404,32 @@ class InvoiceGenerator {
 
               // Table Rows
               _buildTableRow(
-                  'Diamonds Purchase', 'Rs.${originalPrice.toStringAsFixed(1)}'),
+                  'Diamonds Purchase', '$currency${originalPrice.toStringAsFixed(1)}'),
               _buildTableRow(
-                  'Discount', 'Rs.${discount.toStringAsFixed(1)}'),
+                  'Discount', '$currency${discount.toStringAsFixed(1)}'),
               _buildTableRow(
                 'Net Amount towards purchase (Inclusive of GST)',
-                'Rs.${netAmount.toStringAsFixed(1)}',
+                '$currency${netAmount.toStringAsFixed(1)}',
                 isBold: true,
               ),
               _buildTableRow(
                   'Total Taxable Value - Diamonds Purchase*',
-                  'Rs.${taxableValue.toStringAsFixed(2)}'),
-              _buildTableRow('SGST (0.0%)', 'Rs.0.0'),
-              _buildTableRow('CGST (0.0%)', 'Rs.0.0'),
-              _buildTableRow(
-                  'IGST (18.0%)', 'Rs.${igst.toStringAsFixed(2)}'),
+                  '$currency${taxableValue.toStringAsFixed(2)}'),
+
+              // Dynamic Tax Rows: Only displayed if enabled by Admin
+              if (sgstEnabled)
+                _buildTableRow('SGST (${sgstPercent.toStringAsFixed(1)}%)',
+                    '$currency${sgstAmount.toStringAsFixed(2)}'),
+              if (cgstEnabled)
+                _buildTableRow('CGST (${cgstPercent.toStringAsFixed(1)}%)',
+                    '$currency${cgstAmount.toStringAsFixed(2)}'),
+              if (igstEnabled)
+                _buildTableRow('IGST (${igstPercent.toStringAsFixed(1)}%)',
+                    '$currency${igstAmount.toStringAsFixed(2)}'),
+
               _buildTableRow(
                 'Grand Total\nRounded Off*',
-                'Rs.${netAmount.toStringAsFixed(1)}',
+                '$currency${netAmount.toStringAsFixed(1)}',
                 isBold: true,
               ),
 
@@ -362,21 +477,30 @@ class InvoiceGenerator {
                           fontWeight: pw.FontWeight.bold,
                         ),
                       ),
-                      pw.SizedBox(height: 14),
-                      // Stylized signature
-                      pw.Container(
-                        width: 90,
-                        height: 24,
-                        alignment: pw.Alignment.center,
-                        child: pw.Text(
-                          'GeoEdu Auth',
-                          style: pw.TextStyle(
-                            fontSize: 14,
-                            fontStyle: pw.FontStyle.italic,
-                            color: PdfColors.blueGrey800,
+                      pw.SizedBox(height: 10),
+                      // Dynamic Signature Image or Stylized Text Fallback
+                      if (signatureImage != null)
+                        pw.Container(
+                          width: 120,
+                          height: 36,
+                          alignment: pw.Alignment.center,
+                          child: pw.Image(signatureImage,
+                              fit: pw.BoxFit.contain),
+                        )
+                      else
+                        pw.Container(
+                          width: 120,
+                          height: 24,
+                          alignment: pw.Alignment.center,
+                          child: pw.Text(
+                            signatoryName,
+                            style: pw.TextStyle(
+                              fontSize: 14,
+                              fontStyle: pw.FontStyle.italic,
+                              color: PdfColors.blueGrey800,
+                            ),
                           ),
                         ),
-                      ),
                       pw.Container(
                         width: 120,
                         height: 1,
@@ -397,27 +521,25 @@ class InvoiceGenerator {
 
               pw.Spacer(),
 
-              // 6. Footer Notes
-              pw.Text(
-                'Refer to geoedu.com/terms for Policy, Terms & Conditions.',
-                style: pw.TextStyle(
-                  fontSize: 7.5,
-                  fontWeight: pw.FontWeight.bold,
+              // 6. Dynamic Footer Notes
+              if (termsText.isNotEmpty) ...[
+                pw.Text(
+                  termsText,
+                  style: pw.TextStyle(
+                    fontSize: 7.5,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
                 ),
-              ),
-              pw.SizedBox(height: 3),
-              pw.Text(
-                'Tax payable on reverse charge - No.',
-                style: const pw.TextStyle(fontSize: 7.5),
-              ),
-              pw.SizedBox(height: 3),
-              pw.Text(
-                '*In case of inter-state supply IGST will be applicable. Within state supplies are liable for CGST & SGST.',
-                style: const pw.TextStyle(
-                  fontSize: 7,
-                  color: PdfColors.grey700,
+                pw.SizedBox(height: 3),
+              ],
+              if (footerText.isNotEmpty)
+                pw.Text(
+                  footerText,
+                  style: const pw.TextStyle(
+                    fontSize: 7,
+                    color: PdfColors.grey700,
+                  ),
                 ),
-              ),
             ],
           );
         },
@@ -494,15 +616,41 @@ class InvoiceGenerator {
       final pdfBytes = await generateInvoicePdf(transaction);
       final filename =
           'Tax_Invoice_${transaction.paymentId ?? transaction.transactionId ?? transaction.id}.pdf';
-      await Printing.sharePdf(bytes: pdfBytes, filename: filename);
-    } catch (e) {
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/$filename');
+      await file.writeAsBytes(pdfBytes, flush: true);
+
+      Rect? sharePositionOrigin;
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to generate invoice: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        final box = context.findRenderObject() as RenderBox?;
+        if (box != null && box.hasSize) {
+          sharePositionOrigin = box.localToGlobal(Offset.zero) & box.size;
+        }
+      }
+
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'application/pdf', name: filename)],
+          subject: 'Tax Invoice',
+          text: 'Tax Invoice for GeoEdu Diamond Purchase',
+          sharePositionOrigin: sharePositionOrigin,
+        ),
+      );
+    } catch (e) {
+      try {
+        final pdfBytes = await generateInvoicePdf(transaction);
+        final filename =
+            'Tax_Invoice_${transaction.paymentId ?? transaction.transactionId ?? transaction.id}.pdf';
+        await Printing.sharePdf(bytes: pdfBytes, filename: filename);
+      } catch (e2) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to share invoice: $e2'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }

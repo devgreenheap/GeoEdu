@@ -83,6 +83,8 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
     );
     controller.onPkInviteReceived = (inviterHostId) =>
         _showPkInviteDialog(controller, inviterHostId);
+    controller.onCallParticipantPkInviteReceived = (hostId, hostName) =>
+        _showCallParticipantPkInviteDialog(controller, hostId, hostName);
     if (!widget.isHost) {
       _showCountdown = false;
       if (!Get.isRegistered<AudioCallListController>()) {
@@ -660,7 +662,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                       Text(
                         controller.targetDiamonds.value > 0
                             ? 'Target: ${controller.hostStarTotal.value}/${controller.targetDiamonds.value}'
-                            : 'Target:',
+                            : (isHost ? 'Target:' : 'Target: ${controller.hostStarTotal.value}'),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 11.5,
@@ -723,79 +725,93 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
       final image = gift?.image?.addBaseURL();
 
       return GestureDetector(
-        onTap: controller.isHost
-            ? () => _showFavouriteGiftSheet(controller)
-            : () => _showCategoryGiftsSheet(controller),
+        onTap: () {
+          if (controller.isHost) {
+            _showFavouriteGiftSheet(controller);
+          } else if (gift != null) {
+            controller.sendGiftDirect(gift);
+          } else {
+            _showCategoryGiftsSheet(controller);
+          }
+        },
         child: Container(
-          width: 58,
-          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+          width: 72,
+          height: 98,
+          padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: const Color(0xFF14203D).withValues(alpha: 0.75),
+            color: Colors.black.withValues(alpha: 0.35),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.18),
-              width: 1,
+              color: Colors.white.withValues(alpha: 0.15),
+              width: 0.8,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.35),
+                color: Colors.black.withValues(alpha: 0.25),
                 blurRadius: 8,
-                offset: const Offset(0, 2),
+                offset: const Offset(0, 3),
               ),
             ],
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                margin: const EdgeInsets.only(bottom: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFD54F),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  'Target',
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 7.5,
-                    fontWeight: FontWeight.w900,
+              Positioned(
+                top: 0,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFB300),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${controller.favouriteGiftReceivedCount}/${controller.favouriteGiftTarget.value}',
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontSize: 7.5,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
               ),
-              if (image != null && image.isNotEmpty)
-                CustomImage(
-                  size: const Size(32, 32),
-                  image: image,
-                  fullName: gift?.title,
-                  radius: 6,
-                )
-              else
-                const Icon(
-                  Icons.favorite_rounded,
-                  color: Color(0xFFFF4081),
-                  size: 30,
+              Positioned.fill(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 16),
+                    child: (image != null && image.isNotEmpty)
+                        ? CustomImage(
+                            size: const Size(40, 40),
+                            image: image,
+                            fit: BoxFit.contain,
+                            radius: 6,
+                          )
+                        : const Icon(
+                            Icons.favorite_rounded,
+                            color: Color(0xFFFF4081),
+                            size: 34,
+                          ),
+                  ),
                 ),
-              const SizedBox(height: 3),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('💎', style: TextStyle(fontSize: 10)),
-                  const SizedBox(width: 2),
-                  Flexible(
-                    child: Text(
+              ),
+              Positioned(
+                bottom: 2,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.diamond_rounded,
+                        color: Color(0xFFBA68C8), size: 12),
+                    const SizedBox(width: 3),
+                    Text(
                       '$price',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 11,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -978,111 +994,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
     );
   }
 
-  Widget _buildFloatingGiftCard(AudioRoomController controller) {
-    if (isHost) return const SizedBox.shrink();
-    return Obx(() {
-      final gift = controller.featuredGift ??
-          (controller.availableGifts.isNotEmpty
-              ? controller.availableGifts.first
-              : null);
-      final bool isLocked = controller.isGiftAnimating.value ||
-          controller.activeGifts.isNotEmpty;
-      return GestureDetector(
-        onTap: () {
-          if (gift != null) {
-            if (isLocked) return;
-            controller.sendGiftDirect(gift);
-          } else {
-            _showCategoryGiftsSheet(controller);
-          }
-        },
-        child: Container(
-          width: 64,
-          height: 104,
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.38),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.15),
-              width: 1,
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                alignment: Alignment.center,
-                children: [
-                  CustomImage(
-                    size: const Size(36, 36),
-                    image: gift?.image?.addBaseURL(),
-                    radius: 6,
-                    fit: BoxFit.contain,
-                  ),
-                  Positioned(
-                    top: -4,
-                    right: -6,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 4, vertical: 1.5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFB300),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Text(
-                        '50%',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 7.5,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const Text(
-                '0/3',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFF8A00), Color(0xFFFF5200)],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFFF5200).withValues(alpha: 0.4),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                alignment: Alignment.center,
-                child: const Text(
-                  'Send',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    });
-  }
+
 
   Widget _buildRightGuestColumn(AudioRoomController controller) {
     return Obx(() {
@@ -3508,9 +3420,63 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
     );
   }
 
+  void _showCallParticipantPkInviteDialog(
+      AudioRoomController controller, int hostId, String hostName) {
+    Get.dialog(
+      AlertDialog(
+        backgroundColor: const Color(0xFF1E1E2C),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('$hostName invited you to a PK Battle',
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold)),
+        content: const Text(
+          'Accept to compete in this PK Battle. The battle will start immediately with the host.',
+          style: TextStyle(color: Colors.white70, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Get.back();
+              final myId =
+                  controller.myUser?.id ?? SessionManager.instance.getUserID();
+              controller.rejectPkInviteFromHost(myId);
+            },
+            child: const Text('Reject', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: ColorRes.primaryColor,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              Get.back();
+              final myId =
+                  controller.myUser?.id ?? SessionManager.instance.getUserID();
+              controller.acceptPkInviteFromHost(myId);
+            },
+            child: const Text('Accept',
+                style: TextStyle(
+                    color: Colors.black, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+      barrierDismissible: false,
+    );
+  }
+
   Widget _buildPkBattleBar(AudioRoomController controller) {
     return Obx(() {
       final opponent = controller.opponentRoom.value;
+      final opUser = controller.pkOpponentUser.value;
+      final opPhoto = opUser?.profilePhoto ?? opponent?.hostPhoto;
+      final opName = opUser?.fullname ??
+          opUser?.username ??
+          opponent?.hostName ??
+          'Opponent';
+
       final myCoins = controller.myPkCoins.value;
       final theirCoins = controller.opponentPkCoins.value;
       final total = myCoins + theirCoins == 0 ? 1 : myCoins + theirCoins;
@@ -3568,9 +3534,9 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                 ),
                 CustomImage(
                   size: const Size(36, 36),
-                  image: opponent?.hostPhoto,
+                  image: opPhoto,
                   radius: 18,
-                  fullName: opponent?.hostName,
+                  fullName: opName,
                 ),
               ],
             ),
@@ -3601,8 +3567,6 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
   }
 
   void _showPkInviteListSheet(AudioRoomController controller) {
-    final invitedHostIds = <int>{}.obs;
-
     Get.bottomSheet(
       Container(
         constraints: BoxConstraints(
@@ -3648,17 +3612,17 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.2),
+                    color: Colors.orange.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.redAccent, width: 0.8),
+                    border: Border.all(color: Colors.orangeAccent, width: 0.8),
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.circle, color: Colors.redAccent, size: 8),
+                      Icon(Icons.circle, color: Colors.orangeAccent, size: 8),
                       SizedBox(width: 4),
                       Text(
-                        'Live Hosts',
+                        'Call Participants',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 11,
@@ -3672,71 +3636,74 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
             ),
             const SizedBox(height: 14),
             Flexible(
-              child: StreamBuilder<List<AudioRoom>>(
-                stream: controller.streamOtherLiveHosts(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting &&
-                      !snapshot.hasData) {
-                    return const Padding(
-                      padding: EdgeInsets.all(30),
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          color: ColorRes.primaryColor,
-                          strokeWidth: 2,
+              child: Obx(() {
+                // Show ONLY active accepted call participants currently joined on seats
+                final eligibleSpeakerIds = controller.speakerIds
+                    .where((id) => id != controller.room.hostId)
+                    .toList();
+
+                if (eligibleSpeakerIds.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 30),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.wifi_tethering_off_rounded,
+                          size: 42,
+                          color: Colors.white.withValues(alpha: 0.35),
                         ),
-                      ),
-                    );
-                  }
-                  final hosts = snapshot.data ?? [];
-                  if (hosts.isEmpty) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 30),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.wifi_tethering_off_rounded,
-                            size: 42,
-                            color: Colors.white.withValues(alpha: 0.35),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'No call participants right now',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
                           ),
-                          const SizedBox(height: 10),
-                          const Text(
-                            'No other live classrooms right now',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Users who join your call will appear here for PK Battle.',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.45),
+                            fontSize: 12,
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Active live hosts will appear here in real-time.',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.45),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-                  return ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: hosts.length,
-                    separatorBuilder: (_, __) => Divider(
-                      color: Colors.white.withValues(alpha: 0.08),
-                      height: 12,
+                        ),
+                      ],
                     ),
-                    itemBuilder: (context, index) {
-                      final host = hosts[index];
-                      final hostId = host.hostId ?? 0;
+                  );
+                }
+
+                return ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: eligibleSpeakerIds.length,
+                  separatorBuilder: (_, __) => Divider(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    height: 12,
+                  ),
+                  itemBuilder: (context, index) {
+                    final userId = eligibleSpeakerIds[index];
+                    final participant = controller.participants
+                        .firstWhereOrNull((p) => p.userId == userId);
+                    final name = participant?.fullname ??
+                        participant?.username ??
+                        'User $userId';
+                    final photo = participant?.profilePhoto;
+
+                    return Obx(() {
+                      final isInvited =
+                          controller.pkInvitedUserIds.contains(userId);
+                      final isCurrentOpponent =
+                          controller.pkOpponentId.value == userId;
+
                       return Row(
                         children: [
                           CustomImage(
                             size: const Size(42, 42),
-                            image: host.hostPhoto,
+                            image: photo,
                             radius: 21,
-                            fullName: host.hostName,
+                            fullName: name,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -3747,7 +3714,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                                   children: [
                                     Flexible(
                                       child: Text(
-                                        host.hostName ?? 'Host',
+                                        name,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
@@ -3762,13 +3729,14 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 5, vertical: 1.5),
                                       decoration: BoxDecoration(
-                                        color: Colors.red.withValues(alpha: 0.2),
+                                        color: const Color(0xFF00FF7F)
+                                            .withValues(alpha: 0.15),
                                         borderRadius: BorderRadius.circular(4),
                                       ),
                                       child: const Text(
-                                        'LIVE',
+                                        'IN CALL',
                                         style: TextStyle(
-                                          color: Colors.redAccent,
+                                          color: Color(0xFF00FF7F),
                                           fontSize: 9,
                                           fontWeight: FontWeight.bold,
                                         ),
@@ -3778,7 +3746,7 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  host.roomName ?? 'Classroom',
+                                  'Audio Call Participant',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
@@ -3790,46 +3758,44 @@ class _AudioRoomScreenState extends State<AudioRoomScreen> {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Obx(() {
-                            final isInvited = invitedHostIds.contains(hostId);
-                            return ElevatedButton(
-                              onPressed: isInvited
-                                  ? null
-                                  : () {
-                                      invitedHostIds.add(hostId);
-                                      controller.invitePkBattle(hostId);
-                                      showSnackBar(
-                                          'PK Battle invite sent to ${host.hostName ?? "host"}!');
-                                    },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: isInvited
-                                    ? Colors.white12
-                                    : ColorRes.primaryColor,
-                                disabledBackgroundColor: Colors.white12,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 7),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
+                          ElevatedButton(
+                            onPressed: (isInvited || isCurrentOpponent)
+                                ? null
+                                : () {
+                                    controller.sendPkInviteToParticipant(userId);
+                                    showSnackBar(
+                                        'PK Battle invite sent to $name!');
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: (isInvited || isCurrentOpponent)
+                                  ? Colors.white12
+                                  : ColorRes.primaryColor,
+                              disabledBackgroundColor: Colors.white12,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 7),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
                               ),
-                              child: Text(
-                                isInvited ? 'Invited ✓' : 'Invite',
-                                style: TextStyle(
-                                  color: isInvited
-                                      ? Colors.white54
-                                      : Colors.black,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                            ),
+                            child: Text(
+                              isCurrentOpponent
+                                  ? 'Active PK'
+                                  : (isInvited ? 'Invited ✓' : 'Invite'),
+                              style: TextStyle(
+                                color: (isInvited || isCurrentOpponent)
+                                    ? Colors.white54
+                                    : Colors.black,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
                               ),
-                            );
-                          }),
+                            ),
+                          ),
                         ],
                       );
-                    },
-                  );
-                },
-              ),
+                    });
+                  },
+                );
+              }),
             ),
           ],
         ),

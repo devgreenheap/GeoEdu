@@ -49,6 +49,7 @@ class AssetRes {
   static const String starScoreStar = '${images}star_score_star.png';
   static const String helpGuide = '${images}help-guide.png';
   static const String helpReport = '${images}help-report.png';
+  static const String faqIllustration = '${images}faq_illustration.jpg';
   static const String pkVictoryBanner = '${images}green-win-banner.png';
   static const String pkDefeatBanner = '${images}red-defeated-banner.png';
   static const String flashIndicator = '${images}flash-indicator.png';

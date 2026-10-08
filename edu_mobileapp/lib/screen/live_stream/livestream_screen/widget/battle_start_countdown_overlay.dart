@@ -150,6 +150,10 @@ class _BattleStartCountdownOverlayState
                   controller.updateLiveStreamData(
                       battleType: BattleType.initiate,
                       type: LivestreamType.livestream);
+                  controller.liveStreamDocRef.update({
+                    'pk_opponent_id': null,
+                    'pk_invited_user_ids': [],
+                  }).catchError((_) {});
                 },
                 child: Container(
                     height: 38,

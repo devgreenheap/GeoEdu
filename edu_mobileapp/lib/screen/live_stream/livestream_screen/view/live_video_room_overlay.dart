@@ -2,10 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:keyboard_avoider/keyboard_avoider.dart';
-import 'package:geoedu/screen/live_stream/livestream_screen/view/livestream_view.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requests_sheet.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requested_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/followers_gained_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_host_more_sheet.dart';
+import 'package:geoedu/model/livestream/livestream_user_state.dart';
+import 'package:geoedu/model/livestream/app_user.dart';
 import 'package:geoedu/common/controller/follow_controller.dart';
 import 'package:geoedu/common/extensions/common_extension.dart';
 import 'package:geoedu/common/extensions/string_extension.dart';
@@ -17,6 +19,8 @@ import 'package:geoedu/model/livestream/livestream.dart';
 import 'package:geoedu/model/livestream/livestream_comment.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/view/livestream_view.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/joined_call_user_widget.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_stream_like_button.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/members_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/other_lives_side_panel.dart';
@@ -25,8 +29,10 @@ import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_beauty_f
 import 'package:geoedu/screen/report_sheet/report_sheet.dart';
 import 'package:geoedu/common/manager/haptic_manager.dart';
 import 'package:geoedu/common/widget/room_top_gifters_sheet.dart';
+import 'package:geoedu/common/widget/live_room/set_live_target_sheet.dart';
 import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/utilities/app_res.dart';
+import 'package:geoedu/utilities/color_res.dart';
 
 /// Unified Modern Overlay for Video Live Rooms (Host & Audience).
 /// Replicates the proven rich aesthetics and functionality of the Audio Call room:
@@ -63,13 +69,14 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
   int _prevCommentCount = 0;
   Timer? _liveDurationTimer;
   int _elapsedSeconds = 0;
-  final RxInt _hostTargetDiamonds = 500.obs;
-  final Set<String> _wavedUserIds = <String>{};
 
   @override
   void initState() {
     super.initState();
     _startLiveTimer();
+    widget.controller.onCallParticipantPkInviteReceived = (hostId, hostName) {
+      _showCoHostPkInviteDialog(widget.controller, hostId, hostName);
+    };
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollChatToBottom(animated: false);
     });
@@ -250,6 +257,8 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
       return Stack(
         children: [
           _buildHostLiveLayout(controller),
+          _buildHostParticipantColumn(controller),
+          _buildIncomingRequestToast(controller),
           if (_showOtherLives) ...[
             Positioned.fill(
               child: GestureDetector(
@@ -282,6 +291,11 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
         // Main Overlay with gestures
         GestureDetector(
           behavior: HitTestBehavior.translucent,
+          onTap: () {
+            if (controller.enlargedCoHostUserId.value != null) {
+              controller.enlargedCoHostUserId.value = null;
+            }
+          },
           onHorizontalDragEnd: (details) {
             final velocity = details.primaryVelocity ?? 0;
             if (velocity < -250 && !_showOtherLives) {
@@ -297,7 +311,7 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                   // 1. Sleek Top Header
                   _buildHeader(controller),
 
-                  // 2. Left Floating Gift Card (Audience)
+                  // 2. Left Floating Gift Card & Right Join Call / Joined Video Section (Audience)
                   Padding(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
@@ -306,7 +320,8 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildFloatingGiftCard(controller),
-                        const SizedBox(width: 80),
+                        const IgnorePointer(
+                            child: SizedBox(width: 104, height: 98)),
                       ],
                     ),
                   ),
@@ -328,7 +343,24 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                         const SizedBox(height: 2),
                         SizedBox(
                           height: 125,
-                          child: _buildChatList(controller),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: _buildChatList(controller),
+                              ),
+                              if (!widget.isHost)
+                                Obx(() {
+                                  final isJoinedCoHost = (controller.liveData.value.coHostIds ?? [])
+                                      .contains(controller.myUserId);
+                                  if (isJoinedCoHost) return const SizedBox.shrink();
+                                  return Padding(
+                                    padding: const EdgeInsets.only(left: 8, bottom: 4),
+                                    child: _buildBottomRightJoinCallBtn(controller),
+                                  );
+                                }),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -349,6 +381,9 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
             ),
           ),
         ),
+
+        // Vertical Participant Video Cards Column on the RIGHT side
+        _buildHostParticipantColumn(controller),
 
         // Slide-out OtherLivesSidePanel on "Lives >" tap or swipe left
         if (_showOtherLives) ...[
@@ -378,85 +413,354 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
     );
   }
 
+  Widget _buildHostParticipantColumn(LivestreamScreenController controller) {
+    return Obx(() {
+      final liveData = controller.liveData.value;
+      final hostId = liveData.hostId;
+      final streamViews = controller.streamViews;
+
+      final Set<int> coHostIdsSet = <int>{};
+      for (final id in (liveData.coHostIds ?? [])) {
+        if (id != hostId) {
+          coHostIdsSet.add(id);
+        }
+      }
+      for (final u in controller.coHostList) {
+        if (u.userId != hostId) {
+          coHostIdsSet.add(u.userId);
+        }
+      }
+      for (final state in controller.liveUsersStates) {
+        if (state.type == LivestreamUserType.coHost && state.userId != hostId) {
+          coHostIdsSet.add(state.userId);
+        }
+      }
+      for (final view in streamViews) {
+        final id = int.tryParse(view.streamId);
+        if (id != null &&
+            id != hostId &&
+            (liveData.coHostIds?.contains(id) ?? false)) {
+          coHostIdsSet.add(id);
+        }
+      }
+
+      final List<int> coHostUserIds = coHostIdsSet.toList();
+      final bool isSelfJoined =
+          !widget.isHost && coHostUserIds.contains(controller.myUserId);
+      final bool shouldShowAcceptCard =
+          widget.isHost && coHostUserIds.length < 3;
+      final bool shouldShowJoinCard =
+          !widget.isHost && !isSelfJoined && coHostUserIds.length < 3;
+
+      const double cardWidth = 104.0;
+      const double cardHeight = 128.0;
+
+      return Positioned(
+        right: 12,
+        top: MediaQuery.of(context).padding.top + 78,
+        bottom: MediaQuery.of(context).padding.bottom + 150,
+        child: SizedBox(
+          width: 260,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.vertical,
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                ...List.generate(
+                  coHostUserIds.length,
+                  (index) {
+                    final userId = coHostUserIds[index];
+                    final StreamView? memberStream = streamViews
+                        .firstWhereOrNull((s) => s.streamId == '$userId');
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: ParticipantVideoCard(
+                        controller: controller,
+                        userId: userId,
+                        streamingView: memberStream,
+                        isMe: userId == controller.myUserId,
+                        width: cardWidth,
+                        height: cardHeight,
+                      ),
+                    );
+                  },
+                ),
+                if (shouldShowAcceptCard)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: buildColumnAcceptCallCard(
+                      context,
+                      controller,
+                      cardWidth,
+                    ),
+                  ),
+                if (shouldShowJoinCard)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: AudienceJoinCallDashedCard(
+                      controller: controller,
+                      width: cardWidth,
+                      height: 98,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+    });
+  }
+
+  Widget _buildIncomingRequestToast(LivestreamScreenController controller) {
+    return Obx(() {
+      if (!controller.showRequestToast.value ||
+          controller.latestRequestUser.value == null) {
+        return const SizedBox.shrink();
+      }
+      final reqUser = controller.latestRequestUser.value!;
+      final userName = reqUser.fullname ?? reqUser.username ?? 'Someone';
+
+      return Positioned(
+        left: 12,
+        bottom: 125,
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: -220, end: 0),
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOutBack,
+          builder: (context, value, child) {
+            return Transform.translate(
+              offset: Offset(value, 0),
+              child: child,
+            );
+          },
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                controller.showRequestToast.value = false;
+                CallRequestsSheet.show(context);
+              },
+              borderRadius: BorderRadius.circular(25),
+              child: Container(
+                height: 48,
+                padding: const EdgeInsets.fromLTRB(5, 4, 10, 4),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF2E1B4E), Color(0xFF1B1425)],
+                  ),
+                  borderRadius: BorderRadius.circular(25),
+                  border: Border.all(
+                    color: const Color(0xFFFF7A00),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFF7A00).withValues(alpha: 0.45),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      height: 38,
+                      width: 38,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          width: 1.5,
+                          color: const Color(0xFFFF7A00),
+                        ),
+                      ),
+                      child: CustomImage(
+                        size: const Size(38, 38),
+                        image: reqUser.profile?.addBaseURL(),
+                        radius: 19,
+                        fullName: userName,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 130),
+                          child: Text(
+                            userName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.videocam_rounded,
+                                color: Color(0xFFFF7A00), size: 12),
+                            SizedBox(width: 2),
+                            Text(
+                              'Requested to join call',
+                              style: TextStyle(
+                                color: Color(0xFFFFB74D),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 10),
+                    GestureDetector(
+                      onTap: () {
+                        controller.showRequestToast.value = false;
+                        controller.handleRequestResponse(
+                          user: reqUser,
+                          isRefused: false,
+                        );
+                        controller.showSnackBar('Accepted $userName to join call');
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFFF7A00), Color(0xFFFF5200)],
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFFF6D00)
+                                  .withValues(alpha: 0.4),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                        child: const Text(
+                          'Accept',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: () => controller.showRequestToast.value = false,
+                      child: const Padding(
+                        padding: EdgeInsets.all(2.0),
+                        child:
+                            Icon(Icons.close, color: Colors.white60, size: 15),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    });
+  }
+
   // =============================================================
   // REDESIGNED HOST LIVE SCREEN (Matching Reference Image)
   // =============================================================
 
   Widget _buildHostLiveLayout(LivestreamScreenController controller) {
-    return SafeArea(
-      child: Column(
-        children: [
-          // 1. Top Header: Avatar + Name + ● LIVE + 👁 Count ... 📶 Wifi + ✕ Close
-          _buildHostTopHeader(controller),
+    final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
 
-          // 2. Sub-Header: [🎁 | ⭐] & [💎 Target: ✏️] ... [Timer] [👤+ count]
-          _buildHostSubHeader(controller),
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () {
+        FocusManager.instance.primaryFocus?.unfocus();
+        if (controller.enlargedCoHostUserId.value != null) {
+          controller.enlargedCoHostUserId.value = null;
+        }
+      },
+      child: SafeArea(
+        child: KeyboardAvoider(
+          child: Column(
+            children: [
+              // 1. Top Header: Avatar + Name + ● LIVE + 👁 Count ... 📶 Wifi + ✕ Close
+              _buildHostTopHeader(controller),
 
-          const SizedBox(height: 10),
+              // 2. Sub-Header: [🎁 | ⭐] & [💎 Target: ✏️] ... [Timer] [👤+ count]
+              _buildHostSubHeader(controller),
 
-          // 3. Mid-Upper: Left Active Gift Card & Right Dashed Accept Call Card
-          _buildHostCardsRow(controller),
+              if (!isKeyboardOpen) ...[
+                const SizedBox(height: 10),
+                // 3. Mid-Upper: Left Active Gift Card & Right Dashed Accept Call Card
+                _buildHostCardsRow(controller),
+              ],
 
-          const Spacer(),
+              // 4. Flexible Middle Section: Pinned Comment + Chat List + Vertical Controls
+              Expanded(
+                child: Column(
+                  children: [
+                    const Spacer(),
 
-          // 4. Middle-Lower: Pinned Song Bar
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: _buildHostMusicBar(controller),
-            ),
-          ),
+                    // Pinned comment banner / pill
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: _buildHostPinnedCommentBar(controller),
+                      ),
+                    ),
 
-          const SizedBox(height: 8),
+                    const SizedBox(height: 8),
 
-          // 5. Chat & Right-Side Controls: Join notifications + [Calls, Themes, More]
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 190,
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: _buildHostJoinNotificationsAndChat(controller),
-                        ),
-                        Positioned(
-                          top: 4,
-                          right: 4,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.35),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.open_in_full_rounded,
-                              color: Colors.white,
-                              size: 14,
+                    // Live Comments & Right-Side Controls: [Calls, Themes, More]
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: SizedBox(
+                              height: isKeyboardOpen ? 120 : 190,
+                              child: _buildHostLiveChatList(controller),
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 14),
+                          _buildHostRightVerticalControls(controller),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-                const SizedBox(width: 14),
-                _buildHostRightVerticalControls(controller),
-              ],
-            ),
+              ),
+
+              const SizedBox(height: 8),
+
+              // Chat message entering input bar for host
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: _buildHostMessageInputBar(controller),
+              ),
+
+              const SizedBox(height: 10),
+
+              // 5. Bottom Bar: Requests (0) & PK Battle
+              _buildHostBottomBar(controller),
+
+              const SizedBox(height: 8),
+            ],
           ),
-
-          const SizedBox(height: 12),
-
-          // 6. Bottom Bar: Requests (0) & PK Battle
-          _buildHostBottomBar(controller),
-
-          const SizedBox(height: 8),
-        ],
+        ),
       ),
     );
   }
@@ -565,51 +869,72 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      width: 0.8,
+                GestureDetector(
+                  onTap: () {
+                    HapticManager.shared.light();
+                    RoomTopGiftersSheet.show(
+                      context: context,
+                      roomId: controller.liveData.value.roomID,
+                      hostId: controller.liveData.value.hostId,
+                      isAudio: false,
+                      videoController: controller,
+                    );
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        width: 0.8,
+                      ),
                     ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.card_giftcard_rounded,
-                          color: Color(0xFFFF5252), size: 13),
-                      const SizedBox(width: 4),
-                      Text(
-                        '$giftCount',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.card_giftcard_rounded,
+                            color: Color(0xFFFF5252), size: 13),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$giftCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(width: 1, height: 10, color: Colors.white30),
-                      const SizedBox(width: 6),
-                      const Icon(Icons.star_rounded,
-                          color: Color(0xFFFFB300), size: 14),
-                      const SizedBox(width: 2),
-                      Text(
-                        '$coins',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
+                        const SizedBox(width: 6),
+                        Container(width: 1, height: 10, color: Colors.white30),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.star_rounded,
+                            color: Color(0xFFFFB300), size: 14),
+                        const SizedBox(width: 2),
+                        Text(
+                          '$coins',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 5),
                 GestureDetector(
-                  onTap: () => _showHostTargetDialog(controller),
+                  onTap: () {
+                    HapticManager.shared.light();
+                    SetLiveTargetSheet.show(
+                      context,
+                      initialValue: controller.targetDiamonds.value,
+                      onTargetSet: (val) {
+                        controller.setTargetDiamonds(val);
+                      },
+                    );
+                  },
                   child: Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -628,8 +953,8 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                             color: Color(0xFFBA68C8), size: 13),
                         const SizedBox(width: 4),
                         Text(
-                          _hostTargetDiamonds.value > 0
-                              ? 'Target: ${_hostTargetDiamonds.value}'
+                          controller.targetDiamonds.value > 0
+                              ? 'Target: ${(controller.hostUserState?.totalCoin ?? 0).toInt()}/${controller.targetDiamonds.value}'
                               : 'Target: ',
                           style: const TextStyle(
                             color: Colors.white,
@@ -706,7 +1031,7 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildHostActiveGiftCard(controller),
-          _buildHostAcceptCallCard(controller),
+          const IgnorePointer(child: SizedBox(width: 104, height: 98)),
         ],
       ),
     );
@@ -722,10 +1047,10 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
       final giftImage = topGift?.image?.addBaseURL();
 
       return GestureDetector(
-        onTap: () => VideoRoomGiftCategorySheet.show(
-          context: context,
-          controller: controller,
-        ),
+        onTap: () {
+          HapticManager.shared.light();
+          controller.showFavouriteGiftSheet(context);
+        },
         child: Container(
           width: 74,
           height: 98,
@@ -757,9 +1082,9 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                     color: const Color(0xFFFFB300),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text(
-                    'New',
-                    style: TextStyle(
+                  child: Text(
+                    '${controller.favouriteGiftReceivedCount}/${controller.favouriteGiftTarget.value}',
+                    style: const TextStyle(
                       color: Colors.black,
                       fontSize: 7.5,
                       fontWeight: FontWeight.w900,
@@ -811,61 +1136,18 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
     });
   }
 
-  Widget _buildHostAcceptCallCard(LivestreamScreenController controller) {
-    return GestureDetector(
-      onTap: () {
-        CallRequestsSheet.show(context);
-      },
-      child: Container(
-        width: 88,
-        height: 98,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.32),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: CustomPaint(
-          painter: DashedRRectPainter(
-            color: Colors.white.withValues(alpha: 0.75),
-            strokeWidth: 1.5,
-            radius: 14,
-            dash: 5,
-            gap: 4,
-          ),
-          child: const Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.add_rounded,
-                  color: Colors.white,
-                  size: 30,
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Accept Call',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
-  Widget _buildHostMusicBar(LivestreamScreenController controller) {
+  Widget _buildHostPinnedCommentBar(LivestreamScreenController controller) {
     return Obx(() {
+      final pinnedText = controller.pinnedComment.value.trim();
       final stream = controller.liveData.value;
       final hostUser = controller.effectiveHostUser ?? stream.hostUser;
       final hostName = hostUser?.fullname ?? hostUser?.username ?? 'Host';
       final hostPhoto = hostUser?.profile?.addBaseURL();
+
+      final hasPinned = pinnedText.isNotEmpty;
+      final displayText =
+          hasPinned ? pinnedText : 'Pin a comment or announcement...';
 
       return Row(
         mainAxisSize: MainAxisSize.min,
@@ -874,14 +1156,19 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
               color: Color(0xFF00E676), size: 15),
           const SizedBox(width: 4),
           GestureDetector(
-            onTap: () => _showMusicOrTopicSheet(controller),
+            onTap: () {
+              HapticManager.shared.light();
+              _showPinCommentOptionsOrSheet(controller);
+            },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.4),
+                color: Colors.black.withValues(alpha: 0.45),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.15),
+                  color: hasPinned
+                      ? const Color(0xFF00E676).withValues(alpha: 0.4)
+                      : Colors.white.withValues(alpha: 0.15),
                   width: 0.8,
                 ),
               ),
@@ -896,21 +1183,29 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                   ),
                   const SizedBox(width: 6),
                   ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 190),
+                    constraints: const BoxConstraints(maxWidth: 200),
                     child: Text(
-                      '$hostName : Songs 🎶',
+                      displayText,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: hasPinned ? Colors.white : Colors.white70,
                         fontSize: 11,
-                        fontWeight: FontWeight.w600,
+                        fontWeight:
+                            hasPinned ? FontWeight.w600 : FontWeight.w400,
+                        fontStyle:
+                            hasPinned ? FontStyle.normal : FontStyle.italic,
                       ),
                     ),
                   ),
                   const SizedBox(width: 4),
-                  const Icon(Icons.keyboard_arrow_down_rounded,
-                      color: Colors.white70, size: 16),
+                  Icon(
+                    hasPinned
+                        ? Icons.keyboard_arrow_down_rounded
+                        : Icons.add_rounded,
+                    color: Colors.white70,
+                    size: 16,
+                  ),
                 ],
               ),
             ),
@@ -920,169 +1215,258 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
     });
   }
 
-  Widget _buildHostJoinNotificationsAndChat(
-      LivestreamScreenController controller) {
-    return Obx(() {
-      final joinedComments = controller.comments
-          .where((c) => c.commentType == LivestreamCommentType.joined)
-          .toList();
+  void _showPinCommentOptionsOrSheet(LivestreamScreenController controller) {
+    if (controller.pinnedComment.value.isNotEmpty) {
+      Get.bottomSheet(
+        Container(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          decoration: const BoxDecoration(
+            color: Color(0xFF1E1E2C),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Pinned Comment',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.push_pin,
+                          color: Color(0xFF00E676), size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          controller.pinnedComment.value,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: const Icon(Icons.edit_rounded, color: Colors.white),
+                  title: const Text('Edit Pinned Comment',
+                      style: TextStyle(color: Colors.white)),
+                  onTap: () {
+                    Get.back();
+                    _showPinCommentSheet(controller);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.close_rounded,
+                      color: Color(0xFFFF5252)),
+                  title: const Text('Unpin Comment',
+                      style: TextStyle(color: Color(0xFFFF5252))),
+                  onTap: () {
+                    Get.back();
+                    controller.clearPinnedComment();
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } else {
+      _showPinCommentSheet(controller);
+    }
+  }
 
-      final joinItems = joinedComments.isNotEmpty
-          ? joinedComments.map((c) {
-              final user = c.senderUser;
-              return {
-                'id': c.senderId ?? '',
-                'name': user?.fullname ?? user?.username ?? 'User',
-                'photo': user?.profile?.addBaseURL(),
-              };
-            }).toList()
-          : controller.audienceList.take(4).map((u) {
-              final user = u.user;
-              return {
-                'id': '${user?.userId ?? u.userId}',
-                'name': user?.fullname ?? user?.username ?? 'Viewer',
-                'photo': user?.profile?.addBaseURL(),
-              };
-            }).toList();
-
-      final otherComments = controller.comments
-          .where((c) => c.commentType != LivestreamCommentType.joined)
-          .toList();
-
-      return ListView(
-        controller: _chatScrollController,
-        padding: EdgeInsets.zero,
-        physics: const BouncingScrollPhysics(),
-        children: [
-          ...joinItems.map((item) {
-            final id = item['id'] as String;
-            final name = item['name'] as String;
-            final photo = item['photo'] as String?;
-            final isWaved = _wavedUserIds.contains(id);
-
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Row(
+  void _showPinCommentSheet(LivestreamScreenController controller) {
+    final textController =
+        TextEditingController(text: controller.pinnedComment.value);
+    Get.bottomSheet(
+      Container(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(Get.context!).viewInsets.bottom + 16,
+        ),
+        decoration: const BoxDecoration(
+          color: Color(0xFF1E1E2C),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Pin Comment / Announcement',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: textController,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'Type message to pin at top...',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.08),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 1.2),
-                    ),
-                    child: CustomImage(
-                      size: const Size(32, 32),
-                      image: photo,
-                      fullName: name,
-                      radius: 16,
-                    ),
+                  TextButton(
+                    onPressed: () {
+                      controller.clearPinnedComment();
+                      Get.back();
+                    },
+                    child: const Text('Clear',
+                        style: TextStyle(color: Colors.white60)),
                   ),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(
-                              Icons.check_circle_rounded,
-                              color: Color(0xFF29B6F6),
-                              size: 13,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 1),
-                        const Text(
-                          'has joined the Chatroom',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  GestureDetector(
-                    onTap: () {
-                      HapticManager.shared.light();
-                      setState(() {
-                        _wavedUserIds.add(id);
-                      });
-                      controller.sendWaveTo(name);
+                  ElevatedButton(
+                    onPressed: () {
+                      controller.pinCommentController.text =
+                          textController.text.trim();
+                      controller.submitPinnedComment();
+                      Get.back();
                     },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: isWaved
-                            ? const Color(0xFF00E676).withValues(alpha: 0.25)
-                            : const Color(0xFF2C3243).withValues(alpha: 0.85),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isWaved
-                              ? const Color(0xFF00E676)
-                              : Colors.white24,
-                          width: 0.8,
-                        ),
-                      ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF7A00),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('Pin'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
+  Widget _buildHostLiveChatList(LivestreamScreenController controller) {
+    return Obx(() {
+      final comments = controller.comments;
+
+      // Auto-scroll to latest message at the bottom whenever new comments arrive
+      if (comments.length != _prevCommentCount) {
+        _prevCommentCount = comments.length;
+        _scrollChatToBottom();
+      }
+
+      return ShaderMask(
+        shaderCallback: (Rect bounds) {
+          return const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.transparent,
+              Colors.black,
+            ],
+            stops: [0.0, 0.12],
+          ).createShader(bounds);
+        },
+        blendMode: BlendMode.dstIn,
+        child: ListView(
+          controller: _chatScrollController,
+          padding: const EdgeInsets.only(top: 8, bottom: 4),
+          physics: const BouncingScrollPhysics(),
+          children: [
+            // Welcome Guidelines Banner
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2.5),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    width: 0.8,
+                  ),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.shield_outlined,
+                        color: Color(0xFF00E676), size: 14),
+                    SizedBox(width: 6),
+                    Expanded(
                       child: Text(
-                        isWaved ? 'Waved 👋' : 'Wave 👋',
+                        'Welcome to Live! Chat messages, gifts, and room events will appear here.',
                         style: TextStyle(
-                          color:
-                              isWaved ? const Color(0xFF00E676) : Colors.white,
+                          color: Colors.white70,
                           fontSize: 10.5,
-                          fontWeight: FontWeight.bold,
+                          height: 1.3,
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            );
-          }),
-          ...otherComments.reversed.map((comment) {
-            final senderUser = comment.senderUser;
-            final senderName =
-                senderUser?.fullname ?? senderUser?.username ?? 'User';
-            final senderPhoto = senderUser?.profile?.addBaseURL();
+            ),
 
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CustomImage(
-                    size: const Size(20, 20),
-                    image: senderPhoto,
-                    fullName: senderName,
-                    radius: 10,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: _buildCommentContent(
-                        controller, comment, senderName),
-                  ),
-                ],
-              ),
-            );
-          }),
-        ],
+            // Real-Time Comments (Join, Co-host, Gifts, and Messages)
+            ...comments.map((comment) {
+              final senderUser = comment.senderUser;
+              final senderName =
+                  senderUser?.fullname ?? senderUser?.username ?? 'User';
+              final senderPhoto = senderUser?.profile?.addBaseURL();
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2.5),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CustomImage(
+                      size: const Size(22, 22),
+                      image: senderPhoto,
+                      fullName: senderName,
+                      radius: 11,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: _buildCommentContent(
+                          controller, comment, senderName),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
       );
     });
   }
@@ -1193,6 +1577,115 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildHostMessageInputBar(LivestreamScreenController controller) {
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.18),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFF8A00), Color(0xFFFF3D00)],
+              ),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFFF5722).withValues(alpha: 0.35),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.mic_rounded, color: Colors.white, size: 10),
+                SizedBox(width: 3),
+                Text(
+                  'HOST',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: controller.textCommentController,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+              ),
+              textInputAction: TextInputAction.send,
+              onTapOutside: (_) =>
+                  FocusManager.instance.primaryFocus?.unfocus(),
+              onSubmitted: (_) {
+                controller.onTextCommentSend();
+              },
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                border: InputBorder.none,
+                hintText: 'Say something to your viewers...',
+                hintStyle: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: () {
+              HapticManager.shared.light();
+              controller.onTextCommentSend();
+            },
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFF8A00), Color(0xFFFF3D00)],
+                ),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFF5722).withValues(alpha: 0.4),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.send_rounded,
+                color: Colors.white,
+                size: 15,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1312,219 +1805,242 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
   }
 
   void _handlePKBattleTap(LivestreamScreenController controller) {
-    final stream = controller.liveData.value;
-    final hasCoHost = (stream.coHostIds ?? []).isNotEmpty;
-    if (hasCoHost) {
-      controller.startBattle();
-    } else {
-      Get.bottomSheet(
-        Container(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-          decoration: const BoxDecoration(
-            color: Color(0xFF1B1E28),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(2)),
-              ),
-              const Text('PK Battle',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              const Text(
-                'To start a PK Battle, invite a co-host or accept a call first.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white70, fontSize: 13),
-              ),
-              const SizedBox(height: 18),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF6E00),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20)),
-                  minimumSize: const Size(double.infinity, 44),
-                ),
-                onPressed: () {
-                  Get.back();
-                  Get.bottomSheet(const MembersSheet(isHost: true),
-                      isScrollControlled: true);
-                },
-                icon: const Icon(Icons.people_alt_rounded, color: Colors.white),
-                label: const Text('Invite / Accept Co-host',
-                    style: TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-        ),
-        isScrollControlled: true,
-      );
-    }
+    _showVideoPkInviteListSheet(controller);
   }
 
-  void _showHostTargetDialog(LivestreamScreenController controller) {
-    final textController = TextEditingController(
-      text:
-          _hostTargetDiamonds.value > 0 ? '${_hostTargetDiamonds.value}' : '',
-    );
-    Get.dialog(
-      Dialog(
-        backgroundColor: const Color(0xFF1B1E28),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Row(
-                children: [
-                  Icon(Icons.diamond_rounded,
-                      color: Color(0xFFBA68C8), size: 22),
-                  SizedBox(width: 8),
-                  Text('Set Live Target',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold)),
-                ],
-              ),
-              const SizedBox(height: 14),
-              const Text('Set your diamond goal for this live session.',
-                  style: TextStyle(color: Colors.white70, fontSize: 12.5)),
-              const SizedBox(height: 14),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [100, 500, 1000, 5000].map((preset) {
-                  return GestureDetector(
-                    onTap: () {
-                      textController.text = '$preset';
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text('💎 $preset',
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.bold)),
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: textController,
-                keyboardType: TextInputType.number,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Enter diamond target',
-                  hintStyle: const TextStyle(color: Colors.white38),
-                  filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.08),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Get.back(),
-                    child: const Text('Cancel',
-                        style: TextStyle(color: Colors.white54)),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF6E00),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: () {
-                      final val =
-                          int.tryParse(textController.text.trim()) ?? 0;
-                      _hostTargetDiamonds.value = val;
-                      Get.back();
-                    },
-                    child: const Text('Save',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showMusicOrTopicSheet(LivestreamScreenController controller) {
+  void _showVideoPkInviteListSheet(LivestreamScreenController controller) {
     Get.bottomSheet(
       Container(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+        constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(Get.context!).size.height * 0.55),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
         decoration: const BoxDecoration(
-          color: Color(0xFF1B1E28),
+          color: Color(0xFF1E1E2C),
           borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
+            Center(
+              child: Container(
                 width: 36,
                 height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(2))),
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Live Music & Songs 🎶',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(height: 12),
-            ListTile(
-              leading: const Icon(Icons.music_note_rounded,
-                  color: Color(0xFFFFB300), size: 24),
-              title: const Text('Current Playlist / Topic',
-                  style: TextStyle(color: Colors.white, fontSize: 14)),
-              subtitle: Text(
-                controller.liveData.value.topicName ??
-                    controller.liveData.value.description ??
-                    'Songs 🎶',
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  color: Colors.white30,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
-            ListTile(
-              leading: const Icon(Icons.queue_music_rounded,
-                  color: Color(0xFF00E676), size: 24),
-              title: const Text('Change Background Music',
-                  style: TextStyle(color: Colors.white, fontSize: 14)),
-              onTap: () {
-                Get.back();
-              },
+            const SizedBox(height: 14),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.bolt_rounded,
+                        color: Color(0xFFE040FB), size: 20),
+                    SizedBox(width: 6),
+                    Text(
+                      'Invite to PK Battle',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.orangeAccent, width: 0.8),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.circle, color: Colors.orangeAccent, size: 8),
+                      SizedBox(width: 4),
+                      Text(
+                        'Call Participants',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Flexible(
+              child: Obx(() {
+                // Show ONLY active accepted call participants currently joined in video call
+                final eligibleCoHosts = controller.coHostList
+                    .where((u) =>
+                        u.userId != controller.myUserId &&
+                        u.type == LivestreamUserType.coHost)
+                    .toList();
+
+                if (eligibleCoHosts.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 30),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.wifi_tethering_off_rounded,
+                          size: 42,
+                          color: Colors.white.withValues(alpha: 0.35),
+                        ),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'No call participants right now',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Users who join your call will appear here for PK Battle.',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.45),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: eligibleCoHosts.length,
+                  separatorBuilder: (_, __) => Divider(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    height: 12,
+                  ),
+                  itemBuilder: (context, index) {
+                    final coHostState = eligibleCoHosts[index];
+                    final user = coHostState
+                        .getUser(controller.firestoreController.users);
+                    final name = user?.fullname ??
+                        user?.username ??
+                        'User ${coHostState.userId}';
+                    final photo = user?.profile?.addBaseURL();
+                    final userId = coHostState.userId;
+
+                    return Obx(() {
+                      final isInvited =
+                          controller.pkInvitedUserIds.contains(userId);
+                      final isCurrentOpponent =
+                          controller.pkOpponentId.value == userId;
+
+                      return Row(
+                        children: [
+                          CustomImage(
+                            size: const Size(42, 42),
+                            image: photo,
+                            radius: 21,
+                            fullName: name,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 5, vertical: 1.5),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF00FF7F)
+                                            .withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Text(
+                                        'IN CALL',
+                                        style: TextStyle(
+                                          color: Color(0xFF00FF7F),
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Video Call Participant',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.55),
+                                    fontSize: 11.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: (isInvited || isCurrentOpponent)
+                                ? null
+                                : () {
+                                    controller.sendPkInviteToCoHost(userId);
+                                    controller.showSnackBar(
+                                        'PK Battle invite sent to $name!');
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: (isInvited || isCurrentOpponent)
+                                  ? Colors.white12
+                                  : ColorRes.primaryColor,
+                              disabledBackgroundColor: Colors.white12,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 7),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            child: Text(
+                              isCurrentOpponent
+                                  ? 'Active PK'
+                                  : (isInvited ? 'Invited ✓' : 'Invite'),
+                              style: TextStyle(
+                                color: (isInvited || isCurrentOpponent)
+                                    ? Colors.white54
+                                    : Colors.black,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    });
+                  },
+                );
+              }),
             ),
           ],
         ),
@@ -1533,9 +2049,52 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
     );
   }
 
+  void _showCoHostPkInviteDialog(
+      LivestreamScreenController controller, int hostId, String hostName) {
+    Get.dialog(
+      AlertDialog(
+        backgroundColor: const Color(0xFF1E1E2C),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('$hostName invited you to a PK Battle',
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold)),
+        content: const Text(
+          'Accept to compete in this video PK Battle. The battle starts immediately with the host.',
+          style: TextStyle(color: Colors.white70, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Get.back();
+              controller.rejectPkInviteFromHost(controller.myUserId);
+            },
+            child: const Text('Reject', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: ColorRes.primaryColor,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              Get.back();
+              controller.acceptPkInviteFromHost(controller.myUserId);
+            },
+            child: const Text('Accept',
+                style: TextStyle(
+                    color: Colors.black, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+      barrierDismissible: false,
+    );
+  }
+
   // -------------------------------------------------------------
   // Header Component (Audience View)
-  // -------------------------------------------------------------
+  // ---------------------------------------------------------------------------------------------------
   Widget _buildHeader(LivestreamScreenController controller) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -1946,9 +2505,9 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                     color: const Color(0xFFFFC107),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: const Text(
-                    '0/3',
-                    style: TextStyle(
+                  child: Text(
+                    '${controller.favouriteGiftReceivedCount}/${controller.favouriteGiftTarget.value}',
+                    style: const TextStyle(
                       color: Colors.black,
                       fontSize: 7.5,
                       fontWeight: FontWeight.w900,
@@ -2022,7 +2581,7 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
           child: GestureDetector(
             onTap: () {
               HapticManager.shared.medium();
-              controller.startBattle();
+              _showVideoPkInviteListSheet(controller);
             },
             child: Container(
               height: 38,
@@ -2432,6 +2991,24 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
             ),
           ),
           ...comments.reversed.map((comment) {
+            // Guard: Never display "left the call" for the host or active co-hosts
+            if (comment.commentType == LivestreamCommentType.leftCoHost) {
+              final hostId = controller.liveData.value.hostId;
+              final myUserId = controller.myUserId;
+              if (comment.senderId == hostId ||
+                  (widget.isHost && (comment.senderId == myUserId || comment.senderId == null))) {
+                return const SizedBox.shrink();
+              }
+              final sId = comment.senderId;
+              if (sId != null &&
+                  ((controller.liveData.value.coHostIds?.contains(sId) ?? false) ||
+                      controller.liveUsersStates.any((u) =>
+                          u.userId == sId &&
+                          u.type == LivestreamUserType.coHost))) {
+                return const SizedBox.shrink();
+              }
+            }
+
             final senderUser = comment.senderUser;
             final senderName =
                 senderUser?.fullname ?? senderUser?.username ?? 'User';
@@ -2522,6 +3099,10 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
         ));
 
       case LivestreamCommentType.leftCoHost:
+        final hostId = controller.liveData.value.hostId;
+        if (comment.senderId == hostId || (widget.isHost && isMe)) {
+          return const SizedBox.shrink();
+        }
         return nameRow(const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -2839,9 +3420,128 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
             onLikeTap: (fn) => controller.onLikeTap = fn,
             onTap: controller.onLikeButtonTap,
           )),
+
+          // More (⋮) button for joined call user (Reference Image 3 & 4)
+          if (!widget.isHost)
+            Obx(() {
+              final isCoHost = (controller.liveData.value.coHostIds ?? [])
+                  .contains(controller.myUserId);
+              if (!isCoHost) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: GestureDetector(
+                  onTap: () {
+                    HapticManager.shared.light();
+                    LiveHostMoreSheet.show(
+                      context: context,
+                      controller: controller,
+                      onShare: _shareLive,
+                    );
+                  },
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.14),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.more_vert_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                ),
+              );
+            }),
         ],
       ),
     );
+  }
+
+  Widget _buildBottomRightJoinCallBtn(LivestreamScreenController controller) {
+    return Obx(() {
+      final myState = controller.liveUsersStates
+          .firstWhereOrNull((u) => u.userId == controller.myUserId);
+      final isRequested = myState?.type == LivestreamUserType.requested;
+
+      return GestureDetector(
+        onTap: () {
+          HapticManager.shared.light();
+          if (!isRequested) {
+            controller.onVideoRequestSend(controller.liveData.value);
+          } else {
+            CallRequestedSheet.show(context);
+          }
+        },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Icon(
+                      isRequested
+                          ? Icons.videocam_rounded
+                          : Icons.video_call_rounded,
+                      color: const Color(0xFF1E212B),
+                      size: 26,
+                    ),
+                  ),
+                ),
+                // Red badge with "1"
+                Positioned(
+                  top: -4,
+                  right: -4,
+                  child: Container(
+                    width: 17,
+                    height: 17,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFF2D55),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Center(
+                      child: Text(
+                        '1',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              isRequested ? 'Requested' : 'Join Call',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      );
+    });
   }
 }
 

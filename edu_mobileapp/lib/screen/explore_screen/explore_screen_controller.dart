@@ -1,10 +1,15 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:geoedu/common/controller/base_controller.dart';
 import 'package:geoedu/common/manager/logger.dart';
+import 'package:geoedu/common/service/api/common_service.dart';
 import 'package:geoedu/common/service/api/post_service.dart';
+import 'package:geoedu/common/service/api/search_service.dart';
 import 'package:geoedu/model/post_story/post/explore_page_model.dart';
 import 'package:geoedu/model/post_story/post_model.dart';
+import 'package:geoedu/screen/explore_screen/model/interest_search_item.dart';
+import 'package:geoedu/screen/explore_screen/util/fuzzy_search_util.dart';
 import 'package:geoedu/screen/hashtag_screen/hashtag_screen.dart';
 import 'package:geoedu/screen/post_screen/single_post_screen.dart';
 import 'package:geoedu/screen/reels_screen/reels_screen.dart';
@@ -15,59 +20,206 @@ class ExploreScreenController extends BaseController {
   Rx<ExplorePageData?> explorePageData = Rx(null);
   RxList<Post> postsList = <Post>[].obs;
   RxList<Post> displayedPosts = <Post>[].obs;
-  RxList<String> categories = <String>['All'].obs;
-  RxString selectedCategory = 'All'.obs;
   RxString primaryHashtag = 'Explore'.obs;
   RxBool isFilterLoading = false.obs;
+
+  // Search & Real-Time Typo-Tolerant Interest Suggestions
+  final TextEditingController searchController = TextEditingController();
+  final FocusNode searchFocusNode = FocusNode();
+  final RxString searchQuery = ''.obs;
+  final RxList<InterestSearchItem> interestCatalog = <InterestSearchItem>[].obs;
+  final RxList<InterestSearchItem> suggestions = <InterestSearchItem>[].obs;
+  final Rxn<InterestSearchItem> activeFilterItem = Rxn<InterestSearchItem>();
+  final RxBool showSuggestions = false.obs;
 
   @override
   void onInit() {
     super.onInit();
+    fetchInterestCatalog();
     fetchExplorePageData();
   }
 
-  Future<void> fetchExplorePageData() async {
-    isLoading.value = true;
+  @override
+  void onClose() {
+    searchController.dispose();
+    searchFocusNode.dispose();
+    super.onClose();
+  }
+
+  /// Builds a comprehensive catalog of all Categories, SubCategories,
+  /// Divisions, and Topics from Interests for real-time typo-tolerant search.
+  Future<void> fetchInterestCatalog() async {
+    final List<InterestSearchItem> items = [];
+    final Set<String> registeredKeys = {};
+
+    void addItem(InterestSearchItem item) {
+      final key = '${item.name.toLowerCase().trim()}_${item.type.name}';
+      if (!registeredKeys.contains(key)) {
+        registeredKeys.add(key);
+        items.add(item);
+      }
+    }
+
     try {
-      final data = await PostService.instance.fetchExplorePageData();
-      List<HighPostHashtags> highHashtags = List.from(data?.highPostHashtags ?? []);
+      // 1. Fetch Categories, SubCategories, Divisions, Topics hierarchy
+      final tree = await CommonService.instance.fetchCategorySubCategoryTopic();
+      for (final cat in (tree.data ?? [])) {
+        final catName = cat.name?.trim();
+        if (catName != null && catName.isNotEmpty) {
+          final catKeywords = <String>{catName.toLowerCase()};
+          for (final sub in (cat.subCategories ?? [])) {
+            if (sub.name != null) catKeywords.add(sub.name!.toLowerCase().trim());
+            for (final div in (sub.divisions ?? [])) {
+              if (div.name != null) catKeywords.add(div.name!.toLowerCase().trim());
+            }
+            for (final top in (sub.topics ?? [])) {
+              if (top.name != null) catKeywords.add(top.name!.toLowerCase().trim());
+            }
+          }
+          addItem(InterestSearchItem(
+            name: catName,
+            type: InterestItemType.category,
+            id: cat.id,
+            relatedKeywords: catKeywords,
+          ));
+        }
 
-      // Keep only hashtags that have posts
-      highHashtags.removeWhere((h) => h.postList == null || h.postList!.isEmpty);
+        // Subcategories
+        for (final sub in (cat.subCategories ?? [])) {
+          final subName = sub.name?.trim();
+          if (subName != null && subName.isNotEmpty) {
+            final subKeywords = <String>{
+              subName.toLowerCase(),
+              if (catName != null) catName.toLowerCase(),
+            };
+            for (final div in (sub.divisions ?? [])) {
+              if (div.name != null) subKeywords.add(div.name!.toLowerCase().trim());
+            }
+            for (final top in (sub.topics ?? [])) {
+              if (top.name != null) subKeywords.add(top.name!.toLowerCase().trim());
+            }
+            addItem(InterestSearchItem(
+              name: subName,
+              type: InterestItemType.subCategory,
+              id: sub.id,
+              parentCategoryName: catName,
+              relatedKeywords: subKeywords,
+            ));
+          }
 
-      // Collect real-time categories from backend
-      final Set<String> uniqueCategories = {'All'};
+          // Divisions
+          for (final div in (sub.divisions ?? [])) {
+            final divName = div.name?.trim();
+            if (divName != null && divName.isNotEmpty) {
+              final divKeywords = <String>{
+                divName.toLowerCase(),
+                if (subName != null) subName.toLowerCase(),
+                if (catName != null) catName.toLowerCase(),
+              };
+              addItem(InterestSearchItem(
+                name: divName,
+                type: InterestItemType.division,
+                id: div.id,
+                parentCategoryName: catName,
+                parentSubCategoryName: subName,
+                relatedKeywords: divKeywords,
+              ));
+            }
+          }
 
-      // 1. From data.hashtags
-      if (data?.hashtags != null) {
-        for (final h in data!.hashtags!) {
-          final tag = h.hashtag?.trim();
-          if (tag != null && tag.isNotEmpty) {
-            uniqueCategories.add(_capitalize(tag));
+          // Topics
+          for (final top in (sub.topics ?? [])) {
+            final topName = top.name?.trim();
+            if (topName != null && topName.isNotEmpty) {
+              final topKeywords = <String>{
+                topName.toLowerCase(),
+                if (subName != null) subName.toLowerCase(),
+                if (catName != null) catName.toLowerCase(),
+              };
+              addItem(InterestSearchItem(
+                name: topName,
+                type: InterestItemType.topic,
+                id: top.id,
+                parentCategoryName: catName,
+                parentSubCategoryName: subName,
+                relatedKeywords: topKeywords,
+              ));
+            }
           }
         }
       }
 
-      // 2. From highPostHashtags
-      for (final h in highHashtags) {
-        final tag = h.hashtag?.trim();
-        if (tag != null && tag.isNotEmpty) {
-          uniqueCategories.add(_capitalize(tag));
+      // 2. Fetch Interests catalog
+      final interestsModel = await CommonService.instance.fetchInterests();
+      for (final interest in (interestsModel.data ?? [])) {
+        final name = interest.name?.trim();
+        if (name != null && name.isNotEmpty) {
+          addItem(InterestSearchItem(
+            name: name,
+            type: InterestItemType.interest,
+            id: interest.id,
+            relatedKeywords: {name.toLowerCase()},
+          ));
         }
       }
+    } catch (e) {
+      Loggers.error('fetchInterestCatalog error: $e');
+    }
 
-      // Fallback categories if backend has few
-      if (uniqueCategories.length < 5) {
-        uniqueCategories.addAll(['Travel', 'Tech', 'Nature', 'Food']);
-      }
-      categories.assignAll(uniqueCategories.toList());
+    // Seed baseline common education/explore topics if backend data is minimal
+    final seedTopics = [
+      'Science',
+      'Technology',
+      'Computer Science',
+      'Mathematics',
+      'Physics',
+      'Chemistry',
+      'Biology',
+      'Travel',
+      'Nature',
+      'History',
+      'Geography',
+      'Art & Design',
+      'Music',
+      'Coding',
+      'Languages',
+      'Literature',
+      'General Knowledge',
+      'Astronomy',
+      'Economics',
+      'Psychology',
+      'Philosophy',
+      'Fitness & Sports',
+      'Food & Cooking',
+    ];
+    for (final seed in seedTopics) {
+      addItem(InterestSearchItem(
+        name: seed,
+        type: InterestItemType.topic,
+        relatedKeywords: {seed.toLowerCase()},
+      ));
+    }
 
-      // Collect all posts from hashtags
+    interestCatalog.assignAll(items);
+  }
+
+  /// Loads all available videos and reels for the Explore feed
+  Future<void> fetchExplorePageData() async {
+    isLoading.value = true;
+    try {
+      final data = await PostService.instance.fetchExplorePageData();
+      List<HighPostHashtags> highHashtags =
+          List.from(data?.highPostHashtags ?? []);
+
+      highHashtags.removeWhere((h) => h.postList == null || h.postList!.isEmpty);
+
       final List<Post> collectedPosts = [];
       final Set<int> seenIds = {};
 
       for (final h in highHashtags) {
-        if (primaryHashtag.value == 'Explore' && h.hashtag != null && h.hashtag!.isNotEmpty) {
+        if (primaryHashtag.value == 'Explore' &&
+            h.hashtag != null &&
+            h.hashtag!.isNotEmpty) {
           primaryHashtag.value = h.hashtag!;
         }
         for (final p in (h.postList ?? [])) {
@@ -82,8 +234,8 @@ class ExploreScreenController extends BaseController {
         }
       }
 
-      // If we don't have enough posts to fill a rich grid, supplement with discover reels & posts
-      if (collectedPosts.length < 18) {
+      // Supplement with discover reels & posts to ensure full rich video catalog
+      if (collectedPosts.length < 24) {
         try {
           final discoverReels =
               await PostService.instance.fetchPostsDiscover(type: PostType.reels);
@@ -100,7 +252,7 @@ class ExploreScreenController extends BaseController {
             }
           }
         } catch (e) {
-          Loggers.error('Error fetching fallback discover posts: $e');
+          Loggers.error('Error fetching discover posts: $e');
         }
       }
 
@@ -119,8 +271,12 @@ class ExploreScreenController extends BaseController {
         highPostHashtags: highHashtags,
       );
 
-      // Apply initial filter
-      filterByCategory(selectedCategory.value);
+      // By default: display all available videos
+      if (activeFilterItem.value == null && searchQuery.value.isEmpty) {
+        displayedPosts.assignAll(collectedPosts);
+      } else if (activeFilterItem.value != null) {
+        filterByInterest(activeFilterItem.value!);
+      }
     } catch (e) {
       Loggers.error('fetchExplorePageData error: $e');
     } finally {
@@ -128,71 +284,158 @@ class ExploreScreenController extends BaseController {
     }
   }
 
-  String _capitalize(String s) {
-    if (s.isEmpty) return s;
-    final cleaned = s.replaceAll('#', '').trim();
-    if (cleaned.isEmpty) return s;
-    return cleaned[0].toUpperCase() + cleaned.substring(1);
+  /// Real-time search handler with typo-tolerant suggestion generation
+  void onSearchChanged(String text) {
+    searchQuery.value = text;
+    final trimmed = text.trim();
+
+    if (trimmed.isEmpty) {
+      suggestions.clear();
+      showSuggestions.value = false;
+      if (activeFilterItem.value != null) {
+        clearFilter();
+      }
+      return;
+    }
+
+    // Dynamic typo-tolerant suggestions appearing from the very first letter
+    final matches = FuzzySearchUtil.findSuggestions(
+      trimmed,
+      interestCatalog,
+      maxResults: 7,
+    );
+    suggestions.assignAll(matches);
+    showSuggestions.value = matches.isNotEmpty;
   }
 
-  Future<void> filterByCategory(String category) async {
-    selectedCategory.value = category;
-    if (category == 'All') {
-      displayedPosts.assignAll(postsList);
+  /// Selecting a suggestion immediately filters the feed for the chosen interest
+  void selectSuggestion(InterestSearchItem item) {
+    searchController.text = item.name;
+    searchQuery.value = item.name;
+    activeFilterItem.value = item;
+    showSuggestions.value = false;
+    searchFocusNode.unfocus();
+
+    filterByInterest(item);
+  }
+
+  /// Submitting via keyboard search action
+  void submitSearch(String query) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
+      clearFilter();
       return;
     }
 
-    final query = category.toLowerCase().replaceAll('#', '').trim();
+    showSuggestions.value = false;
+    searchFocusNode.unfocus();
 
-    // 1. Check if highPostHashtags has exact match
-    final matchedGroup = explorePageData.value?.highPostHashtags?.firstWhereOrNull(
-      (h) => (h.hashtag ?? '').toLowerCase().trim() == query,
+    // Check if we have a top ranked suggestion
+    final topMatch = suggestions.isNotEmpty ? suggestions.first : null;
+    if (topMatch != null) {
+      selectSuggestion(topMatch);
+      return;
+    }
+
+    // Otherwise create ad-hoc query item
+    final customItem = InterestSearchItem(
+      name: trimmed,
+      type: InterestItemType.topic,
+      relatedKeywords: {trimmed.toLowerCase()},
     );
-    if (matchedGroup?.postList != null && matchedGroup!.postList!.isNotEmpty) {
-      displayedPosts.assignAll(matchedGroup.postList!);
-      return;
-    }
+    activeFilterItem.value = customItem;
+    filterByInterest(customItem);
+  }
 
-    // 2. Filter from collected postsList
-    final localMatches = postsList.where((p) {
-      final desc = (p.description ?? '').toLowerCase();
-      final hash = (p.hashtags ?? '').toLowerCase();
-      return desc.contains(query) || hash.contains(query);
-    }).toList();
+  /// Resets search filter and displays all available videos by default
+  void clearFilter() {
+    searchController.clear();
+    searchQuery.value = '';
+    activeFilterItem.value = null;
+    showSuggestions.value = false;
+    searchFocusNode.unfocus();
+    displayedPosts.assignAll(postsList);
+  }
 
-    if (localMatches.isNotEmpty) {
-      displayedPosts.assignAll(localMatches);
-      return;
-    }
-
-    // 3. Real-time fetch from backend if local matches are empty
+  /// Filters and displays videos accurately mapped to the given interest
+  Future<void> filterByInterest(InterestSearchItem item) async {
     isFilterLoading.value = true;
+    final queryName = item.name.toLowerCase().trim();
+    final allKeywords = item.relatedKeywords.map((k) => k.toLowerCase().trim()).toSet();
+    allKeywords.add(queryName);
+
     try {
-      final reelsData = await PostService.instance.fetchPostsByHashtag(
-        type: PostType.reels,
-        hashTag: query,
-        lastItemId: null,
-      );
-      final postsData = await PostService.instance.fetchPostsByHashtag(
-        type: PostType.posts,
-        hashTag: query,
-        lastItemId: null,
-      );
+      // 1. Accurate local matching against video metadata, user category, and tags
+      final List<Post> localMatches = [];
+      final Set<int> addedIds = {};
 
-      final List<Post> fetched = [
-        ...(reelsData?.posts ?? []),
-        ...(postsData?.posts ?? []),
-      ];
+      for (final post in postsList) {
+        bool matches = false;
 
-      if (fetched.isNotEmpty) {
-        displayedPosts.assignAll(fetched);
-      } else {
-        // Fallback to all posts if category is empty
-        displayedPosts.assignAll(postsList);
+        // Check creator category, subcategory, topic configuration under Interests
+        final userCat = post.user?.categoryName?.toLowerCase().trim();
+        final userSub = post.user?.subCategoryName?.toLowerCase().trim();
+        final userTopic = post.user?.topicName?.toLowerCase().trim();
+
+        if (userCat != null && allKeywords.contains(userCat)) matches = true;
+        if (userSub != null && allKeywords.contains(userSub)) matches = true;
+        if (userTopic != null && allKeywords.contains(userTopic)) matches = true;
+
+        // Check hashtags
+        final hash = (post.hashtags ?? '').toLowerCase();
+        for (final kw in allKeywords) {
+          final cleanKw = kw.replaceAll(' ', '');
+          if (hash.contains(cleanKw)) {
+            matches = true;
+            break;
+          }
+        }
+
+        // Check post description with typo-tolerance or substring
+        final desc = (post.description ?? '').toLowerCase();
+        for (final kw in allKeywords) {
+          if (desc.contains(kw)) {
+            matches = true;
+            break;
+          }
+        }
+
+        if (matches && (post.id == null || !addedIds.contains(post.id))) {
+          if (post.id != null) addedIds.add(post.id!);
+          localMatches.add(post);
+        }
       }
-    } catch (e) {
-      Loggers.error('Real-time filter fetch error: $e');
-      displayedPosts.assignAll(postsList);
+
+      // 2. Supplement from backend if local matches are limited
+      if (localMatches.length < 8) {
+        try {
+          final cleanTag = queryName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+          final hashtagReels = await PostService.instance.fetchPostsByHashtag(
+            type: PostType.reels,
+            hashTag: cleanTag,
+            lastItemId: null,
+          );
+          final searchVideos = await SearchService.instance.searchPost(
+            keyword: queryName,
+            type: '1,3', // reels and videos
+          );
+
+          for (final p in [...(hashtagReels?.posts ?? []), ...searchVideos]) {
+            if (p.id != null) {
+              if (!addedIds.contains(p.id)) {
+                addedIds.add(p.id!);
+                localMatches.add(p);
+              }
+            } else {
+              localMatches.add(p);
+            }
+          }
+        } catch (e) {
+          Loggers.error('Backend search fetch error: $e');
+        }
+      }
+
+      displayedPosts.assignAll(localMatches);
     } finally {
       isFilterLoading.value = false;
     }
@@ -220,7 +463,9 @@ class ExploreScreenController extends BaseController {
   void onExploreTap(String? hashtag) {
     Get.to(
       () => HashtagScreen(
-        hashtag: (hashtag != null && hashtag.isNotEmpty) ? hashtag : primaryHashtag.value,
+        hashtag: (hashtag != null && hashtag.isNotEmpty)
+            ? hashtag
+            : primaryHashtag.value,
         index: 0,
       ),
       preventDuplicates: false,
@@ -230,7 +475,8 @@ class ExploreScreenController extends BaseController {
   void onPostTap(Post post) {
     switch (post.postType) {
       case PostType.reel:
-        final allReels = displayedPosts.where((p) => p.postType == PostType.reel).toList();
+        final allReels =
+            displayedPosts.where((p) => p.postType == PostType.reel).toList();
         final initialIndex = allReels.indexOf(post);
         Get.to(() => ReelsScreen(
               reels: (allReels.isNotEmpty ? allReels : [post]).obs,

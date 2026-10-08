@@ -86,6 +86,9 @@ class _GiftWallet {
   String fetchDiamondFaqs = "${apiURL}misc/fetchDiamondFaqs";
   String requestScreenshotDisable = "${apiURL}misc/requestScreenshotDisable";
   String approveScreenshotDisable = "${apiURL}misc/approveScreenshotDisableRequest";
+  String submitStarConversionRequest = "${apiURL}misc/submitStarConversionRequest";
+  String fetchStarConversionHistory = "${apiURL}misc/fetchStarConversionHistory";
+  String fetchConversionRateInfo = "${apiURL}misc/fetchConversionRateInfo";
 }
 
 class _User {

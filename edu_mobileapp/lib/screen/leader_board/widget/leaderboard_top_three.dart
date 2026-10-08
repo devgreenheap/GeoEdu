@@ -7,6 +7,7 @@ import '../../../utilities/asset_res.dart';
 class LeaderboardTopThree extends StatelessWidget {
   final bool isDiamond;
   final List<LeaderboardUser> topUsers;
+  final int? myUserId;
   final void Function(LeaderboardUser user)? onFollowTap;
   final void Function(LeaderboardUser user)? onUserTap;
 
@@ -14,6 +15,7 @@ class LeaderboardTopThree extends StatelessWidget {
     super.key,
     required this.isDiamond,
     required this.topUsers,
+    this.myUserId,
     this.onFollowTap,
     this.onUserTap,
   });
@@ -23,7 +25,7 @@ class LeaderboardTopThree extends StatelessWidget {
     // Podium order is 2nd, 1st, 3rd left-to-right.
     const podium = [1, 0, 2];
     return Container(
-      height: 275,
+      height: 240,
       margin: const EdgeInsets.symmetric(horizontal: 12),
       child: Stack(
         alignment: Alignment.bottomCenter,
@@ -32,17 +34,20 @@ class LeaderboardTopThree extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: podium.map((index) {
+              final user = topUsers[index];
+              final isMe = myUserId != null && user.userId == myUserId;
               return Expanded(
                 child: TopUser(
                   rank: index + 1,
-                  user: topUsers[index],
+                  user: user,
                   isDiamond: isDiamond,
+                  isMe: isMe,
                   onFollowTap: onFollowTap == null
                       ? null
-                      : () => onFollowTap!(topUsers[index]),
+                      : () => onFollowTap!(user),
                   onTap: onUserTap == null
                       ? null
-                      : () => onUserTap!(topUsers[index]),
+                      : () => onUserTap!(user),
                 ),
               );
             }).toList(),

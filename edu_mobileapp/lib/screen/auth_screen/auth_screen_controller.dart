@@ -640,6 +640,13 @@ class AuthScreenController extends BaseController {
     }
 
     isSendingOtp = true;
+    isOtpVerified = false;
+    otpController.value = const TextEditingValue(
+      text: '',
+      selection: TextSelection.collapsed(offset: 0),
+    );
+    registrationError = null;
+    fieldErrors.remove('otp');
     update();
     try {
       final result = await UserService.instance.sendSignupOtp(
@@ -649,6 +656,13 @@ class AuthScreenController extends BaseController {
       );
       if (result.status == true) {
         isOtpSent = true;
+        isOtpVerified = false;
+        otpController.value = const TextEditingValue(
+          text: '',
+          selection: TextSelection.collapsed(offset: 0),
+        );
+        registrationError = null;
+        fieldErrors.remove('otp');
         showSnackBar(result.message ?? 'OTP sent successfully');
       } else {
         if (result.alreadyRegistered ||
@@ -693,11 +707,11 @@ class AuthScreenController extends BaseController {
 
   Future<bool> verifyOtp() async {
     final otp = otpController.text.trim();
-    if (otp.isEmpty) {
+    if (otp.isEmpty || otp.length < 6) {
       AuthStatusDialog.show(
         isSuccess: false,
         title: 'OTP Required',
-        message: 'Please enter the 6-digit OTP sent to your number.',
+        message: 'Please enter the complete 6-digit OTP sent to your number.',
       );
       return false;
     }
@@ -713,19 +727,25 @@ class AuthScreenController extends BaseController {
       );
       if (result.status == true) {
         isOtpVerified = true;
+        registrationError = null;
+        fieldErrors.remove('otp');
         success = true;
       } else {
+        isOtpVerified = false;
+        registrationError = result.message ?? 'Invalid OTP code. Please check and try again.';
         AuthStatusDialog.show(
           isSuccess: false,
           title: 'Verification Failed',
-          message: result.message ?? 'Invalid OTP code. Please check and try again.',
+          message: registrationError!,
         );
       }
     } catch (e) {
+      isOtpVerified = false;
+      registrationError = 'Failed to verify OTP. Please check your network and try again.';
       AuthStatusDialog.show(
         isSuccess: false,
         title: 'Verification Failed',
-        message: 'Failed to verify OTP. Please check your network and try again.',
+        message: registrationError!,
       );
     }
     isVerifyingOtp = false;
@@ -750,6 +770,11 @@ class AuthScreenController extends BaseController {
 
     loginError = null;
     clearRegistrationErrors();
+    isLoginOtpVerified = false;
+    loginOtpController.value = const TextEditingValue(
+      text: '',
+      selection: TextSelection.collapsed(offset: 0),
+    );
 
     if (byEmail) {
       if (email.isEmpty || !GetUtils.isEmail(email)) {
@@ -783,6 +808,11 @@ class AuthScreenController extends BaseController {
 
       if (result.status == true) {
         isLoginOtpSent = true;
+        isLoginOtpVerified = false;
+        loginOtpController.value = const TextEditingValue(
+          text: '',
+          selection: TextSelection.collapsed(offset: 0),
+        );
         loginError = null;
         showSnackBar(result.message ?? 'OTP sent successfully');
       } else if (isNotRegistered) {
@@ -796,6 +826,11 @@ class AuthScreenController extends BaseController {
         // The Login page must NEVER display "already registered, please login".
         // Treat as valid login attempt and allow proceeding to OTP screen:
         isLoginOtpSent = true;
+        isLoginOtpVerified = false;
+        loginOtpController.value = const TextEditingValue(
+          text: '',
+          selection: TextSelection.collapsed(offset: 0),
+        );
         loginError = null;
         showSnackBar('OTP sent to your ${byEmail ? 'email' : 'mobile number'}');
       } else {
@@ -812,8 +847,8 @@ class AuthScreenController extends BaseController {
 
   Future<bool> verifyLoginOtp() async {
     final otp = loginOtpController.text.trim();
-    if (otp.isEmpty) {
-      loginError = 'Please enter the 6-digit OTP sent to your number.';
+    if (otp.isEmpty || otp.length < 6) {
+      loginError = 'Please enter the complete 6-digit OTP sent to your number.';
       update();
       AuthStatusDialog.show(
         isSuccess: false,
@@ -837,6 +872,7 @@ class AuthScreenController extends BaseController {
         loginError = null;
         success = true;
       } else {
+        isLoginOtpVerified = false;
         loginError = result.message ?? 'Invalid OTP code. Please check and try again.';
         AuthStatusDialog.show(
           isSuccess: false,
@@ -845,6 +881,7 @@ class AuthScreenController extends BaseController {
         );
       }
     } catch (e) {
+      isLoginOtpVerified = false;
       loginError = 'Failed to verify OTP. Please check your network and try again.';
       AuthStatusDialog.show(
         isSuccess: false,

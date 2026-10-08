@@ -1017,6 +1017,15 @@ class SettingsController extends Controller
         $data->userLevels = $userLevels;
         $data->dummyLives = $dummyLives;
 
+        if ($data) {
+            $data->invoice_company_logo = !empty($data->invoice_company_logo)
+                ? (GlobalFunction::generateFileUrl($data->invoice_company_logo) ?: $data->invoice_company_logo)
+                : null;
+            $data->invoice_signature_image = !empty($data->invoice_signature_image)
+                ? (GlobalFunction::generateFileUrl($data->invoice_signature_image) ?: $data->invoice_signature_image)
+                : null;
+        }
+
         return response()->json([
             'status' => true,
             'message' => 'Settings Fetched',
@@ -1613,6 +1622,95 @@ class SettingsController extends Controller
             'message' => 'Setting Updated Successfully',
         ]);
 
+    }
+
+    public function saveInvoiceSettings(Request $request)
+    {
+        $setting = GlobalSettings::first();
+
+        if (!$setting) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Setting Not Found',
+            ]);
+        }
+
+        // Tax Configuration
+        $setting->invoice_sgst_enabled = $request->boolean('invoice_sgst_enabled') ? 1 : 0;
+        $setting->invoice_sgst_percent = floatval($request->invoice_sgst_percent ?? 0.00);
+        $setting->invoice_cgst_enabled = $request->boolean('invoice_cgst_enabled') ? 1 : 0;
+        $setting->invoice_cgst_percent = floatval($request->invoice_cgst_percent ?? 0.00);
+        $setting->invoice_igst_enabled = $request->boolean('invoice_igst_enabled') ? 1 : 0;
+        $setting->invoice_igst_percent = floatval($request->invoice_igst_percent ?? 18.00);
+
+        // Company Information
+        if ($request->has('invoice_company_name')) {
+            $setting->invoice_company_name = trim($request->invoice_company_name);
+        }
+        if ($request->has('invoice_company_address')) {
+            $setting->invoice_company_address = trim($request->invoice_company_address);
+        }
+        if ($request->has('invoice_gstin')) {
+            $setting->invoice_gstin = trim($request->invoice_gstin);
+        }
+        if ($request->has('invoice_hsn_code')) {
+            $setting->invoice_hsn_code = trim($request->invoice_hsn_code);
+        }
+        if ($request->has('invoice_company_email')) {
+            $setting->invoice_company_email = trim($request->invoice_company_email);
+        }
+        if ($request->has('invoice_phone_number')) {
+            $setting->invoice_phone_number = trim($request->invoice_phone_number);
+        }
+        if ($request->has('invoice_place_of_supply')) {
+            $setting->invoice_place_of_supply = trim($request->invoice_place_of_supply);
+        }
+
+        // Images: Company Logo & Authorized Signature
+        if ($request->hasFile('invoice_company_logo')) {
+            if (!empty($setting->invoice_company_logo)) {
+                GlobalFunction::deleteFile($setting->invoice_company_logo);
+            }
+            $setting->invoice_company_logo = GlobalFunction::saveFileAndGivePath($request->file('invoice_company_logo'));
+        }
+
+        if ($request->hasFile('invoice_signature_image')) {
+            if (!empty($setting->invoice_signature_image)) {
+                GlobalFunction::deleteFile($setting->invoice_signature_image);
+            }
+            $setting->invoice_signature_image = GlobalFunction::saveFileAndGivePath($request->file('invoice_signature_image'));
+        }
+
+        // Invoice Configuration
+        if ($request->has('invoice_title')) {
+            $setting->invoice_title = trim($request->invoice_title);
+        }
+        if ($request->has('invoice_prefix')) {
+            $setting->invoice_prefix = trim($request->invoice_prefix);
+        }
+        if ($request->has('invoice_currency')) {
+            $setting->invoice_currency = trim($request->invoice_currency);
+        }
+        if ($request->has('invoice_footer_text')) {
+            $setting->invoice_footer_text = trim($request->invoice_footer_text);
+        }
+        if ($request->has('invoice_terms_text')) {
+            $setting->invoice_terms_text = trim($request->invoice_terms_text);
+        }
+        if ($request->has('invoice_signatory_name')) {
+            $setting->invoice_signatory_name = trim($request->invoice_signatory_name);
+        }
+
+        $setting->save();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Invoice Settings Saved Successfully',
+            'data' => [
+                'logo_url' => !empty($setting->invoice_company_logo) ? (GlobalFunction::generateFileUrl($setting->invoice_company_logo) ?: $setting->invoice_company_logo) : null,
+                'signature_url' => !empty($setting->invoice_signature_image) ? (GlobalFunction::generateFileUrl($setting->invoice_signature_image) ?: $setting->invoice_signature_image) : null,
+            ],
+        ]);
     }
     public function saveContentModerationSettings(Request $request)
     {

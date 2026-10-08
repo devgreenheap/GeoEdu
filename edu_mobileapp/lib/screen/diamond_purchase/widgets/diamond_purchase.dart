@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:geoedu/common/manager/session_manager.dart';
 import 'package:geoedu/common/service/api/gift_wallet_service.dart';
 import 'package:geoedu/model/diamond_purchase/diamond_purchase_model.dart';
 import 'package:geoedu/screen/diamond_purchase/invoice_preview_screen.dart';
@@ -202,153 +201,412 @@ class _DiamondPurchaseState extends State<DiamondPurchase> {
     final txnId = purchase.paymentId ?? purchase.transactionId ?? '${purchase.id}';
     final amountStr = '${purchase.currency ?? '₹'}${purchase.amount ?? 0}';
     final diamondsStr = '+${purchase.diamonds ?? 0} Diamonds';
-    final helpMail = SessionManager.instance.getSettings()?.helpMail ?? 'support@geoedu.com';
+    final helpMail = ReportIssueController.getEffectiveSupportEmail();
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1B1824),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 44,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          const Text(
-            'Need Help with this Purchase?',
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Transaction: $txnId • $diamondsStr • $amountStr',
-            style: const TextStyle(fontSize: 12, color: Colors.white60),
-          ),
-          const SizedBox(height: 18),
+    final categories = [
+      'Diamonds Not Credited',
+      'Transaction / Payment Issue',
+      'Refund & Duplicate Charge',
+      'Tax Invoice & Billing',
+      'Live Stream & Audio Call Issue',
+      'Gifts & Entry Effects Issue',
+      'App Bug / Technical Glitch',
+      'General Inquiry & Feedback',
+    ];
 
-          // Option 1: Report Issue Ticket
-          ListTile(
-            leading: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFF5722).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.report_problem_rounded,
-                  color: Color(0xFFFF5722)),
-            ),
-            title: const Text(
-              'Report an Issue',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-              ),
-            ),
-            subtitle: const Text(
-              'Create a support ticket prefilled with transaction info',
-              style: TextStyle(color: Colors.white54, fontSize: 12),
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios_rounded,
-                size: 16, color: Colors.white38),
-            onTap: () {
-              Navigator.pop(ctx);
-              final controller = Get.put(ReportIssueController());
-              controller.subjectController.text =
-                  'Issue with Diamond Purchase (Txn #$txnId)';
-              controller.messageController.text =
-                  'Hi Support,\n\nI need assistance with my diamond purchase.\n\nTransaction ID: $txnId\nDiamonds: $diamondsStr\nAmount: $amountStr\nDate: ${purchase.date ?? ''} ${purchase.time ?? ''}\n\nDescription of my issue: ';
-              Get.to(() => const ReportIssueScreen());
-            },
-          ),
-          const Divider(color: Colors.white10),
+    IconData getCatIcon(String cat) {
+      final lower = cat.toLowerCase();
+      if (lower.contains('diamond')) return Icons.diamond_rounded;
+      if (lower.contains('refund')) return Icons.currency_exchange_rounded;
+      if (lower.contains('invoice')) return Icons.receipt_long_rounded;
+      if (lower.contains('live')) return Icons.live_tv_rounded;
+      if (lower.contains('gift')) return Icons.card_giftcard_rounded;
+      if (lower.contains('bug')) return Icons.bug_report_rounded;
+      if (lower.contains('inquiry')) return Icons.help_outline_rounded;
+      return Icons.payment_rounded;
+    }
 
-          // Option 2: Payment FAQs
-          ListTile(
-            leading: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFF2196F3).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.help_outline_rounded,
-                  color: Color(0xFF2196F3)),
-            ),
-            title: const Text(
-              'Payment & Diamond FAQ',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-              ),
-            ),
-            subtitle: const Text(
-              'Read frequently asked questions about payments and diamonds',
-              style: TextStyle(color: Colors.white54, fontSize: 12),
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios_rounded,
-                size: 16, color: Colors.white38),
-            onTap: () {
-              Navigator.pop(ctx);
-              Get.to(() => const PaymentFaqScreen());
-            },
-          ),
-          const Divider(color: Colors.white10),
+    Color getCatColor(String cat) {
+      final lower = cat.toLowerCase();
+      if (lower.contains('diamond')) return const Color(0xFFFFB300);
+      if (lower.contains('refund')) return const Color(0xFFE91E63);
+      if (lower.contains('invoice')) return const Color(0xFF00BCD4);
+      if (lower.contains('live')) return const Color(0xFFAB47BC);
+      if (lower.contains('gift')) return const Color(0xFFFF7043);
+      if (lower.contains('bug')) return const Color(0xFFEF5350);
+      if (lower.contains('inquiry')) return const Color(0xFF90A4AE);
+      return const Color(0xFF29B6F6);
+    }
 
-          // Option 3: Email Support
-          ListTile(
-            leading: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFB300).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.email_outlined,
-                  color: Color(0xFFFFB300)),
-            ),
-            title: const Text(
-              'Email Support',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-              ),
-            ),
-            subtitle: Text(
-              'Direct email to $helpMail',
-              style: const TextStyle(color: Colors.white54, fontSize: 12),
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios_rounded,
-                size: 16, color: Colors.white38),
-            onTap: () async {
-              Navigator.pop(ctx);
-              final subject = 'Diamond Purchase Issue - Txn #$txnId';
-              final body =
-                  'Hello GeoEdu Support,\n\nI have an issue with transaction $txnId.\nAmount: $amountStr\nDiamonds: $diamondsStr\nDate: ${purchase.date ?? ''} ${purchase.time ?? ''}\n\nDetails: ';
-              final uri = Uri.parse(
-                  'mailto:$helpMail?subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body)}');
-              try {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-              } catch (_) {}
-            },
+    String selectedCategory = 'Diamonds Not Credited';
+
+    return StatefulBuilder(
+      builder: (context, setSheetState) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+          decoration: const BoxDecoration(
+            color: Color(0xFF1B1824),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
-          const SizedBox(height: 12),
-        ],
-      ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Need Help with this Purchase?',
+                style: TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Transaction: $txnId • $diamondsStr • $amountStr',
+                style: const TextStyle(fontSize: 12, color: Colors.white60),
+              ),
+              const SizedBox(height: 16),
+
+              // Category Selector Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Select Issue Category:',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    'Tap to switch',
+                    style: TextStyle(
+                      color: getCatColor(selectedCategory),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Selected Category Card with Dropdown Trigger
+              GestureDetector(
+                onTap: () {
+                  showModalBottomSheet(
+                    context: context,
+                    backgroundColor: Colors.transparent,
+                    builder: (modalCtx) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 20),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF211D2D),
+                          borderRadius:
+                              BorderRadius.vertical(top: Radius.circular(24)),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Center(
+                              child: Container(
+                                width: 40,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: Colors.white24,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            const Text(
+                              'Choose Issue Category',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Flexible(
+                              child: ListView.separated(
+                                shrinkWrap: true,
+                                itemCount: categories.length,
+                                separatorBuilder: (_, __) => const Divider(
+                                    color: Colors.white10, height: 1),
+                                itemBuilder: (context, idx) {
+                                  final cat = categories[idx];
+                                  final isSel = cat == selectedCategory;
+                                  final col = getCatColor(cat);
+                                  return ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 4, vertical: 2),
+                                    leading: Container(
+                                      padding: const EdgeInsets.all(7),
+                                      decoration: BoxDecoration(
+                                        color: col.withOpacity(0.18),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Icon(getCatIcon(cat),
+                                          color: col, size: 20),
+                                    ),
+                                    title: Text(
+                                      cat,
+                                      style: TextStyle(
+                                        color: isSel
+                                            ? Colors.white
+                                            : Colors.white70,
+                                        fontWeight: isSel
+                                            ? FontWeight.bold
+                                            : FontWeight.w500,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    trailing: isSel
+                                        ? const Icon(Icons.check_circle_rounded,
+                                            color: Color(0xFF4CAF50), size: 20)
+                                        : null,
+                                    onTap: () {
+                                      setSheetState(() {
+                                        selectedCategory = cat;
+                                      });
+                                      Navigator.pop(modalCtx);
+                                    },
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+                },
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: getCatColor(selectedCategory).withOpacity(0.6),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color:
+                              getCatColor(selectedCategory).withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          getCatIcon(selectedCategory),
+                          color: getCatColor(selectedCategory),
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          selectedCategory,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const Icon(Icons.keyboard_arrow_down_rounded,
+                          color: Colors.white60, size: 22),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // Quick Horizontal Chips
+              SizedBox(
+                height: 30,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: categories.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 6),
+                  itemBuilder: (context, idx) {
+                    final cat = categories[idx];
+                    final isSel = cat == selectedCategory;
+                    final col = getCatColor(cat);
+                    return GestureDetector(
+                      onTap: () {
+                        setSheetState(() {
+                          selectedCategory = cat;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isSel
+                              ? col.withOpacity(0.25)
+                              : Colors.white.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isSel
+                                ? col
+                                : Colors.white.withOpacity(0.12),
+                          ),
+                        ),
+                        child: Text(
+                          cat,
+                          style: TextStyle(
+                            color: isSel ? Colors.white : Colors.white60,
+                            fontSize: 11,
+                            fontWeight:
+                                isSel ? FontWeight.w600 : FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+              const SizedBox(height: 16),
+              const Divider(color: Colors.white10),
+
+              // Option 1: Report Issue Ticket
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF5722).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.report_problem_rounded,
+                      color: Color(0xFFFF5722)),
+                ),
+                title: const Text(
+                  'Report an Issue',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
+                ),
+                subtitle: Text(
+                  'Create ticket for "$selectedCategory"',
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                    size: 16, color: Colors.white38),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Get.to(() => ReportIssueScreen(
+                        initialCategory: selectedCategory,
+                        initialSubject: '[$selectedCategory] Txn #$txnId',
+                        initialMessage:
+                            'Hi Support,\n\nI need assistance regarding this purchase.\n\nIssue Category: $selectedCategory\nTransaction ID: $txnId\nDiamonds: $diamondsStr\nAmount: $amountStr\nDate: ${purchase.date ?? ''} ${purchase.time ?? ''}\n\nDescription of my issue: ',
+                        txnId: txnId,
+                        amountStr: amountStr,
+                        diamondsStr: diamondsStr,
+                      ));
+                },
+              ),
+              const Divider(color: Colors.white10),
+
+              // Option 2: Payment FAQs
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2196F3).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.help_outline_rounded,
+                      color: Color(0xFF2196F3)),
+                ),
+                title: const Text(
+                  'Payment & Diamond FAQ',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
+                ),
+                subtitle: const Text(
+                  'Read frequently asked questions about payments and diamonds',
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                    size: 16, color: Colors.white38),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Get.to(() => const PaymentFaqScreen());
+                },
+              ),
+              const Divider(color: Colors.white10),
+
+              // Option 3: Email Support
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFB300).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.email_outlined,
+                      color: Color(0xFFFFB300)),
+                ),
+                title: const Text(
+                  'Email Support',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
+                ),
+                subtitle: Text(
+                  'Direct email to $helpMail',
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                    size: 16, color: Colors.white38),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final subject = '[$selectedCategory] Txn #$txnId';
+                  final body =
+                      'Hello GeoEdu Support,\n\nIssue Category: $selectedCategory\nTransaction ID: $txnId\nAmount: $amountStr\nDiamonds: $diamondsStr\nDate: ${purchase.date ?? ''} ${purchase.time ?? ''}\n\nDetails: ';
+                  final uri = Uri.parse(
+                      'mailto:$helpMail?subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body)}');
+                  try {
+                    await launchUrl(uri,
+                        mode: LaunchMode.externalApplication);
+                  } catch (_) {}
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
     );
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geoedu/screen/leader_board/top_gifters_screen.dart';
+import 'package:geoedu/screen/star_wallet_screen/star_wallet_screen.dart';
 import 'package:get/get.dart';
 import 'package:geoedu/common/extensions/common_extension.dart';
 import 'package:geoedu/common/extensions/string_extension.dart';
@@ -167,36 +168,83 @@ class ProfileUserHeader extends StatelessWidget {
                         ),
                       ),
 
-                      // "Top Gifters" Pill Button
-                      GestureDetector(
-                        onTap: () => Get.to(() => const TopGiftersScreen()),
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 6),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF2A1F18),
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(
-                              color: const Color(0xFFFF9500).withValues(alpha: 0.4),
-                              width: 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Image.asset(AssetRes.medalIcon, height: 18),
-                              const SizedBox(width: 6),
-                              const Text(
-                                'Top Gifters',
-                                style: TextStyle(
-                                  color: Color(0xFFFF9F0A),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
+                      // Badges on the right of avatar: "Stars Wallet" & "Top Gifters"
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // "Stars Wallet" Pill Button
+                          GestureDetector(
+                            onTap: () => Get.to(() => const StarWalletScreen()),
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2A1F18),
+                                borderRadius: BorderRadius.circular(22),
+                                border: Border.all(
+                                  color: const Color(0xFFFF9500).withValues(alpha: 0.4),
+                                  width: 1,
                                 ),
                               ),
-                            ],
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Image.asset(
+                                    AssetRes.editStar,
+                                    height: 16,
+                                    errorBuilder: (_, __, ___) => const Icon(
+                                      Icons.star_rounded,
+                                      color: Color(0xFFFF9F0A),
+                                      size: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  const Text(
+                                    'Stars Wallet',
+                                    style: TextStyle(
+                                      color: Color(0xFFFF9F0A),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 6),
+
+                          // "Top Gifters" Pill Button
+                          GestureDetector(
+                            onTap: () => Get.to(() => const TopGiftersScreen()),
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2A1F18),
+                                borderRadius: BorderRadius.circular(22),
+                                border: Border.all(
+                                  color: const Color(0xFFFF9500).withValues(alpha: 0.4),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Image.asset(AssetRes.medalIcon, height: 16),
+                                  const SizedBox(width: 5),
+                                  const Text(
+                                    'Top Gifters',
+                                    style: TextStyle(
+                                      color: Color(0xFFFF9F0A),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

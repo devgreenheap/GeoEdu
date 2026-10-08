@@ -199,7 +199,13 @@ class _StarStoreDiamondScreenState extends State<StarStoreDiamondScreen> {
                         )
                       : Container(
                           margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                          child: const EffectsStoreScreen(),
+                          child: EffectsStoreScreen(
+                            onSwitchToDiamondStore: () {
+                              setState(() {
+                                currentTab = 0;
+                              });
+                            },
+                          ),
                         ),
                 ),
               )

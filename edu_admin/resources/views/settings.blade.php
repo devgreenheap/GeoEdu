@@ -60,6 +60,12 @@
                             <i class="mdi mdi-settings-outline d-md-none d-block"></i>
                             <span class="d-none d-md-block">{{ __('App Settings') }}</span>
                         </a>
+                        <a class="main-nav-link nav-link" id="v-pills-invoiceSettings-tab" data-bs-toggle="pill"
+                            href="#v-pills-invoiceSettings" role="tab" aria-controls="v-pills-invoiceSettings"
+                            aria-selected="false">
+                            <i class="mdi mdi-receipt-text-outline d-md-none d-block"></i>
+                            <span class="d-none d-md-block">{{ __('Invoice Settings') }}</span>
+                        </a>
                         <a class="main-nav-link nav-link" id="v-pills-limits-tab" data-bs-toggle="pill"
                             href="#v-pills-limits" role="tab" aria-controls="v-pills-limits" aria-selected="false">
                             <i class="mdi mdi-settings-outline d-md-none d-block"></i>
@@ -400,6 +406,256 @@
                     </div>
 
                 </div>
+                {{-- Invoice Settings --}}
+                <div class="tab-pane fade" id="v-pills-invoiceSettings" role="tabpanel"
+                    aria-labelledby="v-pills-invoiceSettings-tab">
+                    <div class="card">
+                        <div class="card-header border-bottom d-flex align-items-center justify-content-between">
+                            <div>
+                                <h4 class="m-0 header-title">{{ __('Invoice Settings') }}</h4>
+                                <p class="text-muted font-13 mb-0">{{ __('Control all tax invoice settings, SGST/CGST/IGST toggles, company information, logo, signature, and legal notes.') }}</p>
+                            </div>
+                            <span class="badge bg-primary-lighten text-primary fs-6"><i class="mdi mdi-receipt me-1"></i>{{ __('Tax Invoice') }}</span>
+                        </div>
+                        <div class="card-body">
+                            <form id="invoiceSettingForm" method="POST" enctype="multipart/form-data">
+                                {{-- Section 1: Tax Configuration --}}
+                                <div class="d-flex align-items-center mb-2">
+                                    <h5 class="text-uppercase text-primary mb-0"><i class="mdi mdi-percent-outline me-1"></i>{{ __('TAX CONFIGURATION (GST / TAXES)') }}</h5>
+                                </div>
+                                <span class="fs-6 text-muted mb-3 d-block">*{{ __('Enable or disable each tax independently. Disabled taxes will be excluded from calculation and hidden from the user\'s invoice.') }}</span>
+
+                                <div class="row">
+                                    {{-- SGST --}}
+                                    <div class="col-md-4 mb-3">
+                                        <div class="bg-secondary-lighten border p-3 rounded-3 h-100">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <label for="switchSgst" class="form-label fw-bold mb-0">{{ __('SGST (State GST)') }}</label>
+                                                <input name="invoice_sgst_enabled" type="checkbox" id="switchSgst"
+                                                    {{ ($setting->invoice_sgst_enabled ?? 0) == 1 ? 'checked' : '' }}
+                                                    data-switch="primary" />
+                                                <label for="switchSgst" class="mb-0"></label>
+                                            </div>
+                                            <div class="mt-2">
+                                                <label for="invoice_sgst_percent" class="form-label font-13 text-muted">{{ __('SGST Rate (%)') }}</label>
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" step="0.01" min="0" max="100" class="form-control"
+                                                        id="invoice_sgst_percent" name="invoice_sgst_percent"
+                                                        value="{{ $setting->invoice_sgst_percent ?? 0.00 }}">
+                                                    <span class="input-group-text">%</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {{-- CGST --}}
+                                    <div class="col-md-4 mb-3">
+                                        <div class="bg-secondary-lighten border p-3 rounded-3 h-100">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <label for="switchCgst" class="form-label fw-bold mb-0">{{ __('CGST (Central GST)') }}</label>
+                                                <input name="invoice_cgst_enabled" type="checkbox" id="switchCgst"
+                                                    {{ ($setting->invoice_cgst_enabled ?? 0) == 1 ? 'checked' : '' }}
+                                                    data-switch="primary" />
+                                                <label for="switchCgst" class="mb-0"></label>
+                                            </div>
+                                            <div class="mt-2">
+                                                <label for="invoice_cgst_percent" class="form-label font-13 text-muted">{{ __('CGST Rate (%)') }}</label>
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" step="0.01" min="0" max="100" class="form-control"
+                                                        id="invoice_cgst_percent" name="invoice_cgst_percent"
+                                                        value="{{ $setting->invoice_cgst_percent ?? 0.00 }}">
+                                                    <span class="input-group-text">%</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {{-- IGST --}}
+                                    <div class="col-md-4 mb-3">
+                                        <div class="bg-secondary-lighten border p-3 rounded-3 h-100">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <label for="switchIgst" class="form-label fw-bold mb-0">{{ __('IGST (Integrated GST)') }}</label>
+                                                <input name="invoice_igst_enabled" type="checkbox" id="switchIgst"
+                                                    {{ ($setting->invoice_igst_enabled ?? 1) == 1 ? 'checked' : '' }}
+                                                    data-switch="primary" />
+                                                <label for="switchIgst" class="mb-0"></label>
+                                            </div>
+                                            <div class="mt-2">
+                                                <label for="invoice_igst_percent" class="form-label font-13 text-muted">{{ __('IGST Rate (%)') }}</label>
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" step="0.01" min="0" max="100" class="form-control"
+                                                        id="invoice_igst_percent" name="invoice_igst_percent"
+                                                        value="{{ $setting->invoice_igst_percent ?? 18.00 }}">
+                                                    <span class="input-group-text">%</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <hr class="my-3">
+
+                                {{-- Section 2: Company Information --}}
+                                <h5 class="text-uppercase text-primary mb-2"><i class="mdi mdi-office-building-outline me-1"></i>{{ __('COMPANY INFORMATION (SHOWN ON INVOICE)') }}</h5>
+
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <div class="bg-secondary-lighten border p-2 rounded-3">
+                                            <label for="invoice_company_name" class="form-label">{{ __('Company / Legal Name') }}</label>
+                                            <input type="text" class="form-control" id="invoice_company_name" name="invoice_company_name"
+                                                value="{{ $setting->invoice_company_name ?? 'Greenheap DigiEdu Private Limited' }}" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <div class="bg-secondary-lighten border p-2 rounded-3">
+                                            <label for="invoice_gstin" class="form-label">{{ __('GSTIN') }}</label>
+                                            <input type="text" class="form-control text-uppercase" id="invoice_gstin" name="invoice_gstin"
+                                                value="{{ $setting->invoice_gstin ?? '29AAGCG1234F1Z5' }}" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <div class="bg-secondary-lighten border p-2 rounded-3">
+                                            <label for="invoice_hsn_code" class="form-label">{{ __('HSN Code') }}</label>
+                                            <input type="text" class="form-control" id="invoice_hsn_code" name="invoice_hsn_code"
+                                                value="{{ $setting->invoice_hsn_code ?? '998439' }}" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <div class="bg-secondary-lighten border p-2 rounded-3">
+                                            <label for="invoice_company_email" class="form-label">{{ __('Company Email') }}</label>
+                                            <input type="email" class="form-control" id="invoice_company_email" name="invoice_company_email"
+                                                value="{{ $setting->invoice_company_email ?? 'support@geoedu.com' }}">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <div class="bg-secondary-lighten border p-2 rounded-3">
+                                            <label for="invoice_phone_number" class="form-label">{{ __('Company Phone') }}</label>
+                                            <input type="text" class="form-control" id="invoice_phone_number" name="invoice_phone_number"
+                                                value="{{ $setting->invoice_phone_number ?? '+91 9876543210' }}">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <div class="bg-secondary-lighten border p-2 rounded-3">
+                                            <label for="invoice_place_of_supply" class="form-label">{{ __('Default Place of Supply') }}</label>
+                                            <input type="text" class="form-control" id="invoice_place_of_supply" name="invoice_place_of_supply"
+                                                value="{{ $setting->invoice_place_of_supply ?? 'Tamil Nadu, India' }}">
+                                        </div>
+                                    </div>
+                                    <div class="col-12 mb-3">
+                                        <div class="bg-secondary-lighten border p-2 rounded-3">
+                                            <label for="invoice_company_address" class="form-label">{{ __('Company Address') }}</label>
+                                            <textarea class="form-control" id="invoice_company_address" name="invoice_company_address" rows="2" required>{{ $setting->invoice_company_address ?? 'No 1090n, Sector 3, 18th Cross Road, Bengaluru Urban, Karnataka, 560102' }}</textarea>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <hr class="my-3">
+
+                                {{-- Section 3: Company Logo & Authorized Signature --}}
+                                <h5 class="text-uppercase text-primary mb-2"><i class="mdi mdi-image-outline me-1"></i>{{ __('COMPANY LOGO & AUTHORIZED SIGNATURE') }}</h5>
+
+                                <div class="row">
+                                    {{-- Company Logo --}}
+                                    <div class="col-md-6 mb-3">
+                                        <div class="bg-secondary-lighten border p-3 rounded-3">
+                                            <label for="invoice_company_logo" class="form-label fw-bold">{{ __('Company Logo') }}</label>
+                                            <input type="file" id="invoice_company_logo" name="invoice_company_logo" class="form-control" accept="image/*">
+                                            <div class="mt-2 d-flex align-items-center gap-3">
+                                                <div class="border rounded p-1 bg-white" style="width: 90px; height: 90px; display: flex; align-items: center; justify-content: center;">
+                                                    <img id="imgCompanyLogoPreview"
+                                                        src="{{ !empty($setting->invoice_company_logo) ? $baseUrl . $setting->invoice_company_logo : asset('assets/images/app_logo.png') }}"
+                                                        alt="Logo Preview" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+                                                </div>
+                                                <div>
+                                                    <span class="badge bg-info-lighten text-info mb-1">{{ __('Preview') }}</span>
+                                                    <p class="text-muted small mb-0">{{ __('Recommended: PNG with transparent background. Appears at the top right of the invoice.') }}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {{-- Signature Image --}}
+                                    <div class="col-md-6 mb-3">
+                                        <div class="bg-secondary-lighten border p-3 rounded-3">
+                                            <label for="invoice_signature_image" class="form-label fw-bold">{{ __('Authorized Signature Image') }}</label>
+                                            <input type="file" id="invoice_signature_image" name="invoice_signature_image" class="form-control" accept="image/*">
+                                            <div class="mt-2 d-flex align-items-center gap-3">
+                                                <div class="border rounded p-1 bg-white" style="width: 120px; height: 90px; display: flex; align-items: center; justify-content: center;">
+                                                    <img id="imgSignaturePreview"
+                                                        src="{{ !empty($setting->invoice_signature_image) ? $baseUrl . $setting->invoice_signature_image : '' }}"
+                                                        alt="Signature Preview" style="max-width: 100%; max-height: 100%; object-fit: contain; {{ empty($setting->invoice_signature_image) ? 'display: none;' : '' }}">
+                                                    <span id="noSignatureText" class="text-muted small text-center" style="{{ !empty($setting->invoice_signature_image) ? 'display: none;' : '' }}">{{ __('No signature uploaded') }}</span>
+                                                </div>
+                                                <div>
+                                                    <span class="badge bg-info-lighten text-info mb-1">{{ __('Preview') }}</span>
+                                                    <p class="text-muted small mb-0">{{ __('Recommended: PNG signature on transparent background. Displayed above the Authorised Signatory label.') }}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <hr class="my-3">
+
+                                {{-- Section 4: Invoice Configuration & Texts --}}
+                                <h5 class="text-uppercase text-primary mb-2"><i class="mdi mdi-file-document-edit-outline me-1"></i>{{ __('INVOICE CONFIGURATION & LEGAL TEXTS') }}</h5>
+
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <div class="bg-secondary-lighten border p-2 rounded-3">
+                                            <label for="invoice_title" class="form-label">{{ __('Invoice Title') }}</label>
+                                            <input type="text" class="form-control" id="invoice_title" name="invoice_title"
+                                                value="{{ $setting->invoice_title ?? 'Tax Invoice' }}">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <div class="bg-secondary-lighten border p-2 rounded-3">
+                                            <label for="invoice_prefix" class="form-label">{{ __('Invoice Prefix / Format') }}</label>
+                                            <input type="text" class="form-control" id="invoice_prefix" name="invoice_prefix"
+                                                value="{{ $setting->invoice_prefix ?? 'GEO' }}">
+                                            <small class="text-muted font-11">{{ __('e.g. GEO will generate GEO/YYYY-YYYY/MM/ID') }}</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <div class="bg-secondary-lighten border p-2 rounded-3">
+                                            <label for="invoice_currency" class="form-label">{{ __('Currency Symbol / Label') }}</label>
+                                            <input type="text" class="form-control" id="invoice_currency" name="invoice_currency"
+                                                value="{{ $setting->invoice_currency ?? 'Rs.' }}">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <div class="bg-secondary-lighten border p-2 rounded-3">
+                                            <label for="invoice_signatory_name" class="form-label">{{ __('Authorized Signatory Text / Name') }}</label>
+                                            <input type="text" class="form-control" id="invoice_signatory_name" name="invoice_signatory_name"
+                                                value="{{ $setting->invoice_signatory_name ?? 'GeoEdu Auth' }}">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <div class="bg-secondary-lighten border p-2 rounded-3">
+                                            <label for="invoice_terms_text" class="form-label">{{ __('Terms & Conditions Text') }}</label>
+                                            <input type="text" class="form-control" id="invoice_terms_text" name="invoice_terms_text"
+                                                value="{{ $setting->invoice_terms_text ?? 'Refer to geoedu.com/terms for Policy, Terms & Conditions.' }}">
+                                        </div>
+                                    </div>
+                                    <div class="col-12 mb-3">
+                                        <div class="bg-secondary-lighten border p-2 rounded-3">
+                                            <label for="invoice_footer_text" class="form-label">{{ __('Footer Notes (Reverse Charge / Inter-state notice)') }}</label>
+                                            <textarea class="form-control" id="invoice_footer_text" name="invoice_footer_text" rows="2">{{ $setting->invoice_footer_text ?? "Tax payable on reverse charge - No.\n*In case of inter-state supply IGST will be applicable. Within state supplies are liable for CGST & SGST." }}</textarea>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-2">
+                                    <button type="submit" class="btn btn-primary" id="saveInvoiceSettingsBtn">
+                                        <span class="spinner-border spinner-border-sm me-1 hide" role="status" aria-hidden="true"></span>
+                                        <i class="mdi mdi-content-save me-1"></i> {{ __('Save Invoice Settings') }}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
                 {{-- Limits --}}
                 <div class="tab-pane fade" id="v-pills-limits" role="tabpanel" aria-labelledby="v-pills-limits-tab">
                     <div class="card">

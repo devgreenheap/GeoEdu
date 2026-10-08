@@ -67,10 +67,11 @@ class LeaderboardTab extends StatelessWidget {
                             LeaderboardTopThree(
                               isDiamond: isDiamond,
                               topUsers: users,
+                              myUserId: controller.myUserId,
                               onFollowTap: controller.toggleFollow,
                               onUserTap: _openProfile,
                             ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 16),
                           LeaderboardList(
                             users: users,
                             isDiamond: isDiamond,

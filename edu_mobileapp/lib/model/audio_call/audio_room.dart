@@ -28,13 +28,17 @@ class AudioRoom {
   int? categoryId;
   String? categoryName;
 
-  // PK Battle (audio-host-vs-audio-host)
+  // PK Battle (audio-host-vs-audio-host or host-vs-call-participant)
   int? pkOpponentId;
-  String? pkStatus; // 'invited', 'running', 'ended'
+  String? pkStatus; // 'inviting', 'running', 'ended'
   int? pkStartedAt;
   int? pkDurationMinutes;
   int? pkCoins;
+  int? pkOpponentCoins;
   int? pkInviteFrom;
+  List<int>? pkInvitedUserIds;
+  int? targetDiamonds;
+  int? favouriteGiftTarget;
 
   AudioRoom({
     this.roomId,
@@ -70,7 +74,11 @@ class AudioRoom {
     this.pkStartedAt,
     this.pkDurationMinutes,
     this.pkCoins,
+    this.pkOpponentCoins,
     this.pkInviteFrom,
+    this.pkInvitedUserIds,
+    this.targetDiamonds,
+    this.favouriteGiftTarget,
   });
 
   AudioRoom.fromJson(Map<String, dynamic> json) {
@@ -123,7 +131,17 @@ class AudioRoom {
     pkStartedAt = json['pk_started_at'];
     pkDurationMinutes = json['pk_duration_minutes'];
     pkCoins = json['pk_coins'];
+    pkOpponentCoins = json['pk_opponent_coins'];
     pkInviteFrom = json['pk_invite_from'];
+    pkInvitedUserIds = json['pk_invited_user_ids'] != null
+        ? List<int>.from(json['pk_invited_user_ids'].map((x) => x))
+        : [];
+    targetDiamonds = json['target_diamonds'] != null
+        ? int.tryParse(json['target_diamonds'].toString())
+        : null;
+    favouriteGiftTarget = json['favourite_gift_target'] != null
+        ? int.tryParse(json['favourite_gift_target'].toString())
+        : null;
   }
 
   Map<String, dynamic> toJson() {
@@ -161,7 +179,11 @@ class AudioRoom {
       'pk_started_at': pkStartedAt,
       'pk_duration_minutes': pkDurationMinutes,
       'pk_coins': pkCoins,
+      'pk_opponent_coins': pkOpponentCoins,
       'pk_invite_from': pkInviteFrom,
+      'pk_invited_user_ids': pkInvitedUserIds,
+      'target_diamonds': targetDiamonds,
+      'favourite_gift_target': favouriteGiftTarget,
     };
   }
 }

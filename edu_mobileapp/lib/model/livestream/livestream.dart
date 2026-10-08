@@ -37,6 +37,10 @@ class Livestream {
   String? thumbnailUrl;
   String? pinnedComment;
   bool? isActive;
+  int? pkOpponentId;
+  List<int>? pkInvitedUserIds;
+  int? targetDiamonds;
+  int? favouriteGiftTarget;
 
   Livestream(
       {this.watchingCount,
@@ -69,6 +73,10 @@ class Livestream {
       this.isAutoMode,
       this.thumbnailUrl,
       this.pinnedComment,
+      this.pkOpponentId,
+      this.pkInvitedUserIds,
+      this.targetDiamonds,
+      this.favouriteGiftTarget,
       this.battleDuration = AppRes.battleDurationInMinutes});
 
   Livestream.fromJson(Map<String, dynamic> json) {
@@ -108,6 +116,15 @@ class Livestream {
     thumbnailUrl = json['thumbnail_url']?.toString();
     pinnedComment = json['pinned_comment']?.toString();
     isActive = json['is_active'] as bool?;
+    pkOpponentId = json['pk_opponent_id'] is num ? (json['pk_opponent_id'] as num).toInt() : null;
+    final rawPkInvites = json['pk_invited_user_ids'];
+    if (rawPkInvites is List) {
+      pkInvitedUserIds = rawPkInvites.whereType<num>().map((e) => e.toInt()).toList();
+    } else {
+      pkInvitedUserIds = [];
+    }
+    targetDiamonds = json['target_diamonds'] is num ? (json['target_diamonds'] as num).toInt() : null;
+    favouriteGiftTarget = json['favourite_gift_target'] is num ? (json['favourite_gift_target'] as num).toInt() : null;
   }
 
   Map<String, dynamic> toJson() {
@@ -145,6 +162,10 @@ class Livestream {
     data['is_auto_mode'] = isAutoMode;
     data['thumbnail_url'] = thumbnailUrl;
     data['pinned_comment'] = pinnedComment;
+    data['pk_opponent_id'] = pkOpponentId;
+    data['pk_invited_user_ids'] = pkInvitedUserIds;
+    if (targetDiamonds != null) data['target_diamonds'] = targetDiamonds;
+    if (favouriteGiftTarget != null) data['favourite_gift_target'] = favouriteGiftTarget;
     return data;
   }
 

@@ -92,64 +92,6 @@ class _LiveReelsFeedScreenState extends State<LiveReelsFeedScreen>
               },
             ),
 
-            // Top Floating Live Count Badge
-            SafeArea(
-              top: true,
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: const Color(0xFFFF3366).withValues(alpha: 0.5),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFFF3366),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          const Text(
-                            "LIVE REELS",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Obx(() => Text(
-                                "${controller.currentIndex.value + 1}/${controller.liveStreams.length}",
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              )),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
 
             // Swipe Up Hint Overlay on first reel
             if (_showSwipeHint && controller.liveStreams.length > 1)

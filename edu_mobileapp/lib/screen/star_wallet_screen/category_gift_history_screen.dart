@@ -33,6 +33,15 @@ class _CategoryGiftHistoryScreenState extends State<CategoryGiftHistoryScreen> {
     {'key': 'month', 'label': 'This Month'},
   ];
 
+  bool get isAllCategory {
+    final name = (widget.category.categoryName ?? '').toLowerCase().trim();
+    return (widget.category.categoryId == null || widget.category.categoryId! <= 0) ||
+        name == 'all' ||
+        name == 'star wallet' ||
+        name == 'all gifts' ||
+        name.isEmpty;
+  }
+
   Color get categoryColor {
     switch (widget.category.categoryName) {
       case 'Food':
@@ -42,7 +51,7 @@ class _CategoryGiftHistoryScreenState extends State<CategoryGiftHistoryScreen> {
       case 'Farms':
         return const Color(0xFF51CF66);
       default:
-        return ColorRes.primaryColor;
+        return const Color(0xFFFFD700);
     }
   }
 
@@ -55,7 +64,7 @@ class _CategoryGiftHistoryScreenState extends State<CategoryGiftHistoryScreen> {
       case 'Farms':
         return Icons.park_rounded;
       default:
-        return Icons.category_rounded;
+        return Icons.star_rounded;
     }
   }
 
@@ -80,7 +89,7 @@ class _CategoryGiftHistoryScreenState extends State<CategoryGiftHistoryScreen> {
           isLoading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         setState(() => isLoading = false);
       }
@@ -182,7 +191,7 @@ class _CategoryGiftHistoryScreenState extends State<CategoryGiftHistoryScreen> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      '$catName History',
+                      isAllCategory ? 'Star Wallet History' : '$catName History',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 18,
@@ -244,7 +253,7 @@ class _CategoryGiftHistoryScreenState extends State<CategoryGiftHistoryScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '$catName Earnings',
+                        isAllCategory ? 'Star Earnings' : '$catName Earnings',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 15,
@@ -275,7 +284,7 @@ class _CategoryGiftHistoryScreenState extends State<CategoryGiftHistoryScreen> {
                     const Text('⭐', style: TextStyle(fontSize: 12)),
                     const SizedBox(width: 4),
                     Text(
-                      catName,
+                      isAllCategory ? 'Stars' : catName,
                       style: TextStyle(
                         color: categoryColor,
                         fontSize: 12,
@@ -571,7 +580,7 @@ class _CategoryGiftHistoryScreenState extends State<CategoryGiftHistoryScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '$catName Gift 🎁',
+                      '${(item.categoryName != null && item.categoryName!.trim().isNotEmpty && item.categoryName != 'Star Wallet') ? item.categoryName : (isAllCategory ? 'Star' : catName)} Gift 🎁',
                       style: TextStyle(
                         color: categoryColor,
                         fontSize: 12,
@@ -782,7 +791,7 @@ class _CategoryGiftHistoryScreenState extends State<CategoryGiftHistoryScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'No $catName Gifts Found',
+            isAllCategory ? 'No Star Transactions Found' : 'No $catName Gifts Found',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 16,
@@ -792,7 +801,9 @@ class _CategoryGiftHistoryScreenState extends State<CategoryGiftHistoryScreen> {
           const SizedBox(height: 6),
           Text(
             selectedFilter == 'all'
-                ? 'No transactions have been recorded in this category yet.'
+                ? (isAllCategory
+                    ? 'No transactions have been recorded in your Star Wallet yet.'
+                    : 'No transactions have been recorded in this category yet.')
                 : 'No transactions found for ${_getFilterLabel(selectedFilter)}.',
             textAlign: TextAlign.center,
             style: TextStyle(

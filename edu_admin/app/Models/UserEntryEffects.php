@@ -16,4 +16,3 @@ class UserEntryEffects extends Model
         return $this->belongsTo(EntryEffects::class, 'entry_effect_id');
     }
 }
-

@@ -92,6 +92,27 @@ class Setting {
   List<ReportReason>? reportReason;
   List<DeepARFilters>? deepARFilters;
   List<GiftCategoryItem>? giftCategories;
+  int? invoiceSgstEnabled;
+  double? invoiceSgstPercent;
+  int? invoiceCgstEnabled;
+  double? invoiceCgstPercent;
+  int? invoiceIgstEnabled;
+  double? invoiceIgstPercent;
+  String? invoiceCompanyName;
+  String? invoiceCompanyAddress;
+  String? invoiceGstin;
+  String? invoiceHsnCode;
+  String? invoiceCompanyEmail;
+  String? invoicePhoneNumber;
+  String? invoicePlaceOfSupply;
+  String? invoiceCompanyLogo;
+  String? invoiceSignatureImage;
+  String? invoiceTitle;
+  String? invoicePrefix;
+  String? invoiceCurrency;
+  String? invoiceFooterText;
+  String? invoiceTermsText;
+  String? invoiceSignatoryName;
 
   Setting({
     this.id,
@@ -149,6 +170,27 @@ class Setting {
     this.reportReason,
     this.deepARFilters,
     this.giftCategories,
+    this.invoiceSgstEnabled,
+    this.invoiceSgstPercent,
+    this.invoiceCgstEnabled,
+    this.invoiceCgstPercent,
+    this.invoiceIgstEnabled,
+    this.invoiceIgstPercent,
+    this.invoiceCompanyName,
+    this.invoiceCompanyAddress,
+    this.invoiceGstin,
+    this.invoiceHsnCode,
+    this.invoiceCompanyEmail,
+    this.invoicePhoneNumber,
+    this.invoicePlaceOfSupply,
+    this.invoiceCompanyLogo,
+    this.invoiceSignatureImage,
+    this.invoiceTitle,
+    this.invoicePrefix,
+    this.invoiceCurrency,
+    this.invoiceFooterText,
+    this.invoiceTermsText,
+    this.invoiceSignatoryName,
   });
 
   factory Setting.fromJson(Map<String, dynamic> json) => Setting(
@@ -178,7 +220,13 @@ class Setting {
         isCompress: json["is_compress"],
         isDeepAr: json["is_deepAR"],
         isWithdrawalOn: json["is_withdrawal_on"],
-        helpMail: json["help_mail"],
+        helpMail: (json["help_mail"] != null &&
+                !json["help_mail"].toString().toLowerCase().contains('1236@') &&
+                !json["help_mail"].toString().toLowerCase().contains('goeducation') &&
+                !json["help_mail"].toString().toLowerCase().contains('geoedu.com') &&
+                json["help_mail"].toString().trim().isNotEmpty)
+            ? json["help_mail"]
+            : 'geoeducation2026@gmail.com',
         isContentModeration: json["is_content_moderation"],
         sightEngineApiUser: json["sight_engine_api_user"],
         sightEngineApiSecret: json["sight_engine_api_secret"],
@@ -243,6 +291,39 @@ class Setting {
             ? []
             : List<GiftCategoryItem>.from(
                 json["gift_categories"]?.map((x) => GiftCategoryItem.fromJson(x))),
+        invoiceSgstEnabled: json["invoice_sgst_enabled"] == null
+            ? 0
+            : int.tryParse(json["invoice_sgst_enabled"].toString()) ?? 0,
+        invoiceSgstPercent: json["invoice_sgst_percent"] == null
+            ? 0.0
+            : double.tryParse(json["invoice_sgst_percent"].toString()) ?? 0.0,
+        invoiceCgstEnabled: json["invoice_cgst_enabled"] == null
+            ? 0
+            : int.tryParse(json["invoice_cgst_enabled"].toString()) ?? 0,
+        invoiceCgstPercent: json["invoice_cgst_percent"] == null
+            ? 0.0
+            : double.tryParse(json["invoice_cgst_percent"].toString()) ?? 0.0,
+        invoiceIgstEnabled: json["invoice_igst_enabled"] == null
+            ? 1
+            : int.tryParse(json["invoice_igst_enabled"].toString()) ?? 1,
+        invoiceIgstPercent: json["invoice_igst_percent"] == null
+            ? 18.0
+            : double.tryParse(json["invoice_igst_percent"].toString()) ?? 18.0,
+        invoiceCompanyName: json["invoice_company_name"],
+        invoiceCompanyAddress: json["invoice_company_address"],
+        invoiceGstin: json["invoice_gstin"],
+        invoiceHsnCode: json["invoice_hsn_code"],
+        invoiceCompanyEmail: json["invoice_company_email"],
+        invoicePhoneNumber: json["invoice_phone_number"],
+        invoicePlaceOfSupply: json["invoice_place_of_supply"],
+        invoiceCompanyLogo: json["invoice_company_logo"],
+        invoiceSignatureImage: json["invoice_signature_image"],
+        invoiceTitle: json["invoice_title"],
+        invoicePrefix: json["invoice_prefix"],
+        invoiceCurrency: json["invoice_currency"],
+        invoiceFooterText: json["invoice_footer_text"],
+        invoiceTermsText: json["invoice_terms_text"],
+        invoiceSignatoryName: json["invoice_signatory_name"],
       );
 
   Map<String, dynamic> toJson() => {
@@ -323,6 +404,27 @@ class Setting {
         "deepARFilters": deepARFilters == null
             ? []
             : List<dynamic>.from(deepARFilters!.map((x) => x.toJson())),
+        "invoice_sgst_enabled": invoiceSgstEnabled,
+        "invoice_sgst_percent": invoiceSgstPercent,
+        "invoice_cgst_enabled": invoiceCgstEnabled,
+        "invoice_cgst_percent": invoiceCgstPercent,
+        "invoice_igst_enabled": invoiceIgstEnabled,
+        "invoice_igst_percent": invoiceIgstPercent,
+        "invoice_company_name": invoiceCompanyName,
+        "invoice_company_address": invoiceCompanyAddress,
+        "invoice_gstin": invoiceGstin,
+        "invoice_hsn_code": invoiceHsnCode,
+        "invoice_company_email": invoiceCompanyEmail,
+        "invoice_phone_number": invoicePhoneNumber,
+        "invoice_place_of_supply": invoicePlaceOfSupply,
+        "invoice_company_logo": invoiceCompanyLogo,
+        "invoice_signature_image": invoiceSignatureImage,
+        "invoice_title": invoiceTitle,
+        "invoice_prefix": invoicePrefix,
+        "invoice_currency": invoiceCurrency,
+        "invoice_footer_text": invoiceFooterText,
+        "invoice_terms_text": invoiceTermsText,
+        "invoice_signatory_name": invoiceSignatoryName,
       };
 
   /// Returns all available gifts from server settings, falling back to local Pen gift if empty

@@ -246,6 +246,15 @@ class UserController extends Controller
         }
         }
 
+        // Invalidate prior unverified OTPs for this mobile so only the new OTP is valid
+        DB::table('tbl_signup_otps')
+            ->where('mobile', $mobile)
+            ->whereNull('verified_at')
+            ->update([
+                'expires_at' => Carbon::now(),
+                'updated_at' => Carbon::now(),
+            ]);
+
         DB::table('tbl_signup_otps')->insert([
             'mobile_country_code' => $countryCode !== '' ? $countryCode : null,
             'mobile' => $mobile,
@@ -337,6 +346,15 @@ class UserController extends Controller
                 return GlobalFunction::sendSimpleResponse(false, $message);
             }
         }
+
+        // Invalidate prior unverified OTPs for this email so only the new OTP is valid
+        DB::table('tbl_signup_otps')
+            ->where('email', $email)
+            ->whereNull('verified_at')
+            ->update([
+                'expires_at' => Carbon::now(),
+                'updated_at' => Carbon::now(),
+            ]);
 
         DB::table('tbl_signup_otps')->insert([
             'email' => $email,

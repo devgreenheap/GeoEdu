@@ -11,6 +11,7 @@ import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/model/livestream/app_user.dart';
 import 'package:geoedu/model/livestream/livestream.dart';
 import 'package:geoedu/model/livestream/livestream_comment.dart';
+import 'package:geoedu/model/livestream/livestream_user_state.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
@@ -47,6 +48,22 @@ class LiveStreamCommentView extends StatelessWidget {
           physics: const BouncingScrollPhysics(),
           itemBuilder: (context, index) {
             LivestreamComment comment = controller.comments[index];
+            if (comment.commentType == LivestreamCommentType.leftCoHost) {
+              final hostId = controller.liveData.value.hostId;
+              final myUserId = controller.myUserId;
+              if (comment.senderId == hostId ||
+                  (controller.isHost && (comment.senderId == myUserId || comment.senderId == null))) {
+                return const SizedBox.shrink();
+              }
+              final sId = comment.senderId;
+              if (sId != null &&
+                  ((controller.liveData.value.coHostIds?.contains(sId) ?? false) ||
+                      controller.liveUsersStates.any((u) =>
+                          u.userId == sId &&
+                          u.type == LivestreamUserType.coHost))) {
+                return const SizedBox.shrink();
+              }
+            }
             comment.bindCommentUser();
             return Obx(() {
               AppUser? senderUser = comment.senderUserRx.value;
@@ -112,12 +129,25 @@ class LiveStreamCommentView extends StatelessWidget {
       case null:
         return const SizedBox();
       case LivestreamCommentType.request:
+        final requestMsg = (comment.comment != null && comment.comment!.trim().isNotEmpty)
+            ? comment.comment!
+            : '📹 requested to Join Call';
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              LKey.requestingToJoinTheStream.tr,
-              style: TextStyleCustom.outFitRegular400(color: whitePure(context).withValues(alpha: .80)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.videocam_rounded, color: Color(0xFFFF7A00), size: 14),
+                const SizedBox(width: 4),
+                Text(
+                  requestMsg,
+                  style: TextStyleCustom.outFitMedium500(
+                    color: const Color(0xFFFFB74D),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 5),
             Obx(() {
@@ -148,11 +178,13 @@ class LiveStreamCommentView extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(30),
-                        color: whitePure(context),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFF7A00), Color(0xFFFF5200)],
+                        ),
                       ),
                       alignment: Alignment.center,
-                      child: Text(LKey.accept.tr,
-                          style: TextStyleCustom.outFitRegular400(fontSize: 13, color: textDarkGrey(context))),
+                      child: const Text('Accept',
+                          style: TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],
@@ -246,6 +278,10 @@ class LiveStreamCommentView extends StatelessWidget {
         return Text(LKey.joinedAsACoHost.tr,
             style: TextStyleCustom.outFitRegular400(color: whitePure(context).withValues(alpha: .80)));
       case LivestreamCommentType.leftCoHost:
+        final hostId = controller.liveData.value.hostId;
+        if (comment.senderId == hostId || (controller.isHost && (comment.senderId == controller.myUserId))) {
+          return const SizedBox.shrink();
+        }
         return Text('Left the call',
             style: TextStyleCustom.outFitRegular400(color: const Color(0xFFFF5252)));
     }

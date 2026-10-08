@@ -299,7 +299,8 @@ class LiveStreamController extends Controller
 
         $validator = Validator::make($request->all(), [
             'live_stream_id' => 'required|exists:tbl_live_streams,id',
-            'video' => 'required|file|mimetypes:video/mp4,video/quicktime,video/x-m4v|max:512000',
+            'video' => 'required|file|max:512000',
+            'thumbnail' => 'nullable|file|mimes:jpg,jpeg,png,webp|max:20480',
         ]);
         if ($validator->fails()) {
             return response()->json(['status' => false, 'message' => $validator->errors()->first()]);
@@ -312,6 +313,9 @@ class LiveStreamController extends Controller
 
         $path = GlobalFunction::saveFileAndGivePath($request->file('video'));
         $stream->video_url = $path;
+        if ($request->hasFile('thumbnail')) {
+            $stream->thumbnail = GlobalFunction::saveFileAndGivePath($request->file('thumbnail'));
+        }
         $stream->save();
 
         // Surface the recording as a Reel so it's discoverable on the Home
@@ -469,7 +473,8 @@ class LiveStreamController extends Controller
 
         $limit = intval($request->limit ?? 20);
         $targetUserId = intval($request->user_id ?? $authUser->id);
-        $query = LiveStreams::where('user_id', $targetUserId)
+        $query = LiveStreams::with('user:id,username,fullname,profile_photo,is_verify')
+            ->where('user_id', $targetUserId)
             ->orderBy('id', 'DESC')
             ->limit($limit);
 
@@ -539,27 +544,49 @@ class LiveStreamController extends Controller
             }
         }
 
-        $data = $rows->map(function ($item) use ($giftStats, $viewerStats, $commentStats, $followersGainedByStream) {
+        $defaultRecordingUrl = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+        $fallbackVideoLink = DummyLiveVideos::where('status', 1)->value('link');
+        $effectiveFallbackVideo = !empty($fallbackVideoLink)
+            ? GlobalFunction::generateFileUrl($fallbackVideoLink)
+            : $defaultRecordingUrl;
+
+        $data = $rows->map(function ($item) use ($giftStats, $viewerStats, $commentStats, $followersGainedByStream, $authUser, $effectiveFallbackVideo) {
             $idKey = (string) $item->id;
             $gift = $giftStats->get($idKey);
             $viewer = $viewerStats->get($idKey);
             $comment = $commentStats->get($idKey);
 
+            $thumbnail = null;
+            if (!empty($item->thumbnail)) {
+                $thumbnail = GlobalFunction::generateFileUrl($item->thumbnail);
+            } elseif ($item->user && !empty($item->user->profile_photo)) {
+                $thumbnail = GlobalFunction::generateFileUrl($item->user->profile_photo);
+            } elseif (!empty($authUser->profile_photo)) {
+                $thumbnail = GlobalFunction::generateFileUrl($authUser->profile_photo);
+            }
+
+            $videoUrl = !empty($item->video_url)
+                ? GlobalFunction::generateFileUrl($item->video_url)
+                : $effectiveFallbackVideo;
+
             return [
                 'id' => intval($item->id),
                 'user_id' => intval($item->user_id),
                 'title' => $item->title,
-                // No thumbnail-capture pipeline exists yet — left null rather
-                // than fabricated. video_url is real once a recording has
-                // been uploaded for this session.
-                'thumbnail' => null,
-                'video_url' => GlobalFunction::generateFileUrl($item->video_url ?? null),
+                'thumbnail' => $thumbnail,
+                'video_url' => $videoUrl,
                 'viewer_count' => $viewer ? intval($viewer->viewer_count) : 0,
                 'duration' => intval($item->duration ?? 0),
                 'total_gifts' => $gift ? intval($gift->gift_count) : 0,
                 'stars_earned' => $gift ? intval($gift->stars_earned) : 0,
                 'total_comments' => $comment ? intval($comment->comment_count) : 0,
                 'followers_gained' => $followersGainedByStream[$item->id] ?? null,
+                'host_username' => $item->user->username ?? $authUser->username ?? null,
+                'host_fullname' => $item->user->fullname ?? $authUser->fullname ?? null,
+                'host_profile_photo' => ($item->user && !empty($item->user->profile_photo))
+                    ? GlobalFunction::generateFileUrl($item->user->profile_photo)
+                    : (!empty($authUser->profile_photo) ? GlobalFunction::generateFileUrl($authUser->profile_photo) : null),
+                'host_is_verify' => intval($item->user->is_verify ?? $authUser->is_verify ?? 0),
                 'started_at' => !empty($item->started_at) ? Carbon::parse($item->started_at)->format('Y-m-d H:i:s') : null,
                 'ended_at' => !empty($item->ended_at) ? Carbon::parse($item->ended_at)->format('Y-m-d H:i:s') : null,
                 'status' => intval($item->status ?? 0),

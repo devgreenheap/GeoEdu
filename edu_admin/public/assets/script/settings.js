@@ -213,6 +213,68 @@ $(document).ready(function () {
             }
         });
     });
+    /* Invoice Image Previews */
+    $("#invoice_company_logo").on("change", function () {
+        var file = this.files && this.files[0];
+        if (file) {
+            var reader = new FileReader();
+            reader.onload = function (e) {
+                $("#imgCompanyLogoPreview").attr("src", e.target.result).show();
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    $("#invoice_signature_image").on("change", function () {
+        var file = this.files && this.files[0];
+        if (file) {
+            var reader = new FileReader();
+            reader.onload = function (e) {
+                $("#imgSignaturePreview").attr("src", e.target.result).show();
+                $("#noSignatureText").hide();
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    /* Invoice Settings Form Submission */
+    $("#invoiceSettingForm").on("submit", function (event) {
+        event.preventDefault();
+        checkUserType(function () {
+            var formId = '#invoiceSettingForm';
+            var formdata = collectFormData(formId);
+
+            var sgstEnabled = $("#switchSgst").is(":checked") ? 1 : 0;
+            var cgstEnabled = $("#switchCgst").is(":checked") ? 1 : 0;
+            var igstEnabled = $("#switchIgst").is(":checked") ? 1 : 0;
+
+            formdata.set('invoice_sgst_enabled', sgstEnabled);
+            formdata.set('invoice_cgst_enabled', cgstEnabled);
+            formdata.set('invoice_igst_enabled', igstEnabled);
+
+            var url = `${domainUrl}saveInvoiceSettings`;
+            try {
+                doAjax(url, formdata).then(function (response) {
+                    hideFormSpinner(formId);
+                    if (response.status) {
+                        showSuccessToast(response.message);
+                        if (response.data && response.data.logo_url) {
+                            $("#imgCompanyLogoPreview").attr("src", response.data.logo_url);
+                        }
+                        if (response.data && response.data.signature_url) {
+                            $("#imgSignaturePreview").attr("src", response.data.signature_url).show();
+                            $("#noSignatureText").hide();
+                        }
+                    } else {
+                        showErrorToast(response.message);
+                    }
+                });
+            } catch (error) {
+                console.log('Error! : ', error.message);
+                showErrorToast(error.message);
+            }
+        });
+    });
     $("#deepARSettingsForm").on("submit", function (event) {
         event.preventDefault();
         checkUserType(function () {

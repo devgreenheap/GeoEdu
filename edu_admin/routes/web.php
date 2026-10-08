@@ -116,6 +116,7 @@ Route::middleware(['checkLogin'])->group(function () {
     Route::post('saveGIFSettings', [SettingsController::class, 'saveGIFSettings'])->name('saveGIFSettings');
     Route::post('saveDeepARSettings', [SettingsController::class, 'saveDeepARSettings'])->name('saveDeepARSettings');
     Route::post('saveBasicSettings', [SettingsController::class, 'saveBasicSettings'])->name('saveBasicSettings');
+    Route::post('saveInvoiceSettings', [SettingsController::class, 'saveInvoiceSettings'])->name('saveInvoiceSettings');
     Route::post('saveLimitSettings', [SettingsController::class, 'saveLimitSettings'])->name('saveLimitSettings');
     Route::post('saveLiveStreamSettings', [SettingsController::class, 'saveLiveStreamSettings'])->name('saveLiveStreamSettings');
     Route::post('saveDeeplinkSettings', [SettingsController::class, 'saveDeeplinkSettings'])->name('saveDeeplinkSettings');
@@ -285,6 +286,11 @@ Route::middleware(['checkLogin'])->group(function () {
     Route::post('listRejectedWithdrawals', [WalletController::class, 'listRejectedWithdrawals'])->name('listRejectedWithdrawals');
     Route::post('completeWithdrawal', [WalletController::class, 'completeWithdrawal'])->name('completeWithdrawal');
     Route::post('rejectWithdrawal', [WalletController::class, 'rejectWithdrawal'])->name('rejectWithdrawal');
+    Route::get('requestedPayouts', [WalletController::class, 'requestedPayouts'])->name('requestedPayouts');
+    Route::post('listRequestedPayouts', [WalletController::class, 'listRequestedPayouts'])->name('listRequestedPayouts');
+    Route::post('approveRequestedPayout', [WalletController::class, 'approveRequestedPayout'])->name('approveRequestedPayout');
+    Route::post('rejectRequestedPayout', [WalletController::class, 'rejectRequestedPayout'])->name('rejectRequestedPayout');
+    Route::post('getRequestedPayoutDetails', [WalletController::class, 'getRequestedPayoutDetails'])->name('getRequestedPayoutDetails');
     Route::get('manualPayouts', [WalletController::class, 'manualPayouts'])->name('manualPayouts');
     Route::post('listTodayRealUsersPayout', [WalletController::class, 'listTodayRealUsersPayout'])->name('listTodayRealUsersPayout');
     Route::post('listManualPayouts', [WalletController::class, 'listManualPayouts'])->name('listManualPayouts');

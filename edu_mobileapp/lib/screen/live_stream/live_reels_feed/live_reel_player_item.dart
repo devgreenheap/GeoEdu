@@ -2,16 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:keyboard_avoider/keyboard_avoider.dart';
 import 'package:geoedu/common/extensions/string_extension.dart';
 import 'package:geoedu/common/manager/logger.dart';
 import 'package:geoedu/common/widget/custom_image.dart';
 import 'package:geoedu/model/livestream/livestream.dart';
-import 'package:geoedu/screen/live_stream/livestream_screen/audience/widget/livestream_audience_top_view.dart';
+import 'package:geoedu/screen/dashboard_screen/dashboard_screen_controller.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/view/battle_view.dart';
-import 'package:geoedu/screen/live_stream/livestream_screen/view/live_stream_bottom_view.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/view/live_video_player.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/view/live_video_room_overlay.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/view/livestream_view.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/battle_start_countdown_overlay.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/entry_effects_widget.dart';
@@ -206,31 +205,11 @@ class _LiveReelPlayerItemState extends State<LiveReelPlayerItem> {
           ),
           GiftEffectWidget(activeGifts: controller.activeGifts),
 
-          // Overlays: Top host info bar & bottom interactive chat
-          KeyboardAvoider(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                LiveStreamAudienceTopView(
-                  isAudience: true,
-                  controller: controller,
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: LiveStreamBottomView(
-                    isAudience: true,
-                    controller: controller,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Floating "Join Call" Video Request Button
-          Positioned(
-            right: 14,
-            bottom: 115,
-            child: _buildJoinCallButton(controller),
+          // Modern Live Room Overlay (identical to Home page Live Room UI)
+          LiveVideoRoomOverlay(
+            controller: controller,
+            isHost: false,
+            onBackOrClose: _handleClose,
           ),
 
           // PK Battle countdown overlay if pending
@@ -246,62 +225,12 @@ class _LiveReelPlayerItemState extends State<LiveReelPlayerItem> {
     );
   }
 
-  Widget _buildJoinCallButton(LivestreamScreenController controller) {
-    return Obx(() {
-      final liveData = controller.liveData.value;
-      final isBattleOn = liveData.type == LivestreamType.battle;
-      final isCoHost = (liveData.coHostIds ?? []).contains(controller.myUserId);
-      final isHost = controller.isHost || liveData.hostId == controller.myUserId;
-
-      if (isHost || isBattleOn || liveData.isRestrictToJoin != 0 || isCoHost) {
-        return const SizedBox();
-      }
-
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFFF3366), Color(0xFFFF5E3A)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x66FF3366),
-                  blurRadius: 12,
-                  offset: Offset(0, 4),
-                ),
-              ],
-            ),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(16),
-              onTap: () => controller.onVideoRequestSend(liveData),
-              child: const Icon(
-                Icons.video_call_rounded,
-                color: Colors.white,
-                size: 26,
-              ),
-            ),
-          ),
-          const SizedBox(height: 5),
-          const Text(
-            "Join Call",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              shadows: [
-                Shadow(color: Colors.black87, blurRadius: 4),
-              ],
-            ),
-          ),
-        ],
-      );
-    });
+  void _handleClose() {
+    if (Get.isRegistered<DashboardScreenController>()) {
+      Get.find<DashboardScreenController>().onChanged(0);
+    } else {
+      Get.back();
+    }
   }
 
   Widget _buildPlaceholderPreview() {

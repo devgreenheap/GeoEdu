@@ -15,6 +15,14 @@ class RegistrationScreen extends StatelessWidget {
   const RegistrationScreen({super.key});
 
   void _openOtpScreen(BuildContext context, AuthScreenController controller) {
+    controller.otpController.value = const TextEditingValue(
+      text: '',
+      selection: TextSelection.collapsed(offset: 0),
+    );
+    controller.isOtpVerified = false;
+    controller.registrationError = null;
+    controller.fieldErrors.remove('otp');
+    controller.update();
     Get.to(() => OtpVerificationScreen(
           phoneDisplay:
               '${controller.selectedCountryCode} ${controller.mobileController.text}',

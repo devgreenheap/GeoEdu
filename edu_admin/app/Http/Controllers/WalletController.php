@@ -3875,21 +3875,27 @@ class WalletController extends Controller
         }
 
         $categoryId = intval($request->category_id);
-        $categoryName = trim((string) ($request->category_name ?? ''));
+        $rawCategoryName = trim((string) ($request->category_name ?? ''));
         $filter = strtolower(trim((string) ($request->filter ?? 'all')));
 
+        $isAllCategories = ($categoryId <= 0) || in_array(strtolower($rawCategoryName), ['all', 'star wallet', 'all gifts', '']);
+
         $category = null;
-        if ($categoryId > 0 && Schema::hasTable('tbl_gift_categories')) {
-            $category = DB::table('tbl_gift_categories')->where('id', $categoryId)->first();
-        }
-        if (!$category && !empty($categoryName) && Schema::hasTable('tbl_gift_categories')) {
-            $category = DB::table('tbl_gift_categories')->whereRaw('LOWER(name) = ?', [strtolower($categoryName)])->first();
-            if ($category) {
-                $categoryId = intval($category->id);
+        if (!$isAllCategories) {
+            if ($categoryId > 0 && Schema::hasTable('tbl_gift_categories')) {
+                $category = DB::table('tbl_gift_categories')->where('id', $categoryId)->first();
+            }
+            if (!$category && !empty($rawCategoryName) && Schema::hasTable('tbl_gift_categories')) {
+                $category = DB::table('tbl_gift_categories')->whereRaw('LOWER(name) = ?', [strtolower($rawCategoryName)])->first();
+                if ($category) {
+                    $categoryId = intval($category->id);
+                }
             }
         }
 
-        $resolvedCategoryName = $category ? (string) $category->name : ($categoryName ?: 'All');
+        $resolvedCategoryName = $isAllCategories
+            ? 'Star Wallet'
+            : ($category ? (string) $category->name : ($rawCategoryName ?: 'Star Wallet'));
 
         $settings = GlobalSettings::first();
         $diamondToStarRate = floatval($settings->diamond_to_star_rate ?? 1);
@@ -3898,13 +3904,46 @@ class WalletController extends Controller
         }
         $gifterReturnPercent = max(0, floatval($settings->gifter_return ?? 0));
 
-        $transactions = [];
-        $totalStars = 0;
-        $totalDiamonds = 0;
+        $hasUserPhotoCol = Schema::hasColumn('tbl_users', 'profile_photo');
+        $senderPhotoCol = $hasUserPhotoCol ? 'sender.profile_photo as sender_profile_image' : DB::raw('NULL as sender_profile_image');
+        $receiverPhotoCol = $hasUserPhotoCol ? 'receiver.profile_photo as receiver_profile_image' : DB::raw('NULL as receiver_profile_image');
 
+        $applyDateFilter = function ($q, $dateCol) use ($filter) {
+            switch ($filter) {
+                case 'today':
+                    $q->whereDate($dateCol, Carbon::today());
+                    break;
+                case 'yesterday':
+                    $q->whereDate($dateCol, Carbon::yesterday());
+                    break;
+                case 'week':
+                case 'this_week':
+                case 'this week':
+                    $q->whereBetween($dateCol, [
+                        Carbon::now()->startOfWeek(),
+                        Carbon::now()->endOfWeek(),
+                    ]);
+                    break;
+                case 'month':
+                case 'this_month':
+                case 'this month':
+                    $q->whereBetween($dateCol, [
+                        Carbon::now()->startOfMonth(),
+                        Carbon::now()->endOfMonth(),
+                    ]);
+                    break;
+                case 'all':
+                default:
+                    break;
+            }
+        };
+
+        $rawRows = collect();
+
+        // 1. Fetch from notification_users (direct/chat/video gifts)
         if (Schema::hasTable('notification_users') && Schema::hasTable('tbl_gifts')) {
-            $query = DB::table('notification_users as n')
-                ->join('tbl_gifts as g', 'g.id', '=', 'n.data_id')
+            $queryNotifs = DB::table('notification_users as n')
+                ->leftJoin('tbl_gifts as g', 'g.id', '=', 'n.data_id')
                 ->leftJoin('tbl_users as sender', 'sender.id', '=', 'n.from_user_id')
                 ->leftJoin('tbl_users as receiver', 'receiver.id', '=', 'n.to_user_id')
                 ->leftJoin('tbl_gift_categories as gc', 'gc.id', '=', 'g.gift_category_id')
@@ -3914,43 +3953,19 @@ class WalletController extends Controller
                       ->orWhere('n.from_user_id', $user->id);
                 });
 
-            if ($categoryId > 0) {
-                $query->where('g.gift_category_id', $categoryId);
-            } elseif (!empty($resolvedCategoryName) && strtolower($resolvedCategoryName) !== 'all') {
-                $query->whereRaw('LOWER(COALESCE(gc.name, "")) = ?', [strtolower($resolvedCategoryName)]);
+            if (!$isAllCategories) {
+                if ($categoryId > 0) {
+                    $queryNotifs->where('g.gift_category_id', $categoryId);
+                } elseif (!empty($resolvedCategoryName) && strtolower($resolvedCategoryName) !== 'all') {
+                    $queryNotifs->whereRaw('LOWER(COALESCE(gc.name, "")) = ?', [strtolower($resolvedCategoryName)]);
+                }
             }
 
-            switch ($filter) {
-                case 'today':
-                    $query->whereDate('n.created_at', Carbon::today());
-                    break;
-                case 'yesterday':
-                    $query->whereDate('n.created_at', Carbon::yesterday());
-                    break;
-                case 'week':
-                case 'this_week':
-                case 'this week':
-                    $query->whereBetween('n.created_at', [
-                        Carbon::now()->startOfWeek(),
-                        Carbon::now()->endOfWeek(),
-                    ]);
-                    break;
-                case 'month':
-                case 'this_month':
-                case 'this month':
-                    $query->whereBetween('n.created_at', [
-                        Carbon::now()->startOfMonth(),
-                        Carbon::now()->endOfMonth(),
-                    ]);
-                    break;
-                case 'all':
-                default:
-                    // all time
-                    break;
-            }
+            $applyDateFilter($queryNotifs, 'n.created_at');
 
-            $selectCols = [
-                'n.id',
+            $selectColsNotif = [
+                DB::raw("'notif' as source_type"),
+                'n.id as row_id',
                 'n.created_at',
                 'n.from_user_id',
                 'n.to_user_id',
@@ -3961,107 +3976,211 @@ class WalletController extends Controller
                 'gc.name as category_name',
                 'sender.fullname as sender_fullname',
                 'sender.username as sender_username',
-                'sender.profile_image as sender_profile_image',
+                $senderPhotoCol,
                 'receiver.fullname as receiver_fullname',
                 'receiver.username as receiver_username',
-                'receiver.profile_image as receiver_profile_image',
+                $receiverPhotoCol,
             ];
             if (Schema::hasColumn('tbl_gifts', 'title')) {
-                $selectCols[] = 'g.title as gift_title';
+                $selectColsNotif[] = 'g.title as gift_title';
+            } else {
+                $selectColsNotif[] = DB::raw('NULL as gift_title');
             }
             if (Schema::hasColumn('tbl_gifts', 'diamond_price')) {
-                $selectCols[] = 'g.diamond_price';
+                $selectColsNotif[] = 'g.diamond_price';
+            } else {
+                $selectColsNotif[] = DB::raw('NULL as diamond_price');
             }
 
-            $rows = $query->select($selectCols)
-                ->orderBy('n.created_at', 'DESC')
-                ->orderBy('n.id', 'DESC')
-                ->get();
+            $notifRows = $queryNotifs->select($selectColsNotif)->get();
+            $rawRows = $rawRows->concat($notifRows);
+        }
 
-            foreach ($rows as $row) {
-                // Gift name
-                $giftName = '';
-                if (!empty($row->gift_title) && strtolower(trim($row->gift_title)) !== 'gift') {
-                    $giftName = trim((string) $row->gift_title);
-                } elseif (!empty($row->gift_image)) {
-                    $filename = basename($row->gift_image);
-                    $filename = preg_replace('/^\d+_Shortzz_/', '', $filename);
-                    $filename = preg_replace('/\.[^.]+$/', '', $filename);
-                    $clean = trim(preg_replace('/[_\-+()0-9]+/', ' ', $filename));
-                    $giftName = !empty($clean) ? ucwords($clean) : 'Gift';
-                } else {
-                    $giftName = 'Gift';
-                }
+        // 2. Fetch from tbl_live_stream_comments (live gifts)
+        if (Schema::hasTable('tbl_live_stream_comments') && Schema::hasTable('tbl_gifts')) {
+            $queryLive = DB::table('tbl_live_stream_comments as c')
+                ->leftJoin('tbl_gifts as g', 'g.id', '=', 'c.gift_id')
+                ->leftJoin('tbl_users as sender', 'sender.id', '=', 'c.sender_id')
+                ->leftJoin('tbl_users as receiver', 'receiver.id', '=', 'c.receiver_id')
+                ->leftJoin('tbl_gift_categories as gc', 'gc.id', '=', 'g.gift_category_id')
+                ->where('c.comment_type', 'GIFT')
+                ->where(function ($q) use ($user) {
+                    $q->where('c.receiver_id', $user->id)
+                      ->orWhere('c.sender_id', $user->id);
+                });
 
-                // Diamonds spent
-                $diamonds = 0;
-                if (!empty($row->diamond_price) && intval($row->diamond_price) > 0) {
-                    $diamonds = intval($row->diamond_price);
-                } else {
-                    $diamonds = intval(ceil(intval($row->coin_price ?? 0) / $diamondToStarRate));
+            if (!$isAllCategories) {
+                if ($categoryId > 0) {
+                    $queryLive->where('g.gift_category_id', $categoryId);
+                } elseif (!empty($resolvedCategoryName) && strtolower($resolvedCategoryName) !== 'all') {
+                    $queryLive->whereRaw('LOWER(COALESCE(gc.name, "")) = ?', [strtolower($resolvedCategoryName)]);
                 }
-                if ($diamonds <= 0) {
-                    $diamonds = max(1, intval($row->coin_price ?? 1));
-                }
+            }
 
-                // Stars earned
-                $starsEarned = 0;
-                if (intval($row->to_user_id) === intval($user->id)) {
-                    // Receiver earned the stars
-                    $starsEarned = intval($row->coin_price ?? 0);
-                } else {
-                    // Gifter earned the gifter return stars
-                    $starsEarned = $gifterReturnPercent > 0
-                        ? intval(floor((intval($row->coin_price ?? 0) * $gifterReturnPercent) / 100))
-                        : intval($row->coin_price ?? 0);
-                    if ($starsEarned <= 0) {
-                        $starsEarned = intval($row->coin_price ?? 0);
+            $applyDateFilter($queryLive, 'c.created_at');
+
+            $selectColsLive = [
+                DB::raw("'live' as source_type"),
+                'c.id as row_id',
+                'c.created_at',
+                'c.sender_id as from_user_id',
+                'c.receiver_id as to_user_id',
+                'g.id as gift_id',
+                'g.gift_category_id',
+                'g.coin_price',
+                'g.image as gift_image',
+                'gc.name as category_name',
+                'sender.fullname as sender_fullname',
+                'sender.username as sender_username',
+                $senderPhotoCol,
+                'receiver.fullname as receiver_fullname',
+                'receiver.username as receiver_username',
+                $receiverPhotoCol,
+            ];
+            if (Schema::hasColumn('tbl_gifts', 'title')) {
+                $selectColsLive[] = 'g.title as gift_title';
+            } else {
+                $selectColsLive[] = DB::raw('NULL as gift_title');
+            }
+            if (Schema::hasColumn('tbl_gifts', 'diamond_price')) {
+                $selectColsLive[] = 'g.diamond_price';
+            } else {
+                $selectColsLive[] = DB::raw('NULL as diamond_price');
+            }
+
+            $liveRows = $queryLive->select($selectColsLive)->get();
+
+            // De-duplicate any live gifts that might already be recorded in notification_users
+            $existingNotifKeys = [];
+            foreach ($rawRows as $r) {
+                $key = $r->from_user_id . '_' . $r->to_user_id . '_' . $r->gift_id . '_' . Carbon::parse($r->created_at)->timestamp;
+                $existingNotifKeys[$key] = true;
+            }
+
+            foreach ($liveRows as $lr) {
+                $ts = Carbon::parse($lr->created_at)->timestamp;
+                $isDup = false;
+                for ($offset = -3; $offset <= 3; $offset++) {
+                    $k = $lr->from_user_id . '_' . $lr->to_user_id . '_' . $lr->gift_id . '_' . ($ts + $offset);
+                    if (isset($existingNotifKeys[$k])) {
+                        $isDup = true;
+                        break;
                     }
                 }
-
-                $isSender = (intval($row->from_user_id) === intval($user->id));
-                $senderName = $isSender
-                    ? 'You'
-                    : trim((string) ($row->sender_fullname ?: $row->sender_username ?: ('User #' . $row->from_user_id)));
-
-                $receiverName = trim((string) ($row->receiver_fullname ?: $row->receiver_username ?: ('User #' . $row->to_user_id)));
-
-                $createdAt = Carbon::parse($row->created_at);
-
-                $totalStars += $starsEarned;
-                $totalDiamonds += $diamonds;
-
-                $transactions[] = [
-                    'id' => intval($row->id),
-                    'gift_id' => intval($row->gift_id),
-                    'gift_name' => $giftName,
-                    'gift_image' => (string) ($row->gift_image ?? ''),
-                    'category_id' => intval($row->gift_category_id ?? $categoryId),
-                    'category_name' => (string) ($row->category_name ?: $resolvedCategoryName),
-                    'sender_id' => intval($row->from_user_id),
-                    'sender_name' => $senderName,
-                    'sender_username' => (string) ($row->sender_username ?? ''),
-                    'sender_image' => (string) ($row->sender_profile_image ?? ''),
-                    'receiver_id' => intval($row->to_user_id),
-                    'receiver_name' => $receiverName,
-                    'diamonds' => $diamonds,
-                    'stars_earned' => $starsEarned,
-                    'created_at' => $createdAt->format('Y-m-d H:i:s'),
-                    'date' => $createdAt->format('d M Y'),
-                    'time' => $createdAt->format('h:i A'),
-                    'relative_time' => $createdAt->diffForHumans(),
-                ];
+                if (!$isDup) {
+                    $rawRows->push($lr);
+                }
             }
         }
 
-        // If all-time filter and wallet table has recorded stars, align total_stars with wallet if larger
-        if ($filter === 'all' && Schema::hasTable('tbl_gifter_return_wallets') && $categoryId > 0) {
-            $walletCategoryStars = intval(DB::table('tbl_gifter_return_wallets')
-                ->where('user_id', $user->id)
-                ->where('gift_category_id', $categoryId)
-                ->sum('stars'));
-            if ($walletCategoryStars > $totalStars) {
-                $totalStars = $walletCategoryStars;
+        // Sort all transactions chronologically descending
+        $sortedRows = $rawRows->sortByDesc(function ($r) {
+            return Carbon::parse($r->created_at)->timestamp;
+        })->values();
+
+        $transactions = [];
+        $totalStars = 0;
+        $totalDiamonds = 0;
+
+        foreach ($sortedRows as $row) {
+            // Gift name
+            $giftName = '';
+            if (!empty($row->gift_title) && strtolower(trim($row->gift_title)) !== 'gift') {
+                $giftName = trim((string) $row->gift_title);
+            } elseif (!empty($row->gift_image)) {
+                $filename = basename($row->gift_image);
+                $filename = preg_replace('/^\d+_Shortzz_/', '', $filename);
+                $filename = preg_replace('/^\d+_GeoEdu_/', '', $filename);
+                $filename = preg_replace('/\.[^.]+$/', '', $filename);
+                $clean = trim(preg_replace('/[_\-+()0-9]+/', ' ', $filename));
+                $giftName = !empty($clean) ? ucwords($clean) : 'Gift';
+            } else {
+                $giftName = !empty($row->category_name) ? ($row->category_name . ' Gift') : 'Gift';
+            }
+
+            // Diamonds spent
+            $diamonds = 0;
+            if (!empty($row->diamond_price) && intval($row->diamond_price) > 0) {
+                $diamonds = intval($row->diamond_price);
+            } else {
+                $diamonds = intval(ceil(intval($row->coin_price ?? 0) / $diamondToStarRate));
+            }
+            if ($diamonds <= 0) {
+                $diamonds = max(1, intval($row->coin_price ?? 1));
+            }
+
+            // Stars earned
+            $starsEarned = 0;
+            if (intval($row->to_user_id) === intval($user->id)) {
+                // Receiver earned the stars
+                $starsEarned = intval($row->coin_price ?? 0);
+            } else {
+                // Gifter earned the gifter return stars
+                $starsEarned = $gifterReturnPercent > 0
+                    ? intval(floor((intval($row->coin_price ?? 0) * $gifterReturnPercent) / 100))
+                    : intval($row->coin_price ?? 0);
+                if ($starsEarned <= 0) {
+                    $starsEarned = intval($row->coin_price ?? 0);
+                }
+            }
+
+            $isSender = (intval($row->from_user_id) === intval($user->id));
+            $senderName = $isSender
+                ? 'You'
+                : trim((string) ($row->sender_fullname ?: $row->sender_username ?: ('User #' . $row->from_user_id)));
+
+            $receiverName = (intval($row->to_user_id) === intval($user->id))
+                ? 'You'
+                : trim((string) ($row->receiver_fullname ?: $row->receiver_username ?: ('User #' . $row->to_user_id)));
+
+            $createdAt = Carbon::parse($row->created_at);
+
+            $totalStars += $starsEarned;
+            $totalDiamonds += $diamonds;
+
+            $itemCategoryName = !empty($row->category_name)
+                ? (string) $row->category_name
+                : ($isAllCategories ? 'Star' : $resolvedCategoryName);
+
+            $transactions[] = [
+                'id' => intval($row->row_id),
+                'gift_id' => intval($row->gift_id ?? 0),
+                'gift_name' => $giftName,
+                'gift_image' => (string) ($row->gift_image ?? ''),
+                'category_id' => intval($row->gift_category_id ?? $categoryId),
+                'category_name' => $itemCategoryName,
+                'sender_id' => intval($row->from_user_id),
+                'sender_name' => $senderName,
+                'sender_username' => (string) ($row->sender_username ?? ''),
+                'sender_image' => (string) ($row->sender_profile_image ?? ''),
+                'receiver_id' => intval($row->to_user_id),
+                'receiver_name' => $receiverName,
+                'diamonds' => $diamonds,
+                'stars_earned' => $starsEarned,
+                'created_at' => $createdAt->format('Y-m-d H:i:s'),
+                'date' => $createdAt->format('d M Y'),
+                'time' => $createdAt->format('h:i A'),
+                'relative_time' => $createdAt->diffForHumans(),
+            ];
+        }
+
+        // If all-time filter and wallet table has recorded stars, ensure total_stars aligns with wallet
+        if ($filter === 'all' && Schema::hasTable('tbl_gifter_return_wallets')) {
+            if (!$isAllCategories && $categoryId > 0) {
+                $walletCategoryStars = intval(DB::table('tbl_gifter_return_wallets')
+                    ->where('user_id', $user->id)
+                    ->where('gift_category_id', $categoryId)
+                    ->sum('stars'));
+                if ($walletCategoryStars > $totalStars) {
+                    $totalStars = $walletCategoryStars;
+                }
+            } elseif ($isAllCategories) {
+                $walletTotalStars = intval(DB::table('tbl_gifter_return_wallets')
+                    ->where('user_id', $user->id)
+                    ->sum('stars'));
+                if ($walletTotalStars > $totalStars) {
+                    $totalStars = $walletTotalStars;
+                }
             }
         }
 
@@ -4329,6 +4448,471 @@ class WalletController extends Controller
                 'minimum_withdraw_limit' => round(floatval($settings->agent_commission_min_withdraw ?? 0), 2),
                 'transactions' => $transactions,
             ],
+        ]);
+    }
+
+    // ==========================================
+    // REQUESTED PAYOUTS (STAR-TO-MONEY CONVERSIONS)
+    // ==========================================
+
+    public function requestedPayouts()
+    {
+        $settings = GlobalSettings::first();
+        $totalRequests = RedeemRequests::count();
+        $pendingRequests = RedeemRequests::where('status', Constants::withdrawalPending)->count();
+        $approvedRequests = RedeemRequests::where('status', Constants::withdrawalCompleted)->count();
+        $rejectedRequests = RedeemRequests::where('status', Constants::withdrawalRejected)->count();
+
+        return view('requestedPayouts', [
+            'totalRequests' => $totalRequests,
+            'pendingRequests' => $pendingRequests,
+            'approvedRequests' => $approvedRequests,
+            'rejectedRequests' => $rejectedRequests,
+            'currency' => $settings->currency ?? '₹',
+        ]);
+    }
+
+    public function listRequestedPayouts(Request $request)
+    {
+        $query = RedeemRequests::query()->with('user');
+
+        if ($request->has('status_filter') && $request->status_filter !== '' && $request->status_filter !== 'all') {
+            $query->where('status', intval($request->status_filter));
+        }
+
+        $totalData = $query->count();
+
+        $limit = intval($request->input('length') ?? 10);
+        $start = intval($request->input('start') ?? 0);
+        $searchValue = $request->input('search.value');
+
+        if (!empty($searchValue)) {
+            $query->where(function ($q) use ($searchValue) {
+                $q->where('id', 'LIKE', "%{$searchValue}%")
+                    ->orWhere('request_number', 'LIKE', "%{$searchValue}%")
+                    ->orWhere('category_name', 'LIKE', "%{$searchValue}%")
+                    ->orWhere('payout_method', 'LIKE', "%{$searchValue}%")
+                    ->orWhere('transaction_id', 'LIKE', "%{$searchValue}%")
+                    ->orWhere('account_holder_name', 'LIKE', "%{$searchValue}%")
+                    ->orWhere('account_number', 'LIKE', "%{$searchValue}%")
+                    ->orWhere('upi_id', 'LIKE', "%{$searchValue}%")
+                    ->orWhere('phone_number', 'LIKE', "%{$searchValue}%")
+                    ->orWhereHas('user', function ($uq) use ($searchValue) {
+                        $uq->where('fullname', 'LIKE', "%{$searchValue}%")
+                            ->orWhere('username', 'LIKE', "%{$searchValue}%")
+                            ->orWhere('user_id', 'LIKE', "%{$searchValue}%");
+                    });
+            });
+        }
+
+        $totalFiltered = $query->count();
+
+        $items = $query->offset($start)
+            ->limit($limit)
+            ->orderBy('id', 'DESC')
+            ->get();
+
+        $settings = GlobalSettings::first();
+        $currency = $settings->currency ?? '₹';
+
+        $data = $items->map(function ($item) use ($currency) {
+            $user = $item->user;
+            $userCol = GlobalFunction::createUserDetailsColumn($item->user_id);
+            $availableStars = $user ? intval($user->coin_wallet) : 0;
+
+            // Category badge
+            $catBadge = '<span class="badge bg-secondary">' . e($item->category_name ?: 'All') . '</span>';
+            $lowerCat = strtolower($item->category_name ?? '');
+            if ($lowerCat === 'food') {
+                $catBadge = '<span class="badge bg-danger">Food</span>';
+            } elseif ($lowerCat === 'gold') {
+                $catBadge = '<span class="badge bg-warning text-dark">Gold</span>';
+            } elseif ($lowerCat === 'farms') {
+                $catBadge = '<span class="badge bg-success">Farms</span>';
+            }
+
+            // Requested Amount & Stars
+            $amountDisplay = '<h5 class="m-0 text-primary">' . $currency . ' ' . number_format(floatval($item->amount), 2) . '</h5>';
+            $amountDisplay .= '<small class="text-muted"><i class="uil-star me-1 text-warning"></i>' . number_format(intval($item->coins)) . ' Stars</small>';
+
+            // Payout details column
+            $payoutDetails = '';
+            if ($item->payout_method === 'GPay/UPI' || !empty($item->upi_id) || !empty($item->upi_number)) {
+                $payoutDetails .= '<span class="badge bg-success text-white mb-1">GPay / UPI</span><br>';
+                if (!empty($item->upi_id)) {
+                    $payoutDetails .= '<small><strong>UPI ID:</strong> ' . e($item->upi_id) . '</small><br>';
+                }
+                if (!empty($item->upi_number)) {
+                    $payoutDetails .= '<small><strong>GPay No:</strong> ' . e($item->upi_number) . '</small><br>';
+                }
+                if (!empty($item->phone_number)) {
+                    $payoutDetails .= '<small><strong>Phone:</strong> ' . e($item->phone_number) . '</small>';
+                }
+            } else {
+                $payoutDetails .= '<span class="badge bg-primary text-white mb-1">Bank Transfer</span><br>';
+                if (!empty($item->account_holder_name)) {
+                    $payoutDetails .= '<small><strong>Name:</strong> ' . e($item->account_holder_name) . '</small><br>';
+                }
+                if (!empty($item->account_number)) {
+                    $payoutDetails .= '<small><strong>A/C:</strong> ' . e($item->account_number) . '</small><br>';
+                }
+                if (!empty($item->ifsc_code)) {
+                    $payoutDetails .= '<small><strong>IFSC:</strong> ' . e($item->ifsc_code) . '</small><br>';
+                }
+                if (!empty($item->phone_number)) {
+                    $payoutDetails .= '<small><strong>Phone:</strong> ' . e($item->phone_number) . '</small>';
+                }
+            }
+
+            // Status Badge
+            $statusBadge = '<span class="badge bg-warning text-dark"><i class="uil-clock me-1"></i>Pending</span>';
+            if ($item->status == Constants::withdrawalCompleted) {
+                $statusBadge = '<span class="badge bg-success text-white"><i class="uil-check me-1"></i>Paid / Approved</span>';
+            } elseif ($item->status == Constants::withdrawalRejected) {
+                $statusBadge = '<span class="badge bg-danger text-white"><i class="uil-times me-1"></i>Rejected</span>';
+            }
+
+            // Payment Confirmation info
+            $paymentInfo = '-';
+            if ($item->status == Constants::withdrawalCompleted) {
+                $paymentInfo = '<div class="small">';
+                $paymentInfo .= '<strong>Txn ID:</strong> <span class="text-primary fw-bold">' . e($item->transaction_id ?? '-') . '</span><br>';
+                $paymentInfo .= '<strong>Paid:</strong> ' . $currency . ' ' . number_format(floatval($item->paid_amount ?: $item->amount), 2) . '<br>';
+                $paymentInfo .= '<strong>Paid on:</strong> ' . e($item->payment_date ?? '') . ' at ' . e($item->payment_time ?? '');
+                $paymentInfo .= '</div>';
+            }
+
+            $dateDisplay = $item->created_at ? Carbon::parse($item->created_at)->format('d M Y, h:i A') : '-';
+
+            // Actions
+            $actions = '<div class="btn-group">';
+            if ($item->status == Constants::withdrawalPending) {
+                $actions .= '<button type="button" class="btn btn-sm btn-success approve-request-btn" data-id="' . $item->id . '" data-amount="' . floatval($item->amount) . '" data-stars="' . intval($item->coins) . '" data-user="' . e($user->fullname ?? 'Host') . '" title="Confirm Payment & Approve"><i class="uil-check"></i> Approve</button>';
+                $actions .= '<button type="button" class="btn btn-sm btn-danger ms-1 reject-request-btn" data-id="' . $item->id . '" title="Reject Request"><i class="uil-times"></i> Reject</button>';
+            }
+            $actions .= '<button type="button" class="btn btn-sm btn-info ms-1 view-request-btn" data-id="' . $item->id . '" title="View Details"><i class="uil-eye"></i> View</button>';
+            $actions .= '</div>';
+
+            return [
+                '#' . $item->id . '<br><small class="text-muted">' . e($item->request_number ?? '') . '</small>',
+                $userCol,
+                '<span class="badge bg-warning text-dark fs-6"><i class="uil-star me-1"></i>' . number_format($availableStars) . '</span>',
+                $catBadge,
+                $amountDisplay,
+                $payoutDetails,
+                $dateDisplay,
+                $statusBadge,
+                $paymentInfo,
+                $actions,
+            ];
+        });
+
+        return response()->json([
+            'draw' => intval($request->input('draw')),
+            'recordsTotal' => intval($totalData),
+            'recordsFiltered' => intval($totalFiltered),
+            'data' => $data,
+        ]);
+    }
+
+    public function getRequestedPayoutDetails(Request $request)
+    {
+        $item = RedeemRequests::with('user')->find($request->id);
+        if (!$item) {
+            return response()->json(['status' => false, 'message' => 'Payout request not found.']);
+        }
+
+        $user = $item->user;
+        $settings = GlobalSettings::first();
+
+        return response()->json([
+            'status' => true,
+            'data' => [
+                'id' => $item->id,
+                'request_number' => $item->request_number,
+                'user_id' => $item->user_id,
+                'host_name' => $user->fullname ?? 'Unknown Host',
+                'host_username' => $user->username ?? '',
+                'host_identity' => $user->identity ?? ($user->user_id ?? ''),
+                'host_avatar' => !empty($user->profile_photo) ? url($user->profile_photo) : null,
+                'available_stars' => $user ? intval($user->coin_wallet) : 0,
+                'category_name' => $item->category_name ?: 'All',
+                'requested_stars' => intval($item->coins),
+                'requested_amount' => floatval($item->amount),
+                'currency' => $settings->currency ?? '₹',
+                'payout_method' => $item->payout_method ?: 'Bank Transfer',
+                'account_holder_name' => $item->account_holder_name ?? '-',
+                'account_number' => $item->account_number ?? '-',
+                'ifsc_code' => $item->ifsc_code ?? '-',
+                'phone_number' => $item->phone_number ?? '-',
+                'upi_number' => $item->upi_number ?? '-',
+                'upi_id' => $item->upi_id ?? '-',
+                'status' => intval($item->status),
+                'status_text' => $item->status == 1 ? 'Paid / Approved' : ($item->status == 2 ? 'Rejected' : 'Pending'),
+                'transaction_id' => $item->transaction_id ?? '',
+                'payment_date' => $item->payment_date ?? '',
+                'payment_time' => $item->payment_time ?? '',
+                'paid_amount' => $item->paid_amount !== null ? floatval($item->paid_amount) : floatval($item->amount),
+                'admin_note' => $item->admin_note ?? '',
+                'created_at' => $item->created_at ? Carbon::parse($item->created_at)->format('d M Y, h:i A') : '-',
+            ],
+        ]);
+    }
+
+    public function approveRequestedPayout(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'id' => 'required',
+            'transaction_id' => 'required|string|max:191',
+            'payment_date' => 'required|string',
+            'payment_time' => 'required|string',
+            'paid_amount' => 'required|numeric|min:0.01',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => $validator->errors()->first(),
+            ]);
+        }
+
+        $payout = RedeemRequests::find($request->id);
+        if (!$payout) {
+            return response()->json(['status' => false, 'message' => 'Payout request not found.']);
+        }
+
+        if ($payout->status == Constants::withdrawalCompleted) {
+            return response()->json(['status' => false, 'message' => 'This request is already paid and approved.']);
+        }
+
+        $payout->status = Constants::withdrawalCompleted;
+        $payout->transaction_id = trim($request->transaction_id);
+        $payout->payment_date = trim($request->payment_date);
+        $payout->payment_time = trim($request->payment_time);
+        $payout->paid_amount = floatval($request->paid_amount);
+        if ($request->filled('admin_note')) {
+            $payout->admin_note = trim($request->admin_note);
+        }
+        $payout->save();
+
+        // Also record in manual payouts for reporting tracking
+        try {
+            $manual = new ManualPayout();
+            $manual->user_id = $payout->user_id;
+            $manual->coins = $payout->coins;
+            $manual->amount = $payout->amount;
+            $manual->paid_amount = floatval($request->paid_amount);
+            $manual->transaction_id = trim($request->transaction_id);
+            $manual->period_type = 'star_conversion';
+            $manual->note = 'Approved Conversion #' . ($payout->request_number ?: $payout->id) . ($request->filled('admin_note') ? ': ' . $request->admin_note : '');
+            $manual->payout_date = trim($request->payment_date);
+            $manual->save();
+        } catch (Throwable $e) {
+            Log::warning('Could not create ManualPayout record: ' . $e->getMessage());
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Payment details saved and payout approved successfully!',
+        ]);
+    }
+
+    public function rejectRequestedPayout(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'id' => 'required',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => $validator->errors()->first(),
+            ]);
+        }
+
+        $payout = RedeemRequests::find($request->id);
+        if (!$payout) {
+            return response()->json(['status' => false, 'message' => 'Payout request not found.']);
+        }
+
+        if ($payout->status == Constants::withdrawalCompleted) {
+            return response()->json(['status' => false, 'message' => 'Cannot reject an already completed payout.']);
+        }
+
+        // Refund host stars back to wallet
+        $user = Users::find($payout->user_id);
+        if ($user) {
+            $user->coin_wallet += intval($payout->coins);
+            $user->save();
+        }
+
+        $payout->status = Constants::withdrawalRejected;
+        $payout->admin_note = $request->admin_note ?: ($request->note ?: 'Rejected by Admin');
+        $payout->save();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Payout request rejected and ' . $payout->coins . ' stars refunded to host successfully.',
+        ]);
+    }
+
+    // ==========================================
+    // HOST APP API: STAR-TO-MONEY CONVERSIONS
+    // ==========================================
+
+    public function submitStarConversionRequest(Request $request)
+    {
+        $token = $request->header('authtoken');
+        $user = GlobalFunction::getUserFromAuthToken($token);
+        if (!$user) {
+            return GlobalFunction::sendSimpleResponse(false, 'User not found!');
+        }
+        if ($user->is_freez == 1) {
+            return ['status' => false, 'message' => 'This user is frozen!'];
+        }
+
+        $rules = [
+            'coins' => 'required|integer|min:1',
+            'payout_method' => 'required|string',
+        ];
+
+        if ($request->payout_method === 'Bank Transfer') {
+            $rules['account_holder_name'] = 'required|string|max:191';
+            $rules['account_number'] = 'required|string|max:100';
+            $rules['ifsc_code'] = 'required|string|max:50';
+            $rules['phone_number'] = 'required|string|max:30';
+        } else {
+            // GPay / UPI
+            $rules['phone_number'] = 'required|string|max:30';
+        }
+
+        $validator = Validator::make($request->all(), $rules);
+        if ($validator->fails()) {
+            return response()->json(['status' => false, 'message' => $validator->errors()->first()]);
+        }
+
+        if ($request->payout_method === 'GPay/UPI' && empty($request->upi_number) && empty($request->upi_id)) {
+            return response()->json(['status' => false, 'message' => 'Please provide either GPay/UPI Number or UPI ID.']);
+        }
+
+        $coinsToConvert = intval($request->coins);
+        if ($coinsToConvert > intval($user->coin_wallet)) {
+            return GlobalFunction::sendSimpleResponse(false, 'Insufficient stars to convert. You currently have ' . intval($user->coin_wallet) . ' stars available.');
+        }
+
+        $settings = GlobalSettings::first();
+        $coinValue = floatval($settings->coin_value ?? 1);
+        if ($coinValue <= 0) {
+            $coinValue = 1;
+        }
+
+        $amount = round($coinsToConvert * $coinValue, 2);
+
+        // Deduct stars immediately from wallet to prevent double-spending
+        $user->coin_wallet = max(0, intval($user->coin_wallet) - $coinsToConvert);
+        $user->save();
+
+        $redeem = new RedeemRequests();
+        $redeem->request_number = 'CONV-' . $user->id . '-' . rand(1000, 9999);
+        $redeem->user_id = $user->id;
+        $redeem->category_id = intval($request->category_id ?? 0);
+        $redeem->category_name = trim((string) ($request->category_name ?: 'All'));
+        $redeem->payout_method = trim((string) $request->payout_method);
+        $redeem->gateway = trim((string) $request->payout_method);
+        $redeem->account_holder_name = $request->account_holder_name;
+        $redeem->account_number = $request->account_number;
+        $redeem->ifsc_code = $request->ifsc_code;
+        $redeem->phone_number = $request->phone_number;
+        $redeem->upi_number = $request->upi_number;
+        $redeem->upi_id = $request->upi_id;
+        $redeem->account = $request->payout_method === 'GPay/UPI'
+            ? ($request->upi_id ?: ($request->upi_number ?: $request->phone_number))
+            : ($request->account_number ?: '');
+        $redeem->coins = $coinsToConvert;
+        $redeem->coin_value = $coinValue;
+        $redeem->amount = $amount;
+        $redeem->status = Constants::withdrawalPending; // 0
+        $redeem->save();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Conversion request submitted successfully and sent to admin for approval.',
+            'data' => [
+                'id' => $redeem->id,
+                'request_number' => $redeem->request_number,
+                'coins' => $redeem->coins,
+                'amount' => $redeem->amount,
+                'remaining_stars' => intval($user->coin_wallet),
+            ],
+        ]);
+    }
+
+    public function fetchStarConversionHistory(Request $request)
+    {
+        $token = $request->header('authtoken');
+        $user = GlobalFunction::getUserFromAuthToken($token);
+        if (!$user) {
+            return GlobalFunction::sendSimpleResponse(false, 'User not found!');
+        }
+
+        $settings = GlobalSettings::first();
+        $currency = $settings->currency ?? '₹';
+
+        $records = RedeemRequests::where('user_id', $user->id)
+            ->orderBy('id', 'DESC')
+            ->get()
+            ->map(function ($item) use ($currency) {
+                return [
+                    'id' => intval($item->id),
+                    'request_number' => (string) ($item->request_number ?? ''),
+                    'category_id' => intval($item->category_id ?? 0),
+                    'category_name' => (string) ($item->category_name ?: 'All'),
+                    'payout_method' => (string) ($item->payout_method ?: ($item->gateway ?: 'Bank Transfer')),
+                    'account_holder_name' => (string) ($item->account_holder_name ?? ''),
+                    'account_number' => (string) ($item->account_number ?? ''),
+                    'ifsc_code' => (string) ($item->ifsc_code ?? ''),
+                    'phone_number' => (string) ($item->phone_number ?? ''),
+                    'upi_number' => (string) ($item->upi_number ?? ''),
+                    'upi_id' => (string) ($item->upi_id ?? ''),
+                    'coins' => intval($item->coins),
+                    'coin_value' => floatval($item->coin_value),
+                    'amount' => floatval($item->amount),
+                    'paid_amount' => $item->paid_amount !== null ? floatval($item->paid_amount) : floatval($item->amount),
+                    'status' => intval($item->status),
+                    'status_text' => $item->status == 1 ? 'Paid / Approved' : ($item->status == 2 ? 'Rejected' : 'Pending'),
+                    'transaction_id' => (string) ($item->transaction_id ?? ''),
+                    'payment_date' => (string) ($item->payment_date ?? ''),
+                    'payment_time' => (string) ($item->payment_time ?? ''),
+                    'admin_note' => (string) ($item->admin_note ?? ''),
+                    'currency' => $currency,
+                    'created_at' => $item->created_at ? Carbon::parse($item->created_at)->format('d M Y, h:i A') : '',
+                ];
+            });
+
+        return GlobalFunction::sendDataResponse(true, 'Star conversion history fetched successfully', $records);
+    }
+
+    public function fetchConversionRateInfo(Request $request)
+    {
+        $token = $request->header('authtoken');
+        $user = GlobalFunction::getUserFromAuthToken($token);
+        if (!$user) {
+            return GlobalFunction::sendSimpleResponse(false, 'User not found!');
+        }
+
+        $settings = GlobalSettings::first();
+        $coinValue = floatval($settings->coin_value ?? 1);
+        if ($coinValue <= 0) {
+            $coinValue = 1;
+        }
+
+        return response()->json([
+            'status' => true,
+            'coin_value' => $coinValue,
+            'currency' => $settings->currency ?? '₹',
+            'min_redeem_coins' => intval($settings->min_redeem_coins ?? 1),
+            'total_stars' => intval($user->coin_wallet),
+            'lifetime_stars' => intval($user->coin_collected_lifetime ?? $user->coin_wallet),
         ]);
     }
 }

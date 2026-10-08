@@ -38,13 +38,36 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen>
   bool _verifying = false;
   bool _resending = false;
   bool _isSuccessVerified = false;
+  int _fieldRevision = 0;
 
   late AnimationController _pulseCtrl;
   late Animation<double> _pulseAnim;
 
+  void _clearOtpFields({bool refocus = true}) {
+    widget.otpController.value = const TextEditingValue(
+      text: '',
+      selection: TextSelection.collapsed(offset: 0),
+    );
+    if (mounted) {
+      setState(() {
+        _fieldRevision++;
+      });
+    }
+    if (refocus && !_isSuccessVerified) {
+      _hiddenFocusNode.unfocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_isSuccessVerified) {
+          _hiddenFocusNode.requestFocus();
+        }
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    // Fresh start: ensure controller is empty and reset to offset 0
+    _clearOtpFields(refocus: false);
     _startTimer();
     widget.otpController.addListener(_onOtpChanged);
     _hiddenFocusNode.addListener(_onOtpChanged);
@@ -62,6 +85,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen>
   }
 
   void _onOtpChanged() {
+    if (!mounted) return;
     setState(() {});
     // Auto-verify when 6 digits are reached
     if (widget.otpController.text.trim().length == 6 &&
@@ -131,19 +155,33 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen>
         Navigator.of(context).pop();
       }
     } else {
+      HapticFeedback.lightImpact();
       setState(() => _verifying = false);
+      // Requirement: "If an incorrect OTP is submitted, show the existing wrong-OTP error normally,
+      // but do not permanently lock or retain the entered value."
+      // Clear OTP input fields immediately so user can enter fresh OTP without being locked:
+      _clearOtpFields(refocus: true);
     }
   }
 
   Future<void> _resend() async {
     if (_secondsLeft > 0 || _resending || _isSuccessVerified) return;
+
+    // 1. Immediately clear/reset all OTP input fields, controller, focus, and error state
+    _clearOtpFields(refocus: false);
+    ScaffoldMessenger.of(context).clearSnackBars();
+
     setState(() => _resending = true);
-    widget.otpController.clear();
+
+    // 2. Call onResend to generate and send fresh OTP
     await widget.onResend();
     if (!mounted) return;
+
     setState(() => _resending = false);
     _startTimer();
-    _hiddenFocusNode.requestFocus();
+
+    // 3. Ensure keyboard/focus moves correctly to the first OTP field with a completely fresh state
+    _clearOtpFields(refocus: true);
   }
 
   @override
@@ -486,7 +524,13 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen>
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
-        if (!_isSuccessVerified) _hiddenFocusNode.requestFocus();
+        if (!_isSuccessVerified) {
+          if (widget.otpController.text.length == 6) {
+            _clearOtpFields(refocus: true);
+          } else {
+            _hiddenFocusNode.requestFocus();
+          }
+        }
       },
       child: Stack(
         alignment: Alignment.center,
@@ -500,6 +544,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen>
             child: SizedBox(
               height: 58,
               child: TextField(
+                key: ValueKey('otp_hidden_field_rev_$_fieldRevision'),
                 controller: widget.otpController,
                 focusNode: _hiddenFocusNode,
                 enabled: !_isSuccessVerified,

@@ -35,6 +35,9 @@ import 'package:zego_express_engine/zego_express_engine.dart';
 import 'package:geoedu/common/manager/gift_audio_player.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/entry_effects_widget.dart'
     show AnimatedSvgPlayer;
+import 'package:geoedu/common/widget/live_room/target_achieved_dialog.dart';
+import 'package:geoedu/common/widget/live_room/set_live_target_sheet.dart';
+import 'package:geoedu/common/widget/live_room/favourite_gift_sheet.dart';
 
 class AudioRoomController extends BaseController {
   final AudioRoom room;
@@ -150,7 +153,7 @@ class AudioRoomController extends BaseController {
   final textCommentController = TextEditingController();
   StreamSubscription? _commentsSubscription;
 
-  // PK Battle (audio-host-vs-audio-host)
+  // PK Battle (audio-host-vs-audio-host or host-vs-call-participant)
   Rx<int?> pkOpponentId = Rx<int?>(null);
   Rx<String?> pkStatus = Rx<String?>(null);
   Rx<int?> pkStartedAt = Rx<int?>(null);
@@ -158,11 +161,15 @@ class AudioRoomController extends BaseController {
   RxInt myPkCoins = 0.obs;
   RxInt opponentPkCoins = 0.obs;
   Rx<int?> pkInviteFrom = Rx<int?>(null);
+  RxList<int> pkInvitedUserIds = <int>[].obs;
+  Rx<OnlineUser?> pkOpponentUser = Rx<OnlineUser?>(null);
   Rx<AudioRoom?> opponentRoom = Rx<AudioRoom?>(null);
   RxInt pkRemainingSeconds = 0.obs;
   StreamSubscription? _opponentDocSubscription;
   Timer? _pkTimer;
   void Function(int inviterHostId)? onPkInviteReceived;
+  void Function(int hostId, String hostName)? onCallParticipantPkInviteReceived;
+  bool isPkInviteDialogOpen = false;
 
   // Room-wide gift animation broadcast (same pattern as video livestream's
   // GiftEffectWidget/listenGifts) — everyone in the room sees the effect,
@@ -184,10 +191,158 @@ class AudioRoomController extends BaseController {
   RxInt connectedCallsCount = 0.obs;
   RxInt sessionFollowersGained = 0.obs;
 
-  // Host-set diamond goal for this session — host-local only, matching the
-  // video top bar's Target pill (no backend field for a session goal).
   RxInt targetDiamonds = 0.obs;
-  void setTargetDiamonds(int value) => targetDiamonds.value = value;
+  void setTargetDiamonds(int value) async {
+    targetDiamonds.value = value;
+    checkTargets();
+    if (isHost && room.hostId != null) {
+      try {
+        await _db
+            .collection(FirebaseConst.audioRooms)
+            .doc(room.hostId.toString())
+            .update({'target_diamonds': value});
+      } catch (e) {
+        Loggers.error('setTargetDiamonds error: $e');
+      }
+    }
+  }
+
+  // Favorite / Mission Gift target count (defaults to 3, can be increased)
+  RxInt favouriteGiftTarget = 3.obs;
+  void setFavouriteGiftTarget(int value) async {
+    favouriteGiftTarget.value = value;
+    checkTargets();
+    if (isHost && room.hostId != null) {
+      try {
+        await _db
+            .collection(FirebaseConst.audioRooms)
+            .doc(room.hostId.toString())
+            .update({'favourite_gift_target': value});
+      } catch (e) {
+        Loggers.error('setFavouriteGiftTarget error: $e');
+      }
+    }
+  }
+
+  int get favouriteGiftReceivedCount {
+    final targetGift = featuredGift;
+    if (targetGift == null) return 0;
+    final name = targetGift.displayName;
+    final title = targetGift.title;
+    return receivedGiftsHistory.where((g) {
+      if (name.isNotEmpty && g.giftName.toLowerCase() == name.toLowerCase()) {
+        return true;
+      }
+      if (title != null &&
+          title.isNotEmpty &&
+          g.giftName.toLowerCase() == title.toLowerCase()) {
+        return true;
+      }
+      return false;
+    }).length;
+  }
+
+  int _lastAchievedDiamondTarget = 0;
+  int _lastAchievedFavGiftTarget = 0;
+  bool _isTargetDialogShowing = false;
+
+  void checkTargets() {
+    if (!isHost) return;
+
+    // 1. Check Diamond Target
+    final currentDiamonds = hostStarTotal.value;
+    final diamondTarget = targetDiamonds.value;
+    if (diamondTarget > 0 &&
+        currentDiamonds >= diamondTarget &&
+        _lastAchievedDiamondTarget != diamondTarget) {
+      _lastAchievedDiamondTarget = diamondTarget;
+      _showDiamondTargetAchieved(currentDiamonds, diamondTarget);
+      return;
+    }
+
+    // 2. Check Favorite Gift Target
+    final favCount = favouriteGiftReceivedCount;
+    final favTarget = favouriteGiftTarget.value;
+    if (favTarget > 0 &&
+        favCount >= favTarget &&
+        _lastAchievedFavGiftTarget != favTarget) {
+      _lastAchievedFavGiftTarget = favTarget;
+      _showFavGiftTargetAchieved(favCount, favTarget);
+    }
+  }
+
+  void _showDiamondTargetAchieved(int currentDiamonds, int diamondTarget) {
+    if (_isTargetDialogShowing) return;
+    _isTargetDialogShowing = true;
+    TargetAchievedDialog.show(
+      isDiamond: true,
+      targetValue: diamondTarget,
+      currentValue: currentDiamonds,
+      onIncreaseTarget: () {
+        _isTargetDialogShowing = false;
+        final ctx = Get.context;
+        if (ctx != null) {
+          SetLiveTargetSheet.show(
+            ctx,
+            initialValue: diamondTarget + 50,
+            onTargetSet: (val) {
+              setTargetDiamonds(val);
+            },
+          );
+        }
+      },
+      onOkay: () {
+        _isTargetDialogShowing = false;
+      },
+    );
+  }
+
+  void _showFavGiftTargetAchieved(int favCount, int favTarget) {
+    if (_isTargetDialogShowing) return;
+    _isTargetDialogShowing = true;
+    final gift = featuredGift;
+    TargetAchievedDialog.show(
+      isDiamond: false,
+      targetValue: favTarget,
+      currentValue: favCount,
+      gift: gift,
+      onIncreaseTarget: () {
+        _isTargetDialogShowing = false;
+        final ctx = Get.context;
+        if (ctx != null) {
+          SetFavoriteGiftTargetSheet.show(
+            ctx,
+            gift: gift,
+            currentTarget: favTarget,
+            currentCount: favCount,
+            onTargetSet: (newTarget) {
+              setFavouriteGiftTarget(newTarget);
+            },
+            onChangeGift: () {
+              showFavouriteGiftSheet(ctx);
+            },
+          );
+        }
+      },
+      onOkay: () {
+        _isTargetDialogShowing = false;
+      },
+    );
+  }
+
+  void showFavouriteGiftSheet(BuildContext context) {
+    final availableGifts = this.availableGifts.isNotEmpty
+        ? this.availableGifts
+        : (SessionManager.instance.getSettings()?.availableGifts ?? []);
+
+    FavouriteGiftSheet.show(
+      context: context,
+      currentFavGiftId: favouriteGiftId.value,
+      availableGifts: availableGifts,
+      onSetGift: (gift) => setFavouriteGift(gift),
+      onRemoveGift: () => removeFavouriteGift(),
+    );
+  }
   double get targetProgress {
     final target = targetDiamonds.value;
     if (target <= 0) return 0;
@@ -251,8 +406,16 @@ class AudioRoomController extends BaseController {
     musicUrls.value = List<String>.from(room.musicUrls ?? []);
     isAutoMode.value = room.isAutoMode ?? false;
     isRoyalMode.value = room.isRoyalMode ?? false;
+    if (room.targetDiamonds != null && room.targetDiamonds! > 0) {
+      targetDiamonds.value = room.targetDiamonds!;
+    }
+    if (room.favouriteGiftTarget != null && room.favouriteGiftTarget! > 0) {
+      favouriteGiftTarget.value = room.favouriteGiftTarget!;
+    }
 
     _refreshGiftsAndPreload();
+    hostStarTotal.listen((_) => checkTargets());
+    receivedGiftsHistory.listen((_) => checkTargets());
   }
 
   @override
@@ -735,6 +898,12 @@ class AudioRoomController extends BaseController {
       isRoomActive.value = updatedRoom.isActive ?? false;
       isAutoMode.value = updatedRoom.isAutoMode ?? false;
       favouriteGiftId.value = updatedRoom.favouriteGiftId;
+      if (updatedRoom.targetDiamonds != null) {
+        targetDiamonds.value = updatedRoom.targetDiamonds!;
+      }
+      if (updatedRoom.favouriteGiftTarget != null) {
+        favouriteGiftTarget.value = updatedRoom.favouriteGiftTarget!;
+      }
       isRoyalMode.value = updatedRoom.isRoyalMode ?? false;
       themeIndex.value = updatedRoom.themeIndex;
       mutedSpeakerIds.value = List<int>.from(updatedRoom.mutedSpeakerIds ?? []);
@@ -757,6 +926,8 @@ class AudioRoomController extends BaseController {
       }
 
       // PK Battle
+      pkInvitedUserIds.value = List<int>.from(updatedRoom.pkInvitedUserIds ?? []);
+
       final newInviteFrom = updatedRoom.pkInviteFrom;
       final isNewInvite =
           isHost && newInviteFrom != null && newInviteFrom != pkInviteFrom.value;
@@ -764,16 +935,36 @@ class AudioRoomController extends BaseController {
       if (isNewInvite) {
         onPkInviteReceived?.call(newInviteFrom);
       }
+
+      // Check if this participant was invited to PK by the host
+      if (!isHost &&
+          pkInvitedUserIds.contains(myId) &&
+          updatedRoom.pkOpponentId == null &&
+          updatedRoom.pkStatus != 'running' &&
+          !isPkInviteDialogOpen) {
+        isPkInviteDialogOpen = true;
+        onCallParticipantPkInviteReceived?.call(
+            room.hostId ?? 0, room.hostName ?? 'Host');
+      }
+
       pkStatus.value = updatedRoom.pkStatus;
       pkStartedAt.value = updatedRoom.pkStartedAt;
       pkDurationMinutes.value = updatedRoom.pkDurationMinutes ?? 0;
       myPkCoins.value = updatedRoom.pkCoins ?? 0;
+      opponentPkCoins.value = updatedRoom.pkOpponentCoins ?? 0;
       final newOpponentId = updatedRoom.pkOpponentId;
       if (newOpponentId != pkOpponentId.value) {
         pkOpponentId.value = newOpponentId;
         if (newOpponentId != null) {
+          final existing = participants.firstWhereOrNull((p) => p.userId == newOpponentId);
+          if (existing != null) {
+            pkOpponentUser.value = existing;
+          } else {
+            _fetchUserForPkOpponent(newOpponentId);
+          }
           _listenOpponentDoc(newOpponentId);
         } else {
+          pkOpponentUser.value = null;
           _stopListenOpponentDoc();
         }
       }
@@ -1058,14 +1249,22 @@ class AudioRoomController extends BaseController {
   void leaveSpeaker() async {
     if (myUser?.id == null) return;
     isSpeaker.value = false;
+    final uid = myUser!.id!;
     try {
       await ZegoExpressEngine.instance.stopPublishingStream();
+      final updates = <String, dynamic>{
+        'speaker_ids': FieldValue.arrayRemove([uid]),
+        'pk_invited_user_ids': FieldValue.arrayRemove([uid]),
+      };
+      if (pkOpponentId.value == uid) {
+        updates['pk_opponent_id'] = null;
+        updates['pk_status'] = null;
+        updates['pk_started_at'] = null;
+      }
       await _db
           .collection(FirebaseConst.audioRooms)
           .doc(room.hostId.toString())
-          .update({
-        'speaker_ids': FieldValue.arrayRemove([myUser!.id]),
-      });
+          .update(updates);
     } catch (e) {
       Loggers.error('leaveSpeaker error: $e');
     }
@@ -1119,12 +1318,19 @@ class AudioRoomController extends BaseController {
     if (!isHost) return;
     final speakerStreamId = '${room.roomId}_$userId';
     _stopRemoteSpeakerStream(speakerStreamId);
+    final updates = <String, dynamic>{
+      'speaker_ids': FieldValue.arrayRemove([userId]),
+      'pk_invited_user_ids': FieldValue.arrayRemove([userId]),
+    };
+    if (pkOpponentId.value == userId) {
+      updates['pk_opponent_id'] = null;
+      updates['pk_status'] = null;
+      updates['pk_started_at'] = null;
+    }
     await _db
         .collection(FirebaseConst.audioRooms)
         .doc(room.hostId.toString())
-        .update({
-      'speaker_ids': FieldValue.arrayRemove([userId]),
-    });
+        .update(updates);
   }
 
   void _notifySpeakerLeft(int userId) {
@@ -1291,7 +1497,135 @@ class AudioRoomController extends BaseController {
     });
   }
 
-  /// Invite another live host to a PK battle.
+  Future<void> _fetchUserForPkOpponent(int userId) async {
+    try {
+      final doc =
+          await _db.collection(FirebaseConst.users).doc(userId.toString()).get();
+      if (doc.exists) {
+        final data = doc.data();
+        pkOpponentUser.value = OnlineUser(
+          userId: userId,
+          fullname: data?['fullname'] ?? data?['name'] ?? 'User $userId',
+          username: data?['username'],
+          profilePhoto: data?['profile_photo'] ?? data?['photo'],
+        );
+      }
+    } catch (_) {}
+  }
+
+  /// Host invites an active call participant (speaker) to PK Battle
+  Future<void> sendPkInviteToParticipant(int userId) async {
+    if (!isHost) return;
+    if (!speakerIds.contains(userId) || userId == room.hostId) {
+      showSnackBar('User is not an active call participant');
+      return;
+    }
+    if (pkOpponentId.value != null || pkStatus.value == 'running') {
+      showSnackBar('PK Battle already started');
+      return;
+    }
+    await _db
+        .collection(FirebaseConst.audioRooms)
+        .doc(room.hostId.toString())
+        .update({
+      'pk_status': 'inviting',
+      'pk_invited_user_ids': FieldValue.arrayUnion([userId]),
+    });
+  }
+
+  /// Host cancels PK invitation sent to a call participant
+  void cancelPkInviteToParticipant(int userId) async {
+    if (!isHost) return;
+    await _db
+        .collection(FirebaseConst.audioRooms)
+        .doc(room.hostId.toString())
+        .update({
+      'pk_invited_user_ids': FieldValue.arrayRemove([userId]),
+    });
+  }
+
+  /// Call participant accepts PK invitation from host
+  /// Enforces validation & First Acceptance Wins (maximum 2 participants: Host + 1 Opponent)
+  Future<void> acceptPkInviteFromHost(int myUserId) async {
+    isPkInviteDialogOpen = false;
+
+    // 5. Validation before acceptance
+    if (!participantIds.contains(myUserId)) {
+      showSnackBar('You are no longer inside the classroom');
+      return;
+    }
+    if (!speakerIds.contains(myUserId) || myUserId == room.hostId) {
+      showSnackBar('You are no longer an active call participant');
+      return;
+    }
+    if (pkOpponentId.value != null || pkStatus.value == 'running') {
+      showSnackBar('PK Battle already started.');
+      return;
+    }
+
+    final roomRef =
+        _db.collection(FirebaseConst.audioRooms).doc(room.hostId.toString());
+
+    try {
+      await _db.runTransaction((transaction) async {
+        final snapshot = await transaction.get(roomRef);
+        if (!snapshot.exists) {
+          throw 'Classroom ended';
+        }
+        final data = snapshot.data()!;
+        final currentOpponent = data['pk_opponent_id'];
+        final currentStatus = data['pk_status'];
+        final currentSpeakers = List<int>.from(data['speaker_ids'] ?? []);
+
+        // Mutex check: opponent slot must be empty!
+        if (currentOpponent != null || currentStatus == 'running') {
+          throw 'PK Battle already started.';
+        }
+        if (!currentSpeakers.contains(myUserId)) {
+          throw 'You are no longer an active call participant.';
+        }
+
+        final duration =
+            SessionManager.instance.getSettings()?.battleDurationMinutes ??
+                AppRes.battleDurationInMinutes;
+        final now = DateTime.now().millisecondsSinceEpoch;
+
+        // Atomically lock opponent slot and invalidate all other pending invitations!
+        transaction.update(roomRef, {
+          'pk_opponent_id': myUserId,
+          'pk_status': 'running',
+          'pk_started_at': now,
+          'pk_duration_minutes': duration,
+          'pk_coins': 0,
+          'pk_opponent_coins': 0,
+          'pk_invited_user_ids': [], // Clears all other pending invitations
+        });
+      });
+      showSnackBar('PK Battle started!');
+    } catch (e) {
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      if (msg.contains('PK Battle already started')) {
+        showSnackBar('PK Battle already started.');
+      } else if (msg.contains('no longer an active call participant')) {
+        showSnackBar('You are no longer an active call participant.');
+      } else {
+        showSnackBar('This PK Battle already has an opponent.');
+      }
+    }
+  }
+
+  /// Call participant rejects PK invitation
+  void rejectPkInviteFromHost(int myUserId) async {
+    isPkInviteDialogOpen = false;
+    await _db
+        .collection(FirebaseConst.audioRooms)
+        .doc(room.hostId.toString())
+        .update({
+      'pk_invited_user_ids': FieldValue.arrayRemove([myUserId]),
+    });
+  }
+
+  /// Legacy host-to-host invite
   Future<void> invitePkBattle(int opponentHostId) async {
     if (!isHost) return;
     await _db
@@ -1350,28 +1684,32 @@ class AudioRoomController extends BaseController {
         .update({'pk_invite_from': null});
   }
 
-  /// Ends the battle on both rooms and reports the winner.
+  /// Ends the battle and reports the winner.
   Future<void> endPkBattle() async {
-    if (!isHost || pkOpponentId.value == null) return;
-    final opponentId = pkOpponentId.value!;
+    if (!isHost && pkOpponentId.value != myUser?.id) return;
+    final opponentId = pkOpponentId.value;
     final myCoins = myPkCoins.value;
     final theirCoins = opponentPkCoins.value;
 
     try {
-      await GiftWalletService.instance.saveBattleResult(
-        mode: 'audio',
-        user1Id: room.hostId!,
-        user2Id: opponentId,
-        user1Coins: myCoins,
-        user2Coins: theirCoins,
-        durationMinutes: pkDurationMinutes.value,
-      );
+      if (opponentId != null) {
+        await GiftWalletService.instance.saveBattleResult(
+          mode: 'audio',
+          user1Id: room.hostId!,
+          user2Id: opponentId,
+          user1Coins: myCoins,
+          user2Coins: theirCoins,
+          durationMinutes: pkDurationMinutes.value,
+        );
+      }
     } catch (e) {
       Loggers.error('AudioRoom: save battle result error: $e');
     }
 
     await _clearPkFields(room.hostId);
-    await _clearPkFields(opponentId);
+    if (opponentId != null && opponentId != room.hostId) {
+      await _clearPkFields(opponentId);
+    }
 
     if (myCoins == theirCoins) {
       showSnackBar('PK Battle ended in a draw!');
@@ -1390,6 +1728,8 @@ class AudioRoomController extends BaseController {
         'pk_status': null,
         'pk_started_at': null,
         'pk_coins': null,
+        'pk_opponent_coins': null,
+        'pk_invited_user_ids': [],
       });
     } catch (e) {
       Loggers.error('AudioRoom: clear PK fields error: $e');

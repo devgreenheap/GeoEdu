@@ -25,7 +25,15 @@ class CustomBackButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap ?? () => Get.back(),
+      onTap: () {
+        if (onTap != null) {
+          onTap!();
+        } else if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        } else {
+          Get.back();
+        }
+      },
       child: Padding(
         padding: padding ?? const EdgeInsets.all(3.0),
         child: Image.asset(

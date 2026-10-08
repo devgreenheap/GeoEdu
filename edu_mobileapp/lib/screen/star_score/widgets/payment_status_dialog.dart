@@ -4,6 +4,10 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:geoedu/common/manager/logger.dart';
+import 'package:geoedu/common/manager/session_manager.dart';
+import 'package:geoedu/model/diamond_purchase/diamond_purchase_model.dart';
+import 'package:geoedu/screen/diamond_purchase/invoice_preview_screen.dart';
+import 'package:geoedu/screen/diamond_purchase/service/invoice_generator.dart';
 import 'package:geoedu/utilities/color_res.dart';
 
 class PaymentAudioPlayer {
@@ -49,6 +53,7 @@ class PaymentStatusDialog extends StatelessWidget {
   final String transactionId;
   final DateTime paymentTime;
   final VoidCallback? onDone;
+  final DiamondTransactionModel? transaction;
 
   const PaymentStatusDialog({
     super.key,
@@ -60,6 +65,7 @@ class PaymentStatusDialog extends StatelessWidget {
     required this.transactionId,
     required this.paymentTime,
     this.onDone,
+    this.transaction,
   });
 
   static Future<void> showSuccess({
@@ -68,6 +74,7 @@ class PaymentStatusDialog extends StatelessWidget {
     required String transactionId,
     DateTime? paymentTime,
     VoidCallback? onDone,
+    DiamondTransactionModel? transaction,
   }) async {
     PaymentAudioPlayer.playSuccess();
     await Get.dialog(
@@ -80,6 +87,7 @@ class PaymentStatusDialog extends StatelessWidget {
         transactionId: transactionId,
         paymentTime: paymentTime ?? DateTime.now(),
         onDone: onDone,
+        transaction: transaction,
       ),
       barrierDismissible: false,
     );
@@ -357,7 +365,46 @@ class PaymentStatusDialog extends StatelessWidget {
                   ),
                 ),
 
-                const SizedBox(height: 24),
+                // Download Invoice Button (Success only: below transaction details, above Done button)
+                if (isSuccess) ...[
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(
+                          color: const Color(0xFF00E676).withValues(alpha: 0.6),
+                          width: 1.3,
+                        ),
+                        backgroundColor:
+                            const Color(0xFF00E676).withValues(alpha: 0.08),
+                        foregroundColor: const Color(0xFF00E676),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      icon: const Icon(
+                        Icons.download_rounded,
+                        color: Color(0xFF00E676),
+                        size: 20,
+                      ),
+                      label: const Text(
+                        'Download Invoice',
+                        style: TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF00E676),
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                      onPressed: () => _showInvoiceOptions(context),
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 12),
 
                 // Action Button
                 SizedBox(
@@ -391,6 +438,140 @@ class PaymentStatusDialog extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  DiamondTransactionModel _resolveTransaction() {
+    if (transaction != null) return transaction!;
+    final user = SessionManager.instance.getUser();
+    final cleanTxnId = _cleanTransactionId(transactionId);
+    final count = int.tryParse(diamonds.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+
+    return DiamondTransactionModel(
+      title: diamonds.isNotEmpty ? '$diamonds Diamonds' : 'Diamond Purchase',
+      diamonds: count,
+      amount: amount,
+      originalPrice: amount,
+      discount: 0.0,
+      currency: 'INR',
+      transactionId: cleanTxnId,
+      paymentId: cleanTxnId,
+      dateTime: paymentTime,
+      date: DateFormat('dd/MM/yy').format(paymentTime),
+      time: DateFormat('hh:mm a').format(paymentTime),
+      createdAt: DateFormat('yyyy-MM-dd HH:mm:ss').format(paymentTime),
+      status: isSuccess ? 'SUCCESS' : 'FAILED',
+      paymentMode: 'Online / Razorpay',
+      placeOfSupply: 'Tamil Nadu, India',
+      userName: user?.fullname ?? user?.username ?? 'GeoEdu User',
+      userPhone: user?.userMobileNo,
+      userEmail: user?.userEmail ?? user?.identity,
+    );
+  }
+
+  void _showInvoiceOptions(BuildContext context) {
+    final purchase = _resolveTransaction();
+    final txnId = purchase.paymentId ?? purchase.transactionId ?? 'N/A';
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        decoration: const BoxDecoration(
+          color: Color(0xFF1B1824),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 44,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Tax Invoice',
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Transaction ID: $txnId',
+              style: const TextStyle(fontSize: 12, color: Colors.white60),
+            ),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF7A00).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.visibility_rounded,
+                    color: Color(0xFFFF7A00)),
+              ),
+              title: const Text(
+                'Preview & Print Invoice',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+              subtitle: const Text(
+                'View full Tax Invoice with real-time app details',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                  size: 16, color: Colors.white38),
+              onTap: () {
+                Navigator.pop(ctx);
+                Get.to(() => InvoicePreviewScreen(transaction: purchase));
+              },
+            ),
+            const Divider(color: Colors.white10),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00E676).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.download_rounded,
+                    color: Color(0xFF00E676)),
+              ),
+              title: const Text(
+                'Download / Share PDF',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+              subtitle: const Text(
+                'Save PDF to files or share via WhatsApp/Email',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                  size: 16, color: Colors.white38),
+              onTap: () {
+                Navigator.pop(ctx);
+                InvoiceGenerator.downloadInvoice(context, purchase);
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
         ),
       ),
     );

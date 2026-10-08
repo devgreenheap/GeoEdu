@@ -45,6 +45,8 @@ class FirebaseConst {
   static const String likeCount = 'like_count';
   static const String isAudioVideoOffByCoHost = 'is_audio_video_off_by_co_host';
   static const String isAudioVideoOffByHost = 'is_audio_video_off_by_host';
+  static const String pkOpponentId = 'pk_opponent_id';
+  static const String pkInvitedUserIds = 'pk_invited_user_ids';
 
   // Audio Call
   static const String audioCalls = 'audio_calls';

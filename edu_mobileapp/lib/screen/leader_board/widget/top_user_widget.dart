@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:geoedu/common/extensions/common_extension.dart';
+import 'package:geoedu/common/manager/session_manager.dart';
 import 'package:geoedu/common/widget/custom_image.dart';
 import 'package:geoedu/model/general/leaderboard_user_model.dart';
 
@@ -10,6 +11,7 @@ class TopUser extends StatelessWidget {
   final int rank;
   final LeaderboardUser user;
   final bool isDiamond;
+  final bool isMe;
   final VoidCallback? onFollowTap;
   final VoidCallback? onTap;
 
@@ -18,12 +20,17 @@ class TopUser extends StatelessWidget {
     required this.rank,
     required this.user,
     required this.isDiamond,
+    this.isMe = false,
     this.onFollowTap,
     this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final bool effectiveIsMe = isMe ||
+        (user.userId != null &&
+            user.userId == SessionManager.instance.getUser()?.id);
+
     final String outLineImage = (rank == 1)
         ? AssetRes.rank1
         : (rank == 2)
@@ -32,8 +39,9 @@ class TopUser extends StatelessWidget {
 
     final double frameSize = rank == 1 ? 94 : 76;
     final double avatarSize = rank == 1 ? 66 : 54;
-    final double bottomPadding = rank == 1 ? 32 : (rank == 2 ? 22 : 12);
-    final double midGap = rank == 1 ? 52 : (rank == 2 ? 38 : 26);
+    final double bottomPadding = rank == 1 ? 14 : (rank == 2 ? 8 : 4);
+    final double pedestalAreaHeight = rank == 1 ? 46 : (rank == 2 ? 44 : 42);
+    final double gapAbovePedestal = rank == 1 ? 28 : (rank == 2 ? 17 : 11);
 
     final Color badgeBorderColor = rank == 1
         ? const Color(0xFFFFD700)
@@ -65,7 +73,7 @@ class TopUser extends StatelessWidget {
           ),
           const SizedBox(height: 4),
 
-          // 2. Username Capsule (positioned cleanly ABOVE the pedestal, never overlapping)
+          // 2. Username Capsule (positioned cleanly just above the grid)
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 4),
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -91,73 +99,86 @@ class TopUser extends StatelessWidget {
           ),
 
           // 3. Clear vertical separation placing diamond count squarely on the pedestal face
-          SizedBox(height: midGap),
+          SizedBox(height: gapAbovePedestal),
 
-          // 4. Diamond / Star Score Pill on the pedestal face
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.45),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: badgeBorderColor.withValues(alpha: 0.6),
-                width: 0.8,
-              ),
-            ),
-            child: Row(
+          // 4. Pedestal Action & Score Area
+          SizedBox(
+            height: pedestalAreaHeight,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  (user.totalStars ?? 0).numberFormat,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w800,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black87,
-                        blurRadius: 3,
+                // Diamond / Star Score Pill on the pedestal face
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: badgeBorderColor.withValues(alpha: 0.6),
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        (user.totalStars ?? 0).numberFormat,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black87,
+                              blurRadius: 3,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 3),
+                      Image.asset(
+                        isDiamond ? AssetRes.coinIcon : AssetRes.starScoreStar,
+                        height: 12,
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 3),
-                Image.asset(
-                  isDiamond ? AssetRes.coinIcon : AssetRes.starScoreStar,
-                  height: 12,
-                ),
+                if (!effectiveIsMe && onFollowTap != null) ...[
+                  const SizedBox(height: 3),
+                  InkWell(
+                    onTap: onFollowTap,
+                    borderRadius: BorderRadius.circular(50),
+                    child: Container(
+                      height: 18,
+                      width: 58,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: user.isFollowing
+                            ? ColorRes.surfaceBackground
+                            : ColorRes.primaryColor,
+                        borderRadius: BorderRadius.circular(50),
+                        border: user.isFollowing
+                            ? Border.all(color: Colors.white24)
+                            : null,
+                      ),
+                      child: Text(
+                        user.isFollowing ? 'Following' : 'Follow',
+                        style: TextStyle(
+                          fontSize: 8.5,
+                          color: user.isFollowing
+                              ? Colors.white70
+                              : Colors.black,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
-          if (onFollowTap != null) ...[
-            const SizedBox(height: 3),
-            InkWell(
-              onTap: onFollowTap,
-              borderRadius: BorderRadius.circular(50),
-              child: Container(
-                height: 18,
-                width: 58,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: user.isFollowing
-                      ? ColorRes.surfaceBackground
-                      : ColorRes.primaryColor,
-                  borderRadius: BorderRadius.circular(50),
-                  border: user.isFollowing
-                      ? Border.all(color: Colors.white24)
-                      : null,
-                ),
-                child: Text(
-                  user.isFollowing ? 'Following' : 'Follow',
-                  style: TextStyle(
-                    fontSize: 8.5,
-                    color: user.isFollowing ? Colors.white70 : Colors.black,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          ],
           SizedBox(height: bottomPadding),
         ],
       ),

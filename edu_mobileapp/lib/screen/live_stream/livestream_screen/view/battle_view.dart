@@ -83,26 +83,29 @@ class _LiveBattleOverlayWidgetState extends State<LiveBattleOverlayWidget> {
       List<AppUser> liveUsers = widget.controller.firestoreController.users;
 
       // Host
-      LivestreamUserState? hostState;
-      AppUser? hostUser;
-      if (streamViews.isNotEmpty) {
-        hostState = userStates.firstWhereOrNull(
-          (e) => '${e.userId}' == streamViews[0].streamId,
-        );
-        hostUser = hostState?.getUser(liveUsers);
-      }
+      final hostStreamId = '${stream.hostId}';
+      LivestreamUserState? hostState = userStates.firstWhereOrNull(
+        (e) => '${e.userId}' == hostStreamId,
+      ) ?? (streamViews.isNotEmpty
+          ? userStates.firstWhereOrNull((e) => '${e.userId}' == streamViews[0].streamId)
+          : null);
+      AppUser? hostUser = hostState?.getUser(liveUsers);
 
-      // Co-host
+      // Opponent (accepted PK call participant)
+      final opponentUserId = stream.pkOpponentId;
       LivestreamUserState? coHostState;
-      AppUser? coHostUser;
-      if (streamViews.length > 1) {
+      if (opponentUserId != null) {
+        coHostState = userStates.firstWhereOrNull(
+          (e) => e.userId == opponentUserId,
+        );
+      } else if (streamViews.length > 1) {
         coHostState = userStates.firstWhereOrNull(
           (e) => '${e.userId}' == streamViews[1].streamId,
         );
-        coHostUser = coHostState?.getUser(liveUsers);
       }
+      AppUser? coHostUser = coHostState?.getUser(liveUsers);
 
-      // User list
+      // User list: exactly Host + Accepted Opponent (Max 2 members)
       List<AppUser> users = [
         if (hostUser != null) hostUser,
         if (coHostUser != null) coHostUser,
@@ -111,6 +114,19 @@ class _LiveBattleOverlayWidgetState extends State<LiveBattleOverlayWidget> {
       // Battle coins
       int red = hostState?.currentBattleCoin ?? 0;
       int blue = coHostState?.currentBattleCoin ?? 0;
+
+      // Exactly 2 battle stream views: Host + Accepted Opponent
+      final hostStreamView = streamViews.firstWhereOrNull((v) => v.streamId == hostStreamId) ??
+          (streamViews.isNotEmpty ? streamViews[0] : null);
+      final opponentStreamView = (opponentUserId != null
+          ? streamViews.firstWhereOrNull((v) => v.streamId == '$opponentUserId')
+          : null) ??
+          (streamViews.length > 1 ? streamViews.firstWhereOrNull((v) => v.streamId != hostStreamId) : null);
+
+      final battleStreamViews = [
+        if (hostStreamView != null) hostStreamView,
+        if (opponentStreamView != null) opponentStreamView,
+      ];
 
       return SafeArea(
         bottom: false,
@@ -127,7 +143,7 @@ class _LiveBattleOverlayWidgetState extends State<LiveBattleOverlayWidget> {
                   int? focused = widget.controller.expandedBattleUserIndex.value;
                   return Row(
                     children: List.generate(
-                      streamViews.length,
+                      battleStreamViews.length,
                       (index) {
                         bool isFocused = focused == index;
                         bool otherFocused = focused != null && !isFocused;
@@ -143,7 +159,7 @@ class _LiveBattleOverlayWidgetState extends State<LiveBattleOverlayWidget> {
                             child: LiveStreamUserView(
                               isNameAndSpeakerVisible: false,
                               controller: widget.controller,
-                              streamingView: streamViews[index],
+                              streamingView: battleStreamViews[index],
                             ),
                           ),
                         );
@@ -504,8 +520,8 @@ class _BattleTimerState extends State<BattleTimer> {
 
       // 🔥 get coins to decide winner
       final states = widget.controller.liveUsersStates;
-      int red = states.isNotEmpty ? states.first.currentBattleCoin ?? 0 : 0;
-      int blue = states.length > 1 ? states[1].currentBattleCoin ?? 0 : 0;
+      int red = states.isNotEmpty ? states.first.currentBattleCoin : 0;
+      int blue = states.length > 1 ? states[1].currentBattleCoin : 0;
       bool isRedWin = red >= blue;
 
       if (!isBattleEnd) {

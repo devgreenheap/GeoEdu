@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -52,6 +53,8 @@ import 'package:zego_express_engine/zego_express_engine.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requested_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requests_sheet.dart';
 import 'package:geoedu/common/widget/live_room/favourite_gift_sheet.dart';
+import 'package:geoedu/common/widget/live_room/target_achieved_dialog.dart';
+import 'package:geoedu/common/widget/live_room/set_live_target_sheet.dart';
 
 import '../../../common/extensions/string_extension.dart';
 import '../../../model/livestream/entry_effects_model.dart';
@@ -141,6 +144,22 @@ class LivestreamScreenController extends BaseController {
         }
       }
     });
+
+    // Sync targetDiamonds and favouriteGiftTarget from liveData
+    if (liveData.value.targetDiamonds != null && liveData.value.targetDiamonds! > 0) {
+      targetDiamonds.value = liveData.value.targetDiamonds!;
+    }
+    if (liveData.value.favouriteGiftTarget != null && liveData.value.favouriteGiftTarget! > 0) {
+      favouriteGiftTarget.value = liveData.value.favouriteGiftTarget!;
+    }
+    liveData.listen((stream) {
+      if (stream.targetDiamonds != null) {
+        targetDiamonds.value = stream.targetDiamonds!;
+      }
+      if (stream.favouriteGiftTarget != null) {
+        favouriteGiftTarget.value = stream.favouriteGiftTarget!;
+      }
+    });
   }
 
   int totalBattleSecond = 0;
@@ -174,6 +193,13 @@ class LivestreamScreenController extends BaseController {
   // tap the same side again (or the other side) to change/clear the focus.
   Rx<int?> expandedBattleUserIndex = Rx<int?>(null);
 
+  // PK Battle invitation & opponent tracking
+  RxList<int> pkInvitedUserIds = <int>[].obs;
+  Rx<int?> pkOpponentId = Rx<int?>(null);
+  Rx<AppUser?> pkOpponentUser = Rx<AppUser?>(null);
+  bool isPkInviteDialogOpen = false;
+  void Function(int hostId, String hostName)? onCallParticipantPkInviteReceived;
+
   void toggleBattleFocus(int index) {
     expandedBattleUserIndex.value =
         expandedBattleUserIndex.value == index ? null : index;
@@ -184,7 +210,21 @@ class LivestreamScreenController extends BaseController {
   final Set<int> _recentlyNotifiedLeft = <int>{};
 
   void notifyCoHostLeft(int? userId) {
-    if (userId == null || userId == myUserId) return;
+    if (userId == null ||
+        userId == myUserId ||
+        userId == liveData.value.hostId) {
+      return;
+    }
+
+    // Safety check: is the user still actually active on the call?
+    final bool isStillOnCall = liveUsersStates.any(
+            (u) => u.userId == userId && u.type == LivestreamUserType.coHost) ||
+        streamViews.any((s) => s.streamId == '$userId') ||
+        (liveData.value.coHostIds?.contains(userId) ?? false);
+    if (isStillOnCall) {
+      return;
+    }
+
     if (_recentlyNotifiedLeft.contains(userId)) return;
     _recentlyNotifiedLeft.add(userId);
     Future.delayed(const Duration(seconds: 4), () {
@@ -206,10 +246,12 @@ class LivestreamScreenController extends BaseController {
       showSnackBar('$name has left the call', second: 3);
     }
 
-    // Post to Firestore comments so host & all viewers see it in the chat
+    // Post to Firestore comments: use the departed user's userId & user object!
     _sendCommentToFirestore(
       type: LivestreamCommentType.leftCoHost,
       comment: '$name left the call',
+      senderId: userId,
+      senderUser: user,
     );
   }
 
@@ -225,11 +267,139 @@ class LivestreamScreenController extends BaseController {
   // the whole session rather than resetting every time this screen rebuilds.
   static RxBool isGiftSoundOn = true.obs;
 
-  // Host-set diamond goal for this session — host-local, not synced to
-  // Firestore since only the host edits/sees it (matches the reference,
-  // which shows this only on the host's own top bar).
+  // Host-set diamond goal for this session — synced to Firestore so viewers
+  // also see the target and live progress.
   RxInt targetDiamonds = 0.obs;
-  void setTargetDiamonds(int value) => targetDiamonds.value = value;
+  void setTargetDiamonds(int value) async {
+    targetDiamonds.value = value;
+    checkTargets();
+    if (isHost && liveData.value.roomID != null) {
+      try {
+        await liveStreamDocRef.update({'target_diamonds': value});
+      } catch (e) {
+        Loggers.error('setTargetDiamonds error: $e');
+      }
+    }
+  }
+
+  // Track which co-host card is currently enlarged (host-only focus/preview mode)
+  final RxnInt enlargedCoHostUserId = RxnInt();
+
+  // Favorite / Mission Gift target count (defaults to 3, can be increased)
+  RxInt favouriteGiftTarget = 3.obs;
+  void setFavouriteGiftTarget(int value) async {
+    favouriteGiftTarget.value = value;
+    checkTargets();
+    if (isHost && liveData.value.roomID != null) {
+      try {
+        await liveStreamDocRef.update({'favourite_gift_target': value});
+      } catch (e) {
+        Loggers.error('setFavouriteGiftTarget error: $e');
+      }
+    }
+  }
+
+  int get favouriteGiftReceivedCount {
+    final favId = liveData.value.favouriteGiftId ?? featuredGift?.id;
+    final favName = featuredGift?.displayName ?? featuredGift?.title;
+    if (favId == null && favName == null) return 0;
+    return comments
+        .where((c) =>
+            c.commentType == LivestreamCommentType.gift &&
+            (c.receiverId == null || c.receiverId == liveData.value.hostId) &&
+            ((favId != null && c.giftId == favId) ||
+                (favName != null &&
+                    c.gift?.displayName.toLowerCase() == favName.toLowerCase())))
+        .length;
+  }
+
+  int _lastAchievedDiamondTarget = 0;
+  int _lastAchievedFavGiftTarget = 0;
+  bool _isTargetDialogShowing = false;
+
+  void checkTargets() {
+    if (!isHost) return;
+
+    // 1. Check Diamond Target
+    final currentCoins = (hostUserState?.totalCoin ?? 0).toInt();
+    final diamondTarget = targetDiamonds.value;
+    if (diamondTarget > 0 &&
+        currentCoins >= diamondTarget &&
+        _lastAchievedDiamondTarget != diamondTarget) {
+      _lastAchievedDiamondTarget = diamondTarget;
+      _showDiamondTargetAchieved(currentCoins, diamondTarget);
+      return;
+    }
+
+    // 2. Check Favorite Gift Target
+    final favCount = favouriteGiftReceivedCount;
+    final favTarget = favouriteGiftTarget.value;
+    if (favTarget > 0 &&
+        favCount >= favTarget &&
+        _lastAchievedFavGiftTarget != favTarget) {
+      _lastAchievedFavGiftTarget = favTarget;
+      _showFavGiftTargetAchieved(favCount, favTarget);
+    }
+  }
+
+  void _showDiamondTargetAchieved(int currentCoins, int diamondTarget) {
+    if (_isTargetDialogShowing) return;
+    _isTargetDialogShowing = true;
+    TargetAchievedDialog.show(
+      isDiamond: true,
+      targetValue: diamondTarget,
+      currentValue: currentCoins,
+      onIncreaseTarget: () {
+        _isTargetDialogShowing = false;
+        final ctx = Get.context;
+        if (ctx != null) {
+          SetLiveTargetSheet.show(
+            ctx,
+            initialValue: diamondTarget + 50,
+            onTargetSet: (val) {
+              setTargetDiamonds(val);
+            },
+          );
+        }
+      },
+      onOkay: () {
+        _isTargetDialogShowing = false;
+      },
+    );
+  }
+
+  void _showFavGiftTargetAchieved(int favCount, int favTarget) {
+    if (_isTargetDialogShowing) return;
+    _isTargetDialogShowing = true;
+    final gift = featuredGift;
+    TargetAchievedDialog.show(
+      isDiamond: false,
+      targetValue: favTarget,
+      currentValue: favCount,
+      gift: gift,
+      onIncreaseTarget: () {
+        _isTargetDialogShowing = false;
+        final ctx = Get.context;
+        if (ctx != null) {
+          SetFavoriteGiftTargetSheet.show(
+            ctx,
+            gift: gift,
+            currentTarget: favTarget,
+            currentCount: favCount,
+            onTargetSet: (newTarget) {
+              setFavouriteGiftTarget(newTarget);
+            },
+            onChangeGift: () {
+              showFavouriteGiftSheet(ctx);
+            },
+          );
+        }
+      },
+      onOkay: () {
+        _isTargetDialogShowing = false;
+      },
+    );
+  }
 
   LivestreamUserState? get hostUserState => liveUsersStates
       .firstWhereOrNull((e) => e.userId == liveData.value.hostId);
@@ -273,6 +443,69 @@ class LivestreamScreenController extends BaseController {
   AudioPlayer battleStartPlayer = AudioPlayer();
   AudioPlayer winAudioPlayer = AudioPlayer();
 
+  // Incoming join request notification & toast (matches Audio Call)
+  final AudioPlayer _requestAlertPlayer = AudioPlayer();
+  final Rx<AppUser?> latestRequestUser = Rx<AppUser?>(null);
+  final RxBool showRequestToast = false.obs;
+  Timer? _requestToastTimer;
+  Set<int> _seenRequestUserIds = {};
+  bool _initialUsersStateLoaded = false;
+  int _lastNotifiedUserId = -1;
+  int _lastNotifiedTime = 0;
+
+  Future<void> _handleIncomingRequest(int userId) async {
+    if (!isHost) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_lastNotifiedUserId == userId && now - _lastNotifiedTime < 3000) {
+      return;
+    }
+    _lastNotifiedUserId = userId;
+    _lastNotifiedTime = now;
+
+    // 1. Play alert sound (matches Audio Call alert notification)
+    try {
+      await _requestAlertPlayer.stop();
+      await _requestAlertPlayer.setAsset(AssetRes.chatNotification);
+      await _requestAlertPlayer.play();
+    } catch (_) {
+      try {
+        await _requestAlertPlayer.setAsset('assets/audios/ring audio.mp3');
+        await _requestAlertPlayer.play();
+      } catch (_) {}
+    }
+    try {
+      SystemSound.play(SystemSoundType.alert);
+      HapticFeedback.mediumImpact();
+    } catch (_) {}
+
+    // 2. Resolve requesting user details for toast notification
+    AppUser? user = firestoreController.users
+        .firstWhereOrNull((p) => p.userId == userId);
+    if (user == null || user.fullname == null || user.fullname!.isEmpty) {
+      try {
+        final doc =
+            await db.collection(FirebaseConst.users).doc(userId.toString()).get();
+        if (doc.exists) {
+          final data = doc.data();
+          user = AppUser(
+            userId: userId,
+            fullname: data?['fullname'] ?? data?['name'] ?? 'User $userId',
+            username: data?['username'],
+            profile: data?['profile_photo'] ?? data?['photo'],
+          );
+        }
+      } catch (_) {}
+    }
+
+    latestRequestUser.value =
+        user ?? AppUser(userId: userId, fullname: 'User $userId');
+    showRequestToast.value = true;
+    _requestToastTimer?.cancel();
+    _requestToastTimer = Timer(const Duration(seconds: 6), () {
+      showRequestToast.value = false;
+    });
+  }
+
   List<User> usersList = [];
 
 
@@ -305,6 +538,8 @@ class LivestreamScreenController extends BaseController {
     fetchLiveStreamComments();
     listenEntryEffects();
     listenGifts();
+    liveUsersStates.listen((_) => checkTargets());
+    comments.listen((_) => checkTargets());
     WakelockPlus.enable();
     FirebaseNotificationManager.instance
         .unsubscribeToTopic(topic: myUserId.toString());
@@ -622,6 +857,9 @@ class LivestreamScreenController extends BaseController {
     liveStreamCommentsListener?.cancel();
     liveStreamDocListener?.cancel();
     try {
+      _requestToastTimer?.cancel();
+      _requestAlertPlayer.stop();
+      _requestAlertPlayer.dispose();
       countdownPlayer.stop();
       countdownPlayer.dispose();
       winAudioPlayer.stop();
@@ -936,18 +1174,15 @@ class LivestreamScreenController extends BaseController {
             Livestream stream = liveData.value;
             for (var element in userList) {
               if ((stream.watchingCount ?? 0) > 0) {
-                updateLiveStreamData(
-                    watchingCount: -1,
-                    coHostId: FieldValue.arrayRemove([element.userID]));
+                updateLiveStreamData(watchingCount: -1);
               }
               int? coHostId = int.tryParse(element.userID);
-              if (coHostId != null) {
+              if (coHostId != null &&
+                  coHostId != myUserId &&
+                  coHostId != stream.hostId) {
                 bool isCoHostExist =
                     stream.coHostIds?.contains(coHostId) ?? false;
                 if (isCoHostExist) {
-                  if (isHost) {
-                    notifyCoHostLeft(coHostId);
-                  }
                   closeCoHostStream(coHostId);
                 }
               }
@@ -1017,17 +1252,8 @@ class LivestreamScreenController extends BaseController {
               continue;
             }
             streamViews.removeWhere((element) => element.streamId == stream.streamID);
+            streamViews.refresh();
             stopPlayStream(stream.streamID);
-            int? coHostUserId = int.tryParse(stream.streamID);
-            if (coHostUserId != null &&
-                coHostUserId != myUserId &&
-                coHostUserId != liveData.value.hostId) {
-              if (isHost &&
-                  (liveData.value.coHostIds?.contains(coHostUserId) ?? false)) {
-                notifyCoHostLeft(coHostUserId);
-              }
-              closeCoHostStream(coHostUserId);
-            }
           }
           break;
       }
@@ -1107,6 +1333,7 @@ class LivestreamScreenController extends BaseController {
         false,
       ),
     );
+    streamViews.refresh();
 
     startMinViewerTimeoutCheck(); // Check time to Min. Viewers Required to continue live
     pushNotificationToFollowers(liveData.value);
@@ -1195,6 +1422,7 @@ class LivestreamScreenController extends BaseController {
           } else {
             streamViews.add(StreamView(streamID, streamViewId, canvasViewWidget, false));
           }
+          streamViews.refresh();
         }
         try {
           await ZegoExpressEngine.instance.muteAllPlayStreamAudio(false);
@@ -1235,7 +1463,8 @@ class LivestreamScreenController extends BaseController {
     }
   }
 
-  Future<void> stopPreview({int? viewId}) async {
+  Future<void> stopPreview({int? viewI
+  d}) async {
     int id = viewId ?? -1;
     ZegoExpressEngine.instance.stopPreview();
     if (id != -1) {
@@ -1306,7 +1535,28 @@ class LivestreamScreenController extends BaseController {
     updateUserStateToFirestore(userId,
         type: isRefused
             ? LivestreamUserType.audience
-            : LivestreamUserType.coHost);
+            : LivestreamUserType.coHost,
+        audioStatus: isRefused ? VideoAudioStatus.offByMe : VideoAudioStatus.on,
+        videoStatus: isRefused ? VideoAudioStatus.offByMe : VideoAudioStatus.on);
+
+    // Update coHostIds in Firestore so all room listeners sync immediately
+    updateLiveStreamData(
+      coHostId: isRefused
+          ? FieldValue.arrayRemove([userId])
+          : FieldValue.arrayUnion([userId]),
+    );
+
+    // Immediately update local coHostIds for zero-latency UI reaction
+    final currentList = List<int>.from(liveData.value.coHostIds ?? []);
+    if (isRefused) {
+      currentList.remove(userId);
+    } else {
+      if (!currentList.contains(userId)) {
+        currentList.add(userId);
+      }
+    }
+    liveData.value.coHostIds = currentList;
+    liveData.refresh();
 
     // Determine the comment to delete
     final commentToDelete = comment ??
@@ -1413,16 +1663,56 @@ class LivestreamScreenController extends BaseController {
         if (isHost && _initialLiveDocLoaded) {
           final departed = _previousCoHostIds.difference(currentCoHostIds);
           for (final depId in departed) {
-            notifyCoHostLeft(depId);
-            closeCoHostStream(depId);
+            if (depId != myUserId && depId != stream.hostId) {
+              closeCoHostStream(depId);
+            }
           }
         }
         _previousCoHostIds = currentCoHostIds;
         _initialLiveDocLoaded = true;
 
+        // Ensure remote audio/video playback is active for all connected co-hosts
+        for (final cId in currentCoHostIds) {
+          if (cId != myUserId && cId != stream.hostId) {
+            if (!streamViews.any((s) => s.streamId == '$cId')) {
+              startPlayStream('$cId');
+            }
+          }
+        }
+
         liveData.value = stream;
         if (stream.pinnedComment != null) {
           pinnedComment.value = stream.pinnedComment!;
+        }
+
+        // PK Battle state & invitation sync
+        pkOpponentId.value = stream.pkOpponentId;
+        pkInvitedUserIds.value = List<int>.from(stream.pkInvitedUserIds ?? []);
+
+        if (stream.pkOpponentId != null) {
+          pkOpponentUser.value = firestoreController.users
+                  .firstWhereOrNull((u) => u.userId == stream.pkOpponentId) ??
+              liveUsersStates
+                  .firstWhereOrNull((u) => u.userId == stream.pkOpponentId)
+                  ?.getUser(firestoreController.users);
+        } else {
+          pkOpponentUser.value = null;
+        }
+
+        // Check if this co-host received a PK invitation from the host
+        if (!isHost &&
+            pkInvitedUserIds.contains(myUserId) &&
+            stream.pkOpponentId == null &&
+            stream.type != LivestreamType.battle &&
+            stream.battleType != BattleType.waiting &&
+            stream.battleType != BattleType.running &&
+            !isPkInviteDialogOpen) {
+          isPkInviteDialogOpen = true;
+          final hostName = stream.hostUser?.fullname ??
+              stream.hostUser?.username ??
+              'Host';
+          onCallParticipantPkInviteReceived?.call(
+              stream.hostId ?? 0, hostName);
         }
 
         // Trigger like animation if changed
@@ -1508,9 +1798,28 @@ class LivestreamScreenController extends BaseController {
                 break;
             }
           }
-          requestList.value = liveUsersStates
+          final newRequestStates = liveUsersStates
               .where((element) => element.type == LivestreamUserType.requested)
               .toList();
+          requestList.value = newRequestStates;
+
+          final newRequestUserIds = newRequestStates
+              .map((e) => e.userId)
+              .whereType<int>()
+              .toList();
+
+          if (isHost) {
+            if (_initialUsersStateLoaded) {
+              final newlyAdded = newRequestUserIds
+                  .where((id) => !_seenRequestUserIds.contains(id))
+                  .toList();
+              if (newlyAdded.isNotEmpty) {
+                _handleIncomingRequest(newlyAdded.first);
+              }
+            }
+            _seenRequestUserIds = Set<int>.from(newRequestUserIds);
+            _initialUsersStateLoaded = true;
+          }
 
           // "Auto Call" (set when the host went live) auto-accepts co-host
           // requests instead of the host approving each one manually —
@@ -1582,9 +1891,13 @@ class LivestreamScreenController extends BaseController {
               }
             }
             firestoreController.fetchUserIfNeeded(comment.senderId ?? -1);
-            if (comment.commentType == LivestreamCommentType.request &&
-                !isHost) {
-              continue;
+            if (comment.commentType == LivestreamCommentType.request) {
+              if (!isHost) {
+                continue;
+              }
+              if (comment.senderId != null) {
+                _handleIncomingRequest(comment.senderId!);
+              }
             }
             if (!comments.any((c) => c.id == comment.id)) {
               comments.add(comment);
@@ -1963,35 +2276,53 @@ class LivestreamScreenController extends BaseController {
         });
   }
 
-  _sendCommentToFirestore(
-      {required LivestreamCommentType type,
-      String? comment,
-      int? giftId,
-      int? receiverId}) async {
+  _sendCommentToFirestore({
+    required LivestreamCommentType type,
+    String? comment,
+    int? giftId,
+    int? receiverId,
+    int? senderId,
+    AppUser? senderUser,
+  }) async {
+    // Host can NEVER leave their own live broadcast!
+    if (type == LivestreamCommentType.leftCoHost) {
+      final targetSenderId = senderId ?? myUserId;
+      if (targetSenderId == liveData.value.hostId || (isHost && targetSenderId == myUserId)) {
+        Loggers.warning('Blocked posting leftCoHost comment for host ($targetSenderId)');
+        return;
+      }
+    }
+
     int time = DateTime.now().millisecondsSinceEpoch;
+    final effectiveSenderId = senderId ?? myUserId;
 
     // 1. Immediately create comment model
     final newComment = LivestreamComment(
       comment: comment,
       commentType: type,
       id: time,
-      senderId: myUserId,
+      senderId: effectiveSenderId,
       receiverId: receiverId,
       giftId: giftId,
     );
 
-    // Bind current user immediately so avatar, username & level render without delay
+    // Bind sender user immediately so avatar, username & level render without delay
     final currentUser = SessionManager.instance.getUser();
-    newComment.senderUserRx.value = myUser.value?.appUser ?? (currentUser != null
-        ? AppUser(
-            userId: myUserId,
-            username: currentUser.username ?? 'You',
-            fullname: currentUser.fullname ?? 'You',
-            profile: currentUser.profilePhoto,
-            level: currentUser.level,
-            isVerify: currentUser.isVerify,
-          )
-        : null);
+    newComment.senderUserRx.value = senderUser ??
+        (effectiveSenderId == myUserId
+            ? (myUser.value?.appUser ??
+                (currentUser != null
+                    ? AppUser(
+                        userId: myUserId,
+                        username: currentUser.username ?? 'You',
+                        fullname: currentUser.fullname ?? 'You',
+                        profile: currentUser.profilePhoto,
+                        level: currentUser.level,
+                        isVerify: currentUser.isVerify,
+                      )
+                    : null))
+            : firestoreController.users
+                .firstWhereOrNull((u) => u.userId == effectiveSenderId));
 
     if (giftId != null) {
       newComment.gift = gifts.firstWhereOrNull((g) => g.id == giftId);
@@ -2079,7 +2410,9 @@ class LivestreamScreenController extends BaseController {
         updateUserStateToFirestore(myUserId,
             type: LivestreamUserType.requested);
         _sendCommentToFirestore(
-            type: LivestreamCommentType.request, receiverId: liveData.hostId);
+            type: LivestreamCommentType.request,
+            comment: '📹 requested to Join Call',
+            receiverId: liveData.hostId);
         if (Get.context != null) {
           CallRequestedSheet.show(Get.context!);
         } else {
@@ -2178,8 +2511,12 @@ class LivestreamScreenController extends BaseController {
                         liveUsersStates.firstWhereOrNull(
                             (element) => element.userId == myUserId);
                     if (userState?.type == LivestreamUserType.invited) {
+                      isAudioOn.value = true;
+                      isVideoOn.value = true;
                       updateUserStateToFirestore(myUserId,
-                          type: LivestreamUserType.coHost);
+                          type: LivestreamUserType.coHost,
+                          audioStatus: VideoAudioStatus.on,
+                          videoStatus: VideoAudioStatus.on);
                     } else {
                       showSnackBar(LKey.joinCancelledDescription.tr);
                     }
@@ -2222,6 +2559,7 @@ class LivestreamScreenController extends BaseController {
           streamViews.add(
             StreamView('$streamId', canvasViewID, canvasViewWidget, false),
           );
+          streamViews.refresh();
         }
       });
 
@@ -2235,7 +2573,11 @@ class LivestreamScreenController extends BaseController {
 
       updateLiveStreamData(coHostId: FieldValue.arrayUnion([streamId]));
       _sendCommentToFirestore(type: LivestreamCommentType.joinedCoHost);
+      isAudioOn.value = true;
+      isVideoOn.value = true;
       updateUserStateToFirestore(myUserId,
+          audioStatus: VideoAudioStatus.on,
+          videoStatus: VideoAudioStatus.on,
           joinTime: DateTime.now().millisecondsSinceEpoch);
     } else {
       Get.bottomSheet(ConfirmationSheet(
@@ -2247,7 +2589,7 @@ class LivestreamScreenController extends BaseController {
   }
 
   void closeCoHostStream(int? streamId) {
-    if (streamId == null) return;
+    if (streamId == null || streamId == liveData.value.hostId) return;
 
     if (streamId == myUserId) {
       if (isHost) {
@@ -2276,12 +2618,16 @@ class LivestreamScreenController extends BaseController {
       _sendCommentToFirestore(
         type: LivestreamCommentType.leftCoHost,
         comment: 'Left the call',
+        senderId: myUserId,
+        senderUser: myUser.value?.appUser,
       );
       streamViews.removeWhere((element) => element.streamId == '$streamId');
+      streamViews.refresh();
       // The participant was kicked or left: revert to audience without closing room
     } else {
       stopPlayStream(streamId.toString());
       streamViews.removeWhere((element) => element.streamId == '$streamId');
+      streamViews.refresh();
       if (isHost) {
         isMinViewerTimeout.value = false;
         bool isBattleOn = liveData.value.type == LivestreamType.battle;
@@ -2290,6 +2636,10 @@ class LivestreamScreenController extends BaseController {
           type: isBattleOn ? LivestreamType.livestream : null,
           battleType: isBattleOn ? BattleType.initiate : null,
         );
+        liveStreamDocRef.update({
+          'pk_invited_user_ids': FieldValue.arrayRemove([streamId]),
+          if (liveData.value.pkOpponentId == streamId) 'pk_opponent_id': null,
+        }).catchError((_) {});
         updateUserStateToFirestore(streamId,
             type: LivestreamUserType.audience,
             audioStatus: VideoAudioStatus.offByMe,
@@ -2481,6 +2831,10 @@ class LivestreamScreenController extends BaseController {
                       battleType: BattleType.initiate,
                       type: LivestreamType.livestream,
                     );
+                    liveStreamDocRef.update({
+                      'pk_opponent_id': null,
+                      'pk_invited_user_ids': [],
+                    }).catchError((_) {});
                     startMinViewerTimeoutCheck();
                   },
                 ),
@@ -2650,8 +3004,8 @@ class LivestreamScreenController extends BaseController {
     // 2. Call backend end-stream API
     _endLiveStreamApi();
 
-    // 3. Stop local recording and upload in background (non-blocking)
-    _stopLocalRecordingAndUpload();
+    // 3. Stop local recording and upload
+    await _stopLocalRecordingAndUpload();
 
     // 4. Leave Zego room
     logoutRoom();
@@ -2732,6 +3086,109 @@ class LivestreamScreenController extends BaseController {
 
   void toggleView() {
     isViewVisible.value = !isViewVisible.value;
+  }
+
+  /// Host invites an active call participant (co-host) to PK Battle
+  Future<void> sendPkInviteToCoHost(int userId) async {
+    if (!isHost) return;
+    final isCoHost = coHostList.any(
+        (u) => u.userId == userId && u.type == LivestreamUserType.coHost);
+    if (!isCoHost || userId == myUserId) {
+      showSnackBar('User is not an active video call participant');
+      return;
+    }
+    if (liveData.value.pkOpponentId != null ||
+        liveData.value.type == LivestreamType.battle ||
+        liveData.value.battleType == BattleType.waiting ||
+        liveData.value.battleType == BattleType.running) {
+      showSnackBar('PK Battle already started');
+      return;
+    }
+    await liveStreamDocRef.update({
+      'pk_invited_user_ids': FieldValue.arrayUnion([userId]),
+    });
+  }
+
+  /// Host cancels PK invitation sent to a co-host
+  void cancelPkInviteToCoHost(int userId) async {
+    if (!isHost) return;
+    liveStreamDocRef.update({
+      'pk_invited_user_ids': FieldValue.arrayRemove([userId]),
+    });
+  }
+
+  /// Co-host accepts PK invitation from host
+  /// First acceptance wins: locks opponent slot, starts battle, invalidates all other pending invites
+  Future<void> acceptPkInviteFromHost(int currentUserId) async {
+    isPkInviteDialogOpen = false;
+
+    // 5. Validation before acceptance
+    final isCoHost = coHostList.any((u) =>
+        u.userId == currentUserId && u.type == LivestreamUserType.coHost);
+    if (!isCoHost) {
+      showSnackBar('You are no longer an active call participant.');
+      return;
+    }
+    if (liveData.value.pkOpponentId != null ||
+        liveData.value.type == LivestreamType.battle ||
+        liveData.value.battleType == BattleType.waiting ||
+        liveData.value.battleType == BattleType.running) {
+      showSnackBar('PK Battle already started.');
+      return;
+    }
+
+    try {
+      await db.runTransaction((transaction) async {
+        final snapshot = await transaction.get(liveStreamDocRef);
+        if (!snapshot.exists) {
+          throw 'Live stream ended';
+        }
+        final data = snapshot.data() as Map<String, dynamic>;
+        final currentOpponent = data['pk_opponent_id'];
+        final currentType = data['type'];
+        final currentBattleType = data['battle_type'];
+
+        // Mutex check: opponent slot must be empty and battle not active
+        if (currentOpponent != null ||
+            currentType == LivestreamType.battle.value ||
+            currentBattleType == BattleType.waiting.value ||
+            currentBattleType == BattleType.running.value) {
+          throw 'PK Battle already started.';
+        }
+
+        final duration =
+            SessionManager.instance.getSettings()?.battleDurationMinutes ??
+                AppRes.battleDurationInMinutes;
+        final now = DateTime.now().millisecondsSinceEpoch;
+
+        // Atomically lock opponent slot and invalidate all other pending invitations!
+        transaction.update(liveStreamDocRef, {
+          'pk_opponent_id': currentUserId,
+          'pk_invited_user_ids': [], // Clears all other pending invitations
+          'battle_type': BattleType.waiting.value,
+          'battle_duration': duration,
+          'battle_created_at': now,
+        });
+      });
+      showSnackBar('PK Battle starting!');
+    } catch (e) {
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      if (msg.contains('PK Battle already started')) {
+        showSnackBar('PK Battle already started.');
+      } else if (msg.contains('no longer an active call participant')) {
+        showSnackBar('You are no longer an active call participant.');
+      } else {
+        showSnackBar('This PK Battle already has an opponent.');
+      }
+    }
+  }
+
+  /// Co-host rejects PK invitation
+  void rejectPkInviteFromHost(int currentUserId) async {
+    isPkInviteDialogOpen = false;
+    liveStreamDocRef.update({
+      'pk_invited_user_ids': FieldValue.arrayRemove([currentUserId]),
+    });
   }
 
   void startBattle() {

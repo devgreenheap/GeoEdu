@@ -36,6 +36,10 @@ class LiveHostMoreSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool isLiveHost = controller.isHost ||
+        (controller.liveData.value.hostId != null &&
+            controller.myUserId == controller.liveData.value.hostId);
+
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
@@ -134,69 +138,71 @@ class LiveHostMoreSheet extends StatelessWidget {
               ],
             ),
 
-            const SizedBox(height: 32),
-
-            // Auto Call with Red Dot & CupertinoSwitch
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Left Text
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'Auto Call',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16.5,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.1,
+            // Auto Call with Red Dot & CupertinoSwitch (Host ONLY)
+            if (isLiveHost) ...[
+              const SizedBox(height: 32),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Left Text
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'Auto Call',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.1,
+                            ),
                           ),
-                        ),
-                        Container(
-                          margin: const EdgeInsets.only(left: 6),
-                          width: 7,
-                          height: 7,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFFF3D00),
-                            shape: BoxShape.circle,
+                          Container(
+                            margin: const EdgeInsets.only(left: 6),
+                            width: 7,
+                            height: 7,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFFF3D00),
+                              shape: BoxShape.circle,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Call request will be auto accepted',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w400,
+                        ],
                       ),
-                    ),
-                  ],
-                ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Call request will be auto accepted',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
 
-                // Right Switch
-                Obx(() {
-                  final isAuto = controller.liveData.value.isAutoMode ?? false;
-                  return CupertinoSwitch(
-                    value: isAuto,
-                    activeTrackColor: const Color(0xFF00E676),
-                    inactiveTrackColor: Colors.white24,
-                    thumbColor: Colors.white,
-                    onChanged: (bool value) {
-                      HapticManager.shared.light();
-                      controller.toggleAutoCall(value);
-                    },
-                  );
-                }),
-              ],
-            ),
+                  // Right Switch
+                  Obx(() {
+                    final isAuto =
+                        controller.liveData.value.isAutoMode ?? false;
+                    return CupertinoSwitch(
+                      value: isAuto,
+                      activeTrackColor: const Color(0xFF00E676),
+                      inactiveTrackColor: Colors.white24,
+                      thumbColor: Colors.white,
+                      onChanged: (bool value) {
+                        HapticManager.shared.light();
+                        controller.toggleAutoCall(value);
+                      },
+                    );
+                  }),
+                ],
+              ),
+            ],
           ],
         ),
       ),

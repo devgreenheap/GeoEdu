@@ -302,6 +302,8 @@ class CreateAudioRoomController extends BaseController {
         themeIndex: selectedThemeIndex.value ?? 0,
         categoryId: selectedCategory.value?.id,
         categoryName: selectedCategory.value?.name,
+        targetDiamonds: 0,
+        favouriteGiftTarget: 3,
       );
 
       // 2. Clear old live room subcollections in background (do NOT block navigation)

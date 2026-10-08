@@ -33,6 +33,7 @@ class CustomAppBar extends StatelessWidget {
   final bool isLoading;
   final bool? isShowBackShow;
   final bool centertitle;
+  final VoidCallback? onTapBack;
   const CustomAppBar(
       {super.key,
       required this.title,
@@ -44,7 +45,8 @@ class CustomAppBar extends StatelessWidget {
       this.rowWidget,
       this.isLoading = false,
       this.isShowBackShow = true,
-      this.centertitle = true
+      this.centertitle = true,
+      this.onTapBack,
       });
 
   @override
@@ -62,6 +64,7 @@ class CustomAppBar extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 isShowBackShow == true ? CustomBackButton(
+                  onTap: onTapBack,
                   color: iconColor,
                   width: 18,
                   height: 18,
@@ -137,7 +140,7 @@ class NewCustomAppBar extends StatelessWidget {
               height: 30,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.05),
+                color: Colors.white.withValues(alpha: 0.05),
               ),
             ),
           ),
@@ -149,7 +152,7 @@ class NewCustomAppBar extends StatelessWidget {
               height: 50,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.05),
+                color: Colors.white.withValues(alpha: 0.05),
               ),
             ),
           ),

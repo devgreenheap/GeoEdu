@@ -6,7 +6,6 @@ import 'package:geoedu/common/manager/logger.dart';
 import 'package:geoedu/common/manager/session_manager.dart';
 import 'package:geoedu/common/service/api/user_service.dart';
 import 'package:geoedu/common/widget/text_button_custom.dart';
-import 'package:geoedu/common/widget/theme_blur_bg.dart';
 import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/model/general/settings_model.dart';
 import 'package:geoedu/screen/auth_screen/login_screen.dart';
@@ -53,7 +52,13 @@ class _SessionExpiredScreenState extends State<SessionExpiredScreen> {
                             style: TextStyleCustom.unboundedRegular400(
                                 color: whitePure(context), fontSize: 20)),
                         Obx(() {
-                          final helpMail = settings.value?.helpMail ?? '';
+                          final rawHelpMail = settings.value?.helpMail ?? '';
+                          final helpMail = (rawHelpMail.isEmpty ||
+                                  rawHelpMail.toLowerCase().contains('1236@') ||
+                                  rawHelpMail.toLowerCase().contains('goeducation') ||
+                                  rawHelpMail.toLowerCase().contains('geoedu.com'))
+                              ? 'geoeducation2026@gmail.com'
+                              : rawHelpMail;
 
                           final description =
                               widget.type.description(value: helpMail).tr;

@@ -6,6 +6,7 @@
 
 <ul class="nav nav-tabs mb-3" role="tablist">
     <li class="nav-item" role="presentation"><a class="nav-link active" data-bs-toggle="tab" href="#host-payout-tab" role="tab">{{ __('Host Payout') }}</a></li>
+    <li class="nav-item" role="presentation"><a class="nav-link text-primary fw-bold" href="{{ url('requestedPayouts') }}"><i class="uil-money-withdraw me-1"></i>{{ __('Requested Payouts') }}</a></li>
     <li class="nav-item" role="presentation"><a class="nav-link" data-bs-toggle="tab" href="#admin-payout-tab" role="tab">{{ __('Admin Payout') }}</a></li>
     <li class="nav-item" role="presentation"><a class="nav-link" data-bs-toggle="tab" href="#agent-payout-tab" role="tab">{{ __('Agent Payout') }}</a></li>
     <li class="nav-item" role="presentation"><a class="nav-link" data-bs-toggle="tab" href="#state-agent-payout-tab" role="tab">{{ __('State Agent Payout') }}</a></li>

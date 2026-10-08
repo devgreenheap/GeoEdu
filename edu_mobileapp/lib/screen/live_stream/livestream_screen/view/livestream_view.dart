@@ -12,8 +12,9 @@ import 'package:geoedu/model/livestream/livestream.dart';
 import 'package:geoedu/model/livestream/livestream_user_state.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/audience/widget/live_stream_user_info_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
-import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requested_sheet.dart';
-import 'package:geoedu/screen/live_stream/livestream_screen/widget/members_sheet.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requests_sheet.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/joined_call_user_widget.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_host_more_sheet.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/theme_res.dart';
 
@@ -82,484 +83,718 @@ class LivestreamView extends StatelessWidget {
 
       return EloeloStyleLayout(
         controller: controller,
-        streamViews: views,
       );
     });
   }
-
 }
 
-class EloeloStyleLayout extends StatelessWidget {
+class EloeloStyleLayout extends StatefulWidget {
   final LivestreamScreenController controller;
-  final List<StreamView> streamViews;
 
   const EloeloStyleLayout({
     super.key,
     required this.controller,
-    required this.streamViews,
   });
 
   @override
-  Widget build(BuildContext context) {
-    if (streamViews.isEmpty) return const SizedBox.shrink();
-
-    final hostIdStr = controller.liveData.value.hostId?.toString() ?? '';
-    final roomIdStr = controller.liveData.value.roomID ?? '';
-
-    // Identify the host stream reliably, falling back to index 0
-    final host = streamViews.firstWhere(
-      (s) =>
-          (roomIdStr.isNotEmpty && s.streamId == roomIdStr) ||
-          (hostIdStr.isNotEmpty && s.streamId == hostIdStr),
-      orElse: () => streamViews.first,
-    );
-    final members = streamViews.where((s) => s != host).toList();
-
-    return Stack(
-      children: [
-        // 1. Full-screen host video background
-        Positioned.fill(
-          child: LiveStreamUserView(
-            isNameAndSpeakerVisible: false,
-            controller: controller,
-            streamingView: host,
-          ),
-        ),
-
-        // 2. Vertical Participant Video Cards column on the RIGHT side (Matching Reference Image)
-        Positioned(
-          right: 12,
-          top: MediaQuery.of(context).padding.top + 78,
-          bottom: MediaQuery.of(context).padding.bottom + 150,
-          child: Obx(() {
-            final liveData = controller.liveData.value;
-            final isRestricted = liveData.isRestrictToJoin != 0;
-            final showJoinSlot =
-                !controller.isHost && !isRestricted && members.length < 8;
-
-            const double cardWidth = 104.0;
-            const double cardHeight = 128.0;
-
-            if (members.isEmpty && !showJoinSlot) {
-              return const SizedBox.shrink();
-            }
-
-            return SizedBox(
-              width: cardWidth,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.vertical,
-                physics: const BouncingScrollPhysics(),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    ...List.generate(
-                      members.length,
-                      (index) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: ParticipantVideoCard(
-                          controller: controller,
-                          streamingView: members[index],
-                          width: cardWidth,
-                          height: cardHeight,
-                        ),
-                      ),
-                    ),
-                    if (showJoinSlot)
-                      _JoinCallSlot(
-                        controller: controller,
-                        width: cardWidth,
-                        height: cardHeight,
-                      ),
-                  ],
-                ),
-              ),
-            );
-          }),
-        ),
-      ],
-    );
-  }
+  State<EloeloStyleLayout> createState() => _EloeloStyleLayoutState();
 }
 
-class ParticipantVideoCard extends StatelessWidget {
-  final LivestreamScreenController controller;
-  final StreamView streamingView;
-  final double width;
-  final double height;
-
-  const ParticipantVideoCard({
-    super.key,
-    required this.controller,
-    required this.streamingView,
-    this.width = 108.0,
-    this.height = 126.0,
-  });
-
+class _EloeloStyleLayoutState extends State<EloeloStyleLayout> {
   @override
   Widget build(BuildContext context) {
-    final streamUserId = int.tryParse(streamingView.streamId);
+    final controller = widget.controller;
 
     return Obx(() {
-      final state = controller.liveUsersStates.firstWhereOrNull(
-          (element) => element.userId == streamUserId);
-      final user = controller.firestoreController.users.firstWhereOrNull(
-          (u) => u.userId.toString() == streamingView.streamId);
+      final liveData = controller.liveData.value;
+      final hostId = liveData.hostId;
+      final hostIdStr = hostId?.toString() ?? '';
+      final roomIdStr = liveData.roomID ?? '';
+      final streamViews = controller.streamViews;
 
-      final isAudioOff = state?.audioStatus == VideoAudioStatus.offByMe ||
-          state?.audioStatus == VideoAudioStatus.offByHost;
-      final isVideoOff = state?.videoStatus == VideoAudioStatus.offByMe ||
-          state?.videoStatus == VideoAudioStatus.offByHost;
+      // 1. Identify Host StreamView
+      StreamView? hostStream = streamViews.firstWhereOrNull(
+        (s) =>
+            (roomIdStr.isNotEmpty && s.streamId == roomIdStr) ||
+            (hostIdStr.isNotEmpty && s.streamId == hostIdStr),
+      );
+      if (hostStream == null && streamViews.isNotEmpty) {
+        hostStream = streamViews.first;
+      }
 
-      final userName = user?.fullname ?? user?.username ?? "User";
-      final userPhoto = user?.profile?.addBaseURL();
+      // If no host stream is ready yet, display joining placeholder
+      if (hostStream == null) {
+        final hostUser = liveData.hostUser ??
+            controller.firestoreController.users
+                .firstWhereOrNull((u) => u.userId == hostId);
+        final hostName = hostUser?.fullname ?? hostUser?.username ?? 'Host';
+        final hostPhoto = hostUser?.profile?.addBaseURL();
 
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticManager.shared.light();
-          if (controller.isHost) {
-            _showHostParticipantControlMenu(
-              context: context,
-              controller: controller,
-              userId: streamUserId ?? 0,
-              user: user,
-              state: state,
-            );
-          } else {
-            if (user != null) {
-              Get.bottomSheet(
-                LiveStreamUserInfoSheet(
-                  isAudience: true,
-                  liveUser: user,
-                  controller: controller,
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CustomImage(
+                size: const Size(84, 84),
+                image: hostPhoto,
+                radius: 42,
+                strokeWidth: 2.5,
+                strokeColor: const Color(0xFFFFB300),
+                fullName: hostName,
+              ),
+              const SizedBox(height: 16),
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFFB300)),
                 ),
-                isScrollControlled: true,
-              );
-            }
-          }
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-          width: width,
-          height: height,
-          decoration: BoxDecoration(
-            color: const Color(0xFF1B1E28),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.22),
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.45),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Joining live video call...',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Stack(
+        );
+      }
+
+      return Stack(
+        children: [
+          // 1. Full-screen host video background
+          Positioned.fill(
+            child: LiveStreamUserView(
+              isNameAndSpeakerVisible: false,
+              controller: controller,
+              streamingView: hostStream,
+            ),
+          ),
+        ],
+      );
+    });
+  }
+}
+
+Widget buildColumnAcceptCallCard(
+    BuildContext context, LivestreamScreenController controller, double width) {
+  return Obx(() {
+    final pendingCount = controller.requestList.length;
+    return GestureDetector(
+      onTap: () {
+        CallRequestsSheet.show(context);
+      },
+      child: Container(
+        width: width,
+        height: 98,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: CustomPaint(
+          painter: DashedRRectPainter(
+            color: Colors.white.withValues(alpha: 0.75),
+            strokeWidth: 1.5,
+            radius: 14,
+            dash: 5,
+            gap: 4,
+          ),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // 1. Video Stream or Avatar Placeholder (When camera disabled/turned off)
-                Positioned.fill(
-                  child: isVideoOff
-                      ? Container(
-                          decoration: const BoxDecoration(
-                            gradient: RadialGradient(
-                              center: Alignment.center,
-                              radius: 0.9,
-                              colors: [Color(0xFF2C3243), Color(0xFF13151D)],
-                            ),
-                          ),
-                          child: Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                CustomImage(
-                                  size: const Size(48, 48),
-                                  image: userPhoto,
-                                  fullName: userName,
-                                  radius: 24,
-                                  strokeWidth: 1.8,
-                                  strokeColor: const Color(0xFFFFB300),
-                                ),
-                                const SizedBox(height: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.5),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.videocam_off_rounded,
-                                        color: Colors.white70,
-                                        size: 11,
-                                      ),
-                                      SizedBox(width: 3),
-                                      Text(
-                                        'Video Off',
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 8.5,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      : streamingView.streamView,
+                const Icon(
+                  Icons.add_rounded,
+                  color: Colors.white,
+                  size: 26,
                 ),
-
-                // 2. Top-right Chevron Icon (matching Reference Image)
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: Container(
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.45),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      color: Colors.white,
-                      size: 15,
-                    ),
-                  ),
-                ),
-
-                // 3. Bottom User Name Overlay
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.only(
-                        left: 28, right: 6, top: 12, bottom: 4),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withValues(alpha: 0.85),
-                        ],
-                      ),
-                    ),
-                    child: Text(
-                      userName,
-                      textAlign: TextAlign.left,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.1,
-                      ),
-                    ),
-                  ),
-                ),
-
-                // 4. Bottom-left Microphone Status Badge (Rendered on top of name overlay)
-                Positioned(
-                  bottom: 6,
-                  left: 6,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: isAudioOff
-                          ? const Color(0xFFD32F2F).withValues(alpha: 0.95)
-                          : Colors.black.withValues(alpha: 0.6),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.35),
-                        width: 0.8,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          blurRadius: 4,
-                        ),
-                      ],
-                    ),
-                    child: Icon(
-                      isAudioOff
-                          ? Icons.mic_off_rounded
-                          : Icons.mic_rounded,
-                      color: Colors.white,
-                      size: 12,
-                    ),
+                const SizedBox(height: 3),
+                Text(
+                  pendingCount > 0
+                      ? 'Accept Call ($pendingCount)'
+                      : 'Accept Call',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
           ),
         ),
-      );
-    });
-  }
+      ),
+    );
+  });
 }
 
-class _JoinCallSlot extends StatelessWidget {
+class ParticipantVideoCard extends StatelessWidget {
   final LivestreamScreenController controller;
+  final int userId;
+  final StreamView? streamingView;
+  final bool isMe;
+  final bool bannerDismissed;
+  final VoidCallback? onDismissBanner;
   final double width;
   final double height;
 
-  const _JoinCallSlot({
+  const ParticipantVideoCard({
+    super.key,
     required this.controller,
+    required this.userId,
+    this.streamingView,
+    this.isMe = false,
+    this.bannerDismissed = false,
+    this.onDismissBanner,
     this.width = 104.0,
     this.height = 128.0,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        HapticManager.shared.light();
-        if (controller.isHost) {
-          Get.bottomSheet(
-            const MembersSheet(isHost: true),
-            isScrollControlled: true,
-          );
-        } else {
-          final isCoHost = (controller.liveData.value.coHostIds ?? [])
-              .contains(controller.myUserId);
-          if (isCoHost) {
-            controller.toggleMic(null);
-          } else {
-            final myState = controller.liveUsersStates
-                .firstWhereOrNull((u) => u.userId == controller.myUserId);
-            final isRequested =
-                myState?.type == LivestreamUserType.requested;
-            if (isRequested) {
-              CallRequestedSheet.show(context);
-            } else {
-              controller.onVideoRequestSend(controller.liveData.value);
-            }
-          }
-        }
-      },
-      child: Container(
-        width: width,
-        height: height,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: CustomPaint(
-          painter: DashedRRectPainter(
-            color: Colors.white.withValues(alpha: 0.7),
-            strokeWidth: 1.5,
-            radius: 16,
-            dash: 5,
-            gap: 4,
-          ),
-          child: Stack(
-            children: [
-              Center(
-                child: Obx(() {
-                  final myState = controller.liveUsersStates
-                      .firstWhereOrNull((u) => u.userId == controller.myUserId);
-                  final isRequested = !controller.isHost &&
-                      myState?.type == LivestreamUserType.requested;
+    return Obx(() {
+      final state = controller.liveUsersStates
+          .firstWhereOrNull((element) => element.userId == userId);
+      final user = controller.firestoreController.users
+          .firstWhereOrNull((u) => u.userId == userId);
 
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: isRequested
-                              ? const Color(0xFFFF9500).withValues(alpha: 0.25)
-                              : Colors.white.withValues(alpha: 0.12),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          isRequested
-                              ? Icons.hourglass_top_rounded
-                              : Icons.video_call_rounded,
-                          color: isRequested
-                              ? const Color(0xFFFFB300)
-                              : Colors.white,
-                          size: 26,
+      final isAudioOff = isMe
+          ? !controller.isAudioOn.value
+          : (state?.audioStatus == VideoAudioStatus.offByHost ||
+              (streamingView == null && state?.audioStatus == VideoAudioStatus.offByMe));
+      final isVideoOff = isMe
+          ? !controller.isVideoOn.value
+          : (state?.videoStatus == VideoAudioStatus.offByHost ||
+              (streamingView == null && state?.videoStatus == VideoAudioStatus.offByMe));
+
+      final userName = isMe
+          ? (controller.myUser.value?.fullname ??
+              controller.myUser.value?.username ??
+              "You")
+          : (user?.fullname ?? user?.username ?? "User $userId");
+      final userPhoto = isMe
+          ? controller.myUser.value?.profilePhoto?.addBaseURL()
+          : user?.profile?.addBaseURL();
+
+      final isConnecting = streamingView == null;
+      final isEnlarged =
+          controller.isHost && controller.enlargedCoHostUserId.value == userId;
+      final targetWidth = isEnlarged ? 144.0 : width;
+      final targetHeight = isEnlarged ? 176.0 : height;
+
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              HapticManager.shared.light();
+              if (isMe) {
+                LiveHostMoreSheet.show(
+                  context: context,
+                  controller: controller,
+                  onShare: () {},
+                );
+              } else if (controller.isHost) {
+                if (controller.enlargedCoHostUserId.value != userId) {
+                  // 1st click: enlarge this user's video card slightly!
+                  controller.enlargedCoHostUserId.value = userId;
+                } else {
+                  // 2nd click: show options menu!
+                  showHostParticipantControlMenu(
+                    context: context,
+                    controller: controller,
+                    userId: userId,
+                    user: user,
+                    state: state,
+                  );
+                }
+              } else {
+                if (user != null) {
+                  Get.bottomSheet(
+                    LiveStreamUserInfoSheet(
+                      isAudience: true,
+                      liveUser: user,
+                      controller: controller,
+                    ),
+                    isScrollControlled: true,
+                  );
+                }
+              }
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOutBack,
+              width: targetWidth,
+              height: targetHeight,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1B1E28),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isEnlarged
+                      ? const Color(0xFFFFB300)
+                      : Colors.white.withValues(alpha: 0.22),
+                  width: isEnlarged ? 2.0 : 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: isEnlarged
+                        ? const Color(0xFFFFB300).withValues(alpha: 0.35)
+                        : Colors.black.withValues(alpha: 0.45),
+                    blurRadius: isEnlarged ? 16 : 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Stack(
+                  children: [
+                    // 1. Video Stream or Placeholder / Connecting
+                    Positioned.fill(
+                      child: (isVideoOff || isConnecting)
+                          ? Container(
+                              decoration: const BoxDecoration(
+                                gradient: RadialGradient(
+                                  center: Alignment.center,
+                                  radius: 0.9,
+                                  colors: [
+                                    Color(0xFF2C3243),
+                                    Color(0xFF13151D)
+                                  ],
+                                ),
+                              ),
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CustomImage(
+                                      size: const Size(44, 44),
+                                      image: userPhoto,
+                                      fullName: userName,
+                                      radius: 22,
+                                      strokeWidth: 1.8,
+                                      strokeColor: const Color(0xFFFFB300),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black
+                                            .withValues(alpha: 0.55),
+                                        borderRadius:
+                                            BorderRadius.circular(8),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (isConnecting && !isVideoOff) ...[
+                                            const SizedBox(
+                                              width: 8,
+                                              height: 8,
+                                              child:
+                                                  CircularProgressIndicator(
+                                                strokeWidth: 1.5,
+                                                valueColor:
+                                                    AlwaysStoppedAnimation<
+                                                            Color>(
+                                                        Color(0xFFFFB300)),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            const Text(
+                                              'Connecting...',
+                                              style: TextStyle(
+                                                color: Colors.white70,
+                                                fontSize: 8.5,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ] else ...[
+                                            const Icon(
+                                              Icons.videocam_off_rounded,
+                                              color: Colors.white70,
+                                              size: 11,
+                                            ),
+                                            const SizedBox(width: 3),
+                                            const Text(
+                                              'Video Off',
+                                              style: TextStyle(
+                                                color: Colors.white70,
+                                                fontSize: 8.5,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                          : streamingView!.streamView,
+                    ),
+
+                    // 2. Top-Right Indicator / Chevron / End Call
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: isMe
+                          ? GestureDetector(
+                              onTap: () {
+                                HapticManager.shared.light();
+                                controller.closeCoHostStream(userId);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFFF3B30),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.call_end_rounded,
+                                  color: Colors.white,
+                                  size: 11,
+                                ),
+                              ),
+                            )
+                          : GestureDetector(
+                              onTap: () {
+                                HapticManager.shared.light();
+                                if (controller.isHost) {
+                                  showHostParticipantControlMenu(
+                                    context: context,
+                                    controller: controller,
+                                    userId: userId,
+                                    user: user,
+                                    state: state,
+                                  );
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.55),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.more_vert_rounded,
+                                  color: Colors.white,
+                                  size: 14,
+                                ),
+                              ),
+                            ),
+                    ),
+
+                    if (isEnlarged)
+                      Positioned(
+                        bottom: 22,
+                        left: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.8),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                                color: const Color(0xFFFFB300), width: 0.8),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.touch_app_rounded,
+                                  color: Color(0xFFFFB300), size: 10),
+                              SizedBox(width: 3),
+                              Text(
+                                'Tap for options',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        isRequested ? 'Requested' : 'Join Call',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: isRequested
-                              ? const Color(0xFFFFB300)
-                              : Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.2,
+
+                    // 3. Bottom controls (for Self) OR Bottom Name Overlay (for Others)
+                    if (isMe)
+                      Positioned(
+                        left: 6,
+                        right: 6,
+                        bottom: 6,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // Interactive Mic toggle
+                            GestureDetector(
+                              onTap: () {
+                                HapticManager.shared.light();
+                                controller.toggleMic(state);
+                              },
+                              child: Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: isAudioOff
+                                      ? const Color(0xFFFF3B30)
+                                      : const Color(0xFF00E676),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black
+                                          .withValues(alpha: 0.3),
+                                      blurRadius: 4,
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  isAudioOff
+                                      ? Icons.mic_off_rounded
+                                      : Icons.mic_rounded,
+                                  color: Colors.white,
+                                  size: 13,
+                                ),
+                              ),
+                            ),
+
+                            // Interactive Camera Flip
+                            GestureDetector(
+                              onTap: () {
+                                HapticManager.shared.light();
+                                controller.toggleFlipCamera();
+                              },
+                              child: Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color:
+                                      Colors.black.withValues(alpha: 0.55),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.flip_camera_ios_rounded,
+                                  color: Colors.white,
+                                  size: 13,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else ...[
+                      // Bottom User Name Overlay
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.only(
+                              left: 28, right: 6, top: 12, bottom: 4),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.85),
+                              ],
+                            ),
+                          ),
+                          child: Text(
+                            userName,
+                            textAlign: TextAlign.left,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.1,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Bottom-left Microphone Status Badge
+                      Positioned(
+                        bottom: 6,
+                        left: 6,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: isAudioOff
+                                ? const Color(0xFFD32F2F)
+                                    .withValues(alpha: 0.95)
+                                : Colors.black.withValues(alpha: 0.6),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.35),
+                              width: 0.8,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color:
+                                    Colors.black.withValues(alpha: 0.3),
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            isAudioOff
+                                ? Icons.mic_off_rounded
+                                : Icons.mic_rounded,
+                            color: Colors.white,
+                            size: 12,
+                          ),
                         ),
                       ),
                     ],
-                  );
-                }),
+                  ],
+                ),
               ),
-              // Request count badge on top-right corner (Host only, when requests exist)
-              Positioned(
-                top: 6,
-                right: 6,
-                child: Obx(() {
-                  if (!controller.isHost || controller.requestList.isEmpty) {
-                    return const SizedBox.shrink();
-                  }
-                  final count = controller.requestList.length;
-                  return Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 5, vertical: 2),
+            ),
+          ),
+
+          // 4. Purple Info Banner for Self (if not dismissed)
+          if (isMe && !bannerDismissed) ...[
+            const SizedBox(height: 8),
+            _buildPurpleInfoBanner(),
+          ],
+        ],
+      );
+    });
+  }
+
+  Widget _buildPurpleInfoBanner() {
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.topRight,
+      children: [
+        Positioned(
+          top: -6,
+          right: 24,
+          child: CustomPaint(
+            size: const Size(14, 7),
+            painter: SpeechBeakPainter(color: const Color(0xFF991EEB)),
+          ),
+        ),
+        Container(
+          width: 248,
+          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF991EEB),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF991EEB).withValues(alpha: 0.4),
+                blurRadius: 12,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 22,
+                    height: 22,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E88E5),
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.35),
-                          blurRadius: 4,
-                        ),
-                      ],
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                    constraints:
-                        const BoxConstraints(minWidth: 18, minHeight: 18),
-                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.videocam_rounded,
+                      color: Colors.white,
+                      size: 15,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(
                     child: Text(
-                      '$count',
-                      style: const TextStyle(
+                      'You have joined the call, Start talking',
+                      style: TextStyle(
                         color: Colors.white,
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w900,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        height: 1.2,
                       ),
                     ),
-                  );
-                }),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      onDismissBanner?.call();
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Icon(
+                        Icons.close_rounded,
+                        color: Colors.white.withValues(alpha: 0.7),
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Icons.portrait_rounded,
+                      color: Colors.white,
+                      size: 15,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Show your face to stay visible on the live call',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        height: 1.25,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
-      ),
+      ],
     );
   }
 }
 
-void _showHostParticipantControlMenu({
+
+
+void showHostParticipantControlMenu({
   required BuildContext context,
   required LivestreamScreenController controller,
   required int userId,
@@ -768,7 +1003,7 @@ void _showHostParticipantControlMenu({
               subtitle: 'Disconnect user and remove them from the call',
               onTap: () {
                 Get.back();
-                _showKickConfirmationDialog(context, controller, userId, userName);
+                showKickConfirmationDialog(context, controller, userId, userName);
               },
             ),
           ],
@@ -816,7 +1051,7 @@ Widget _buildHostControlTile({
   );
 }
 
-void _showKickConfirmationDialog(
+void showKickConfirmationDialog(
   BuildContext context,
   LivestreamScreenController controller,
   int userId,

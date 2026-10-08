@@ -9,6 +9,7 @@ class RedeemRequests extends Model
 {
     use HasFactory;
     public $table = "tbl_redeem_request";
+    protected $guarded = [];
 
     public function user()
     {

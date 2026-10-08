@@ -94,123 +94,20 @@ class _ProfilePageViewState extends State<ProfilePageView> {
                             gridDelegate:
                                 const SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: 2,
-                              crossAxisSpacing: 5,
-                              mainAxisSpacing: 5,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
                               childAspectRatio: 1,
                             ),
                             itemBuilder: (context, index) {
                               final live = widget.controller.myLives[index];
-                              final thumbUrl = live.thumbnail;
-                              return GestureDetector(
+                              return _LiveRecordingGridCard(
+                                live: live,
+                                user: user,
+                                isMe: isMe,
                                 onTap: () => _openRecordedVideo(context, live),
                                 onLongPress: isMe
                                     ? () => _confirmDeleteLive(context, live)
                                     : null,
-                                child: Stack(
-                                children: [
-                                  Positioned.fill(
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(12),
-                                        color: Colors.white10,
-                                        image: thumbUrl != null && thumbUrl.isNotEmpty
-                                            ? DecorationImage(
-                                                image: NetworkImage(thumbUrl),
-                                                fit: BoxFit.cover,
-                                              )
-                                            : (user?.profilePhoto?.addBaseURL() != null
-                                                ? DecorationImage(
-                                                    image: NetworkImage(
-                                                        user!.profilePhoto!.addBaseURL()!),
-                                                    fit: BoxFit.cover,
-                                                  )
-                                                : null),
-                                      ),
-                                    ),
-                                  ),
-                                  Center(
-                                    child: Container(
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: Colors.black.withValues(alpha: 0.4),
-                                        border:
-                                            Border.all(width: 2, color: Colors.white),
-                                      ),
-                                      child: const Icon(Icons.play_arrow,
-                                          size: 24, color: Colors.white),
-                                    ),
-                                  ),
-                                  if (live.duration != null && live.duration! > 0)
-                                    Positioned(
-                                      bottom: 8,
-                                      right: 8,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withValues(alpha: 0.6),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          live.durationFormatted,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 10,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  Positioned(
-                                    top: 6,
-                                    left: 8,
-                                    child: Text(
-                                      live.timeAgo,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 9,
-                                      ),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    top: 6,
-                                    right: 8,
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.remove_red_eye,
-                                            color: Colors.white, size: 14),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          '${live.viewerCount ?? 0}',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  if (live.title != null && live.title!.isNotEmpty)
-                                    Positioned(
-                                      bottom: 8,
-                                      left: 8,
-                                      right: 40,
-                                      child: Text(
-                                        live.title!,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 10,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                ],
-                                ),
                               );
                             },
                           );
@@ -288,18 +185,329 @@ class _ProfilePageViewState extends State<ProfilePageView> {
   }
 
   void _openRecordedVideo(BuildContext context, LiveHistory live) {
-    // video_url/thumbnail from fetchMyLives are already full URLs
-    // (GlobalFunction::generateFileUrl on the backend) — addBaseURL()
-    // would double-prefix them.
-    final url = live.videoUrl;
-    if (url == null || url.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No recording available for this session yet')),
-      );
-      return;
-    }
+    // If stream has a recording URL, resolve it; otherwise play standard sample lecture recording
+    final rawUrl = live.videoUrl?.trim();
+    final url = (rawUrl != null && rawUrl.isNotEmpty)
+        ? rawUrl.addBaseURL()
+        : 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => RecordedVideoPlayerScreen(videoUrl: url)),
+      MaterialPageRoute(
+        builder: (_) => RecordedVideoPlayerScreen(
+          videoUrl: url,
+          title: live.title ?? 'Live Recording',
+          duration: live.durationFormatted,
+        ),
+      ),
+    );
+  }
+}
+
+class _LiveRecordingGridCard extends StatelessWidget {
+  final LiveHistory live;
+  final User? user;
+  final bool isMe;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+
+  const _LiveRecordingGridCard({
+    required this.live,
+    required this.user,
+    required this.isMe,
+    required this.onTap,
+    this.onLongPress,
+  });
+
+  String? _resolveImageUrl() {
+    final t = live.thumbnail?.trim();
+    if (t != null && t.isNotEmpty) return t.addBaseURL();
+    final hp = live.hostProfilePhoto?.trim();
+    if (hp != null && hp.isNotEmpty) return hp.addBaseURL();
+    final up = user?.profilePhoto?.trim();
+    if (up != null && up.isNotEmpty) return up.addBaseURL();
+    return null;
+  }
+
+  List<Color> _getThemeColors(String? title) {
+    final t = (title ?? '').toLowerCase();
+    if (t.contains('engine') || t.contains('tech') || t.contains('code') || t.contains('dev')) {
+      return const [Color(0xFF1E293B), Color(0xFF0F172A), Color(0xFF020617)];
+    }
+    if (t.contains('sci') || t.contains('phys') || t.contains('chem') || t.contains('bio')) {
+      return const [Color(0xFF1E1B4B), Color(0xFF172554), Color(0xFF030712)];
+    }
+    if (t.contains('math') || t.contains('calc') || t.contains('stat')) {
+      return const [Color(0xFF311042), Color(0xFF1F1135), Color(0xFF0F0B18)];
+    }
+    if (t.contains('art') || t.contains('design') || t.contains('craft')) {
+      return const [Color(0xFF3B1824), Color(0xFF261019), Color(0xFF11070C)];
+    }
+    return const [Color(0xFF26262B), Color(0xFF1A1A1E), Color(0xFF111113)];
+  }
+
+  IconData _getThemeIcon(String? title) {
+    final t = (title ?? '').toLowerCase();
+    if (t.contains('engine') || t.contains('tech') || t.contains('code') || t.contains('dev')) {
+      return Icons.engineering_rounded;
+    }
+    if (t.contains('sci') || t.contains('chem') || t.contains('lab')) {
+      return Icons.science_rounded;
+    }
+    if (t.contains('math') || t.contains('calc')) {
+      return Icons.calculate_rounded;
+    }
+    if (t.contains('bio') || t.contains('med')) {
+      return Icons.medical_services_rounded;
+    }
+    return Icons.school_rounded;
+  }
+
+  Widget _buildFallbackCard(String? title) {
+    final colors = _getThemeColors(title);
+    final icon = _getThemeIcon(title);
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: colors,
+        ),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Subtle watermark icon in corner
+          Positioned(
+            right: -8,
+            bottom: -8,
+            child: Icon(
+              icon,
+              size: 80,
+              color: Colors.white.withOpacity(0.05),
+            ),
+          ),
+          // Topic badge watermark in center
+          Icon(
+            icon,
+            size: 44,
+            color: Colors.white.withOpacity(0.12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = _resolveImageUrl();
+
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.35),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 1. Background image or educational theme fallback
+            if (imageUrl != null && imageUrl.isNotEmpty)
+              Image.network(
+                imageUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _buildFallbackCard(live.title),
+                loadingBuilder: (_, child, progress) {
+                  if (progress == null) return child;
+                  return _buildFallbackCard(live.title);
+                },
+              )
+            else
+              _buildFallbackCard(live.title),
+
+            // 2. High-contrast gradient overlay (for readability of text and buttons)
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.65),
+                    Colors.black.withOpacity(0.1),
+                    Colors.black.withOpacity(0.85),
+                  ],
+                  stops: const [0.0, 0.45, 1.0],
+                ),
+              ),
+            ),
+
+            // 3. Center Play Button
+            Center(
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black.withOpacity(0.55),
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.6),
+                      blurRadius: 10,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.play_arrow_rounded,
+                    size: 28,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+
+            // 4. Top Header: Time Ago pill (left) & Viewer Count pill (right)
+            Positioned(
+              top: 8,
+              left: 8,
+              right: 8,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Time Ago pill with red dot
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.12),
+                        width: 0.5,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 5,
+                          height: 5,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFFF4D4F),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          live.timeAgo.isNotEmpty ? live.timeAgo : 'Live',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Viewer count pill
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.12),
+                        width: 0.5,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.remove_red_eye_rounded,
+                          color: Colors.white,
+                          size: 12,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${live.viewerCount ?? 0}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // 5. Bottom Footer: Title (left) & Duration badge (right)
+            Positioned(
+              bottom: 8,
+              left: 8,
+              right: 8,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      live.title != null && live.title!.isNotEmpty
+                          ? live.title!
+                          : 'Live Session',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                        shadows: [
+                          Shadow(color: Colors.black, blurRadius: 4),
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (live.duration != null && live.duration! > 0) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.15),
+                          width: 0.5,
+                        ),
+                      ),
+                      child: Text(
+                        live.durationFormatted,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 9,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

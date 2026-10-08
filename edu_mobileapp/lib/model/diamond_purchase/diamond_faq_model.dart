@@ -18,14 +18,23 @@ class DiamondFaqModel {
 
 class DiamondFaq {
   int? id;
+  String? category;
   String? question;
   String? answer;
 
-  DiamondFaq({this.id, this.question, this.answer});
+  DiamondFaq({this.id, this.category, this.question, this.answer});
 
   factory DiamondFaq.fromJson(Map<String, dynamic> json) => DiamondFaq(
         id: json["id"],
+        category: json["category"],
         question: json["question"],
         answer: json["answer"],
       );
+
+  Map<String, dynamic> toJson() => {
+        "id": id,
+        "category": category,
+        "question": question,
+        "answer": answer,
+      };
 }

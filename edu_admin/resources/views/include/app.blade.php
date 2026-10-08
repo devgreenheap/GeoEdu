@@ -44,7 +44,7 @@
     $userManagementOpen = in_array($currentPath, ['users', 'liveDetails', 'restrictions', 'notifications', 'supports']);
     $userSettingOpen = in_array($currentPath, ['giftDetails', 'entryEffects', 'packageDetails', 'music', 'levelDetails', 'xpPointsSettings']);
     $settingOpen = in_array($currentPath, ['categoryDetails', 'banners', 'languages', 'setting', 'coupons']);
-    $transactionsOpen = in_array($currentPath, ['diamondTransactions', 'manualPayouts']);
+    $transactionsOpen = in_array($currentPath, ['diamondTransactions', 'manualPayouts', 'requestedPayouts']);
     $reportsOpen = in_array($currentPath, [
         'reportRevenueCommission',
         'reportPayoutControl',
@@ -436,6 +436,12 @@
                                     <a href="{{ url('manualPayouts')}}" class="side-nav-link">
                                         <i class="uil-bill"></i>
                                         <span> {{ __('Manual Payouts')}} </span>
+                                    </a>
+                                </li>
+                                <li class="side-nav-item requestedPayouts">
+                                    <a href="{{ url('requestedPayouts')}}" class="side-nav-link">
+                                        <i class="uil-money-withdraw"></i>
+                                        <span> {{ __('Requested Payouts')}} </span>
                                     </a>
                                 </li>
                             </ul>

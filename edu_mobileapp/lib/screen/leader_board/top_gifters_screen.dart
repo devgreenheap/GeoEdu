@@ -227,6 +227,7 @@ class _DynamicGifterTabState extends State<_DynamicGifterTab>
             LeaderboardTopThree(
               isDiamond: true,
               topUsers: users,
+              myUserId: SessionManager.instance.getUser()?.id ?? -1,
               onUserTap: _openProfile,
               onFollowTap: _toggleFollow,
             ),

@@ -53,6 +53,13 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _openOtpScreen(AuthScreenController controller) {
+    controller.loginOtpController.value = const TextEditingValue(
+      text: '',
+      selection: TextSelection.collapsed(offset: 0),
+    );
+    controller.isLoginOtpVerified = false;
+    controller.loginError = null;
+    controller.update();
     Get.to(() => OtpVerificationScreen(
           phoneDisplay:
               '${controller.loginCountryCode} ${controller.loginMobileController.text}',
