@@ -459,3 +459,7 @@ Route::middleware(['checkLogin'])->group(function () {
     Route::post('languageEnableDisable', [LanguageController::class, 'languageEnableDisable'])->name('languageEnableDisable');
     Route::get('edit_csv/{id}', [LanguageController::class, 'edit_csv'])->name('edit_csv');
 });
+
+// Public Invoice Verification & Re-open
+Route::get('verify-invoice/{id}', [SettingsController::class, 'verifyInvoice'])->name('invoice.verify');
+

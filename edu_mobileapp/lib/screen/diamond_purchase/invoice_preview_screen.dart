@@ -130,7 +130,7 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
             XFile(file.path, mimeType: 'application/pdf', name: _pdfFileName)
           ],
           subject: 'Tax Invoice - $_cleanTxnId',
-          text: 'Tax Invoice for GeoEdu Diamond Purchase ($_cleanTxnId)',
+          text: 'Tax Invoice for GeoEdu Purchase ($_cleanTxnId)',
           sharePositionOrigin: sharePositionOrigin,
         ),
       );

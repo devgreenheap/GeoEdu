@@ -12,6 +12,8 @@ use App\Models\Constants;
 use App\Models\CountryMaster;
 use App\Models\DeepARFilters;
 use App\Models\DiamondBuyingInformation;
+use App\Models\DiamondPackages;
+use App\Models\DiamondTransactions;
 use App\Models\Divisions;
 use App\Models\DummyLiveVideos;
 use App\Models\Gifts;
@@ -1643,6 +1645,11 @@ class SettingsController extends Controller
         $setting->invoice_igst_enabled = $request->boolean('invoice_igst_enabled') ? 1 : 0;
         $setting->invoice_igst_percent = floatval($request->invoice_igst_percent ?? 18.00);
 
+        // Silver Jewel GST (%), Making Charge Percent (%) & Handling Fee (₹)
+        $setting->silver_jewel_gst_percent = $request->filled('silver_jewel_gst_percent') ? floatval($request->silver_jewel_gst_percent) : null;
+        $setting->making_charge_percent = $request->filled('making_charge_percent') ? floatval($request->making_charge_percent) : null;
+        $setting->handling_fee = $request->filled('handling_fee') ? floatval($request->handling_fee) : 0.00;
+
         // Company Information
         if ($request->has('invoice_company_name')) {
             $setting->invoice_company_name = trim($request->invoice_company_name);
@@ -1885,6 +1892,69 @@ class SettingsController extends Controller
         ]);
     }
 
+    public function verifyInvoice($id)
+    {
+        $transaction = DiamondTransactions::where('id', $id)
+            ->orWhere('payment_id', $id)
+            ->first();
 
+        $settings = GlobalSettings::first();
 
+        if (!$transaction) {
+            return view('verifyInvoice', [
+                'verified' => false,
+                'id' => $id,
+                'settings' => $settings,
+            ]);
+        }
+
+        $user = Users::find($transaction->user_id);
+        $pack = DiamondPackages::find($transaction->diamond_pack_id);
+
+        $amount = floatval($transaction->amount);
+        $origPrice = $pack ? floatval($pack->diamond_plan_price) : $amount;
+        if ($origPrice < $amount) {
+            $origPrice = $amount;
+        }
+        $discount = max(0, round($origPrice - $amount, 2));
+
+        $productName = !empty($pack?->product_name) ? $pack->product_name : 'Jewellery Product';
+        $productId = !empty($pack?->product_id) ? $pack->product_id : ('DIA' . str_pad($transaction->diamond_pack_id ?: $transaction->id, 3, '0', STR_PAD_LEFT));
+        $productOrigPrice = !is_null($pack?->product_original_price) ? floatval($pack->product_original_price) : $origPrice;
+        $productDiscPrice = !is_null($pack?->product_discounted_price) ? floatval($pack->product_discounted_price) : $amount;
+
+        $makingChargePercent = floatval($settings->making_charge_percent ?? 0);
+        $handlingFee = floatval($settings->handling_fee ?? 0);
+        $silverJewelGstPercent = floatval($settings->silver_jewel_gst_percent ?? 0);
+
+        $makingChargeAmount = $makingChargePercent > 0 ? round($productDiscPrice * ($makingChargePercent / 100), 2) : 0;
+        $gstBase = $productDiscPrice + $makingChargeAmount + $handlingFee;
+        $gstAmount = $silverJewelGstPercent > 0 ? round($gstBase * ($silverJewelGstPercent / 100), 2) : 0;
+        $finalAmount = round($productDiscPrice + $makingChargeAmount + $handlingFee + $gstAmount, 2);
+
+        $prefix = $settings->invoice_prefix ?: 'GEO';
+        $year = date('Y', strtotime($transaction->created_at ?? 'now'));
+        $invoiceNumber = $prefix . '/' . $year . '-' . ($year + 1) . '/' . date('m', strtotime($transaction->created_at ?? 'now')) . '/' . $transaction->id;
+
+        return view('verifyInvoice', [
+            'verified' => true,
+            'id' => $id,
+            'transaction' => $transaction,
+            'user' => $user,
+            'pack' => $pack,
+            'settings' => $settings,
+            'productName' => $productName,
+            'productId' => $productId,
+            'productOrigPrice' => $productOrigPrice,
+            'productDiscPrice' => $productDiscPrice,
+            'discount' => $discount,
+            'makingChargePercent' => $makingChargePercent,
+            'makingChargeAmount' => $makingChargeAmount,
+            'handlingFee' => $handlingFee,
+            'silverJewelGstPercent' => $silverJewelGstPercent,
+            'gstAmount' => $gstAmount,
+            'finalAmount' => $finalAmount,
+            'invoiceNumber' => $invoiceNumber,
+        ]);
+    }
 }

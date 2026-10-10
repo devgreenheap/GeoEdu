@@ -98,6 +98,9 @@ class Setting {
   double? invoiceCgstPercent;
   int? invoiceIgstEnabled;
   double? invoiceIgstPercent;
+  double? silverJewelGstPercent;
+  double? makingChargePercent;
+  double? handlingFee;
   String? invoiceCompanyName;
   String? invoiceCompanyAddress;
   String? invoiceGstin;
@@ -176,6 +179,9 @@ class Setting {
     this.invoiceCgstPercent,
     this.invoiceIgstEnabled,
     this.invoiceIgstPercent,
+    this.silverJewelGstPercent,
+    this.makingChargePercent,
+    this.handlingFee,
     this.invoiceCompanyName,
     this.invoiceCompanyAddress,
     this.invoiceGstin,
@@ -309,6 +315,15 @@ class Setting {
         invoiceIgstPercent: json["invoice_igst_percent"] == null
             ? 18.0
             : double.tryParse(json["invoice_igst_percent"].toString()) ?? 18.0,
+        silverJewelGstPercent: json["silver_jewel_gst_percent"] != null
+            ? double.tryParse(json["silver_jewel_gst_percent"].toString())
+            : null,
+        makingChargePercent: json["making_charge_percent"] != null
+            ? double.tryParse(json["making_charge_percent"].toString())
+            : null,
+        handlingFee: json["handling_fee"] != null
+            ? double.tryParse(json["handling_fee"].toString())
+            : null,
         invoiceCompanyName: json["invoice_company_name"],
         invoiceCompanyAddress: json["invoice_company_address"],
         invoiceGstin: json["invoice_gstin"],
@@ -410,6 +425,9 @@ class Setting {
         "invoice_cgst_percent": invoiceCgstPercent,
         "invoice_igst_enabled": invoiceIgstEnabled,
         "invoice_igst_percent": invoiceIgstPercent,
+        "silver_jewel_gst_percent": silverJewelGstPercent,
+        "making_charge_percent": makingChargePercent,
+        "handling_fee": handlingFee,
         "invoice_company_name": invoiceCompanyName,
         "invoice_company_address": invoiceCompanyAddress,
         "invoice_gstin": invoiceGstin,

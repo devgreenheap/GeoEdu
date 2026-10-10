@@ -1446,4 +1446,54 @@ class GlobalFunction extends Model
 
         return $csvData;
     }
+
+    public static function numberToWords($amount)
+    {
+        $val = intval(round(floatval($amount)));
+        if ($val <= 0) {
+            return 'Zero';
+        }
+
+        $units = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+        $tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+        $convertChunk = function ($n) use (&$units, &$tens) {
+            $str = '';
+            if ($n >= 100) {
+                $str .= $units[intval($n / 100)] . ' Hundred ';
+                $n %= 100;
+            }
+            if ($n >= 20) {
+                $str .= $tens[intval($n / 10)] . ' ';
+                $n %= 10;
+            }
+            if ($n > 0) {
+                $str .= $units[$n] . ' ';
+            }
+            return trim($str);
+        };
+
+        $result = '';
+        $crore = intval($val / 10000000);
+        $rem = $val % 10000000;
+        $lakh = intval($rem / 100000);
+        $rem %= 100000;
+        $thousand = intval($rem / 1000);
+        $rem %= 1000;
+
+        if ($crore > 0) {
+            $result .= $convertChunk($crore) . ' Crore ';
+        }
+        if ($lakh > 0) {
+            $result .= $convertChunk($lakh) . ' Lakh ';
+        }
+        if ($thousand > 0) {
+            $result .= $convertChunk($thousand) . ' Thousand ';
+        }
+        if ($rem > 0) {
+            $result .= $convertChunk($rem) . ' ';
+        }
+
+        return trim($result);
+    }
 }

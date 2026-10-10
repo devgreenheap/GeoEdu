@@ -6,6 +6,7 @@ import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requests
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requested_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/followers_gained_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_host_more_sheet.dart';
+import 'package:geoedu/model/livestream/livestream.dart';
 import 'package:geoedu/model/livestream/livestream_user_state.dart';
 import 'package:geoedu/common/controller/follow_controller.dart';
 import 'package:geoedu/common/extensions/common_extension.dart';
@@ -417,6 +418,11 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
   Widget _buildHostParticipantColumn(LivestreamScreenController controller) {
     return Obx(() {
       final liveData = controller.liveData.value;
+      if (liveData.type == LivestreamType.battle ||
+          liveData.battleType == BattleType.waiting ||
+          liveData.battleType == BattleType.running) {
+        return const SizedBox.shrink();
+      }
       final hostId = liveData.hostId;
       final streamViews = controller.streamViews;
 
@@ -2337,29 +2343,6 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                 ),
                 if (widget.isHost) ...[
                   const SizedBox(width: 4),
-                  // Host quick mic
-                  GestureDetector(
-                    onTap: () => controller.toggleMic(null),
-                    child: Container(
-                      padding: const EdgeInsets.all(5),
-                      decoration: BoxDecoration(
-                        color: !controller.isAudioOn.value
-                            ? const Color(0xFFFF1744).withValues(alpha: 0.3)
-                            : Colors.white.withValues(alpha: 0.14),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        controller.isAudioOn.value
-                            ? Icons.mic_rounded
-                            : Icons.mic_off_rounded,
-                        color: !controller.isAudioOn.value
-                            ? const Color(0xFFFF1744)
-                            : Colors.white,
-                        size: 16,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
                   // Host video camera toggle (turn camera on/off)
                   GestureDetector(
                     onTap: () => controller.toggleVideo(null),
@@ -2382,28 +2365,6 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                       ),
                     ),
                   ),
-                ] else ...[
-                  // For audience / co-hosts: clearly indicate if the host has muted their microphone
-                  if (controller.hostUserState?.audioStatus == VideoAudioStatus.offByMe ||
-                      controller.hostUserState?.audioStatus == VideoAudioStatus.offByHost) ...[
-                    const SizedBox(width: 4),
-                    Container(
-                      padding: const EdgeInsets.all(5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFF1744).withValues(alpha: 0.25),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFFFF1744).withValues(alpha: 0.6),
-                          width: 0.8,
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.mic_off_rounded,
-                        color: Color(0xFFFF1744),
-                        size: 16,
-                      ),
-                    ),
-                  ],
                 ],
                 const SizedBox(width: 4),
                 // Gear / Settings icon
@@ -3419,12 +3380,15 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Join Call video request button when viewer is not co-host
+        // Join Call video request button when viewer is not co-host and PK battle not active
         if (!widget.isHost)
           Obx(() {
             final isJoinedCoHost = (controller.liveData.value.coHostIds ?? [])
                 .contains(controller.myUserId);
-            if (isJoinedCoHost) return const SizedBox.shrink();
+            final isBattle = controller.liveData.value.type == LivestreamType.battle ||
+                controller.liveData.value.battleType == BattleType.waiting ||
+                controller.liveData.value.battleType == BattleType.running;
+            if (isJoinedCoHost || isBattle) return const SizedBox.shrink();
             return Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: _buildBottomRightJoinCallBtn(controller),

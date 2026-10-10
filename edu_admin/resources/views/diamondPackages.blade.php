@@ -23,9 +23,13 @@
                 <thead class="table-light">
                     <tr>
                         <th>{{ __('Image')}}</th>
+                        <th>{{ __('Product ID')}}</th>
+                        <th>{{ __('Product Name')}}</th>
                         <th>{{ __('Diamond Amount')}}</th>
                         <th>{{ __('Price')}}</th>
                         <th>{{ __('Discounted Price')}}</th>
+                        <th>{{ __('Original Product Price (₹)')}}</th>
+                        <th>{{ __('Discounted Product Price (₹)')}}</th>
                         <th>{{ __('Offer (Entry Effect)')}}</th>
                         <th>{{ __('Created At')}}</th>
                         <th>{{ __('Status')}}</th>
@@ -53,6 +57,26 @@
                     <div class="my-2">
                         <label for="image" class="form-label">{{ __('Image')}}</label>
                         <input id="inputAddDiamondPackImage" class="form-control" type="file" accept="image/*" min="1" id="image" name="image" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-5 mb-2">
+                            <label for="product_id" class="form-label">{{ __('Product ID')}}</label>
+                            <input class="form-control text-uppercase" type="text" id="product_id" name="product_id" placeholder="e.g. DIA001">
+                        </div>
+                        <div class="col-md-7 mb-2">
+                            <label for="product_name" class="form-label">{{ __('Product Name')}}</label>
+                            <input class="form-control" type="text" id="product_name" name="product_name" placeholder="{{ __('Enter Product Name (Shown on Invoice)')}}">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-2">
+                            <label for="product_original_price" class="form-label">{{ __('Original Product Price (₹)')}}</label>
+                            <input class="form-control" type="number" min="0" step="any" id="product_original_price" name="product_original_price" placeholder="0.00">
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label for="product_discounted_price" class="form-label">{{ __('Discounted Product Price (₹)')}}</label>
+                            <input class="form-control" type="number" min="0" step="any" id="product_discounted_price" name="product_discounted_price" placeholder="0.00">
+                        </div>
                     </div>
                     <div class="mb-2">
                         <label for="diamond_amount" class="form-label">{{ __('Diamond Amount')}}</label>
@@ -111,6 +135,26 @@
                     <div class="my-2">
                         <label for="image" class="form-label">{{ __('Image')}}</label>
                         <input id="inputEditDiamondPackImage" class="form-control" type="file" accept="image/*" min="1" name="image">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-5 mb-2">
+                            <label for="edit_product_id" class="form-label">{{ __('Product ID')}}</label>
+                            <input class="form-control text-uppercase" type="text" id="edit_product_id" name="product_id" placeholder="e.g. DIA001">
+                        </div>
+                        <div class="col-md-7 mb-2">
+                            <label for="edit_product_name" class="form-label">{{ __('Product Name')}}</label>
+                            <input class="form-control" type="text" id="edit_product_name" name="product_name" placeholder="{{ __('Enter Product Name (Shown on Invoice)')}}">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-2">
+                            <label for="edit_product_original_price" class="form-label">{{ __('Original Product Price (₹)')}}</label>
+                            <input class="form-control" type="number" min="0" step="any" id="edit_product_original_price" name="product_original_price" placeholder="0.00">
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label for="edit_product_discounted_price" class="form-label">{{ __('Discounted Product Price (₹)')}}</label>
+                            <input class="form-control" type="number" min="0" step="any" id="edit_product_discounted_price" name="product_discounted_price" placeholder="0.00">
+                        </div>
                     </div>
                     <div class="mb-2">
                         <label for="diamond_amount" class="form-label">{{ __('Diamond Amount')}}</label>

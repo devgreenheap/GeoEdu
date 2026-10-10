@@ -2,11 +2,8 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:geoedu/common/extensions/common_extension.dart';
 import 'package:geoedu/common/extensions/string_extension.dart';
-import 'package:geoedu/common/manager/logger.dart';
 import 'package:geoedu/common/widget/custom_image.dart';
-import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/model/livestream/app_user.dart';
 import 'package:geoedu/model/livestream/livestream.dart';
 import 'package:geoedu/model/livestream/livestream_comment.dart';
@@ -15,7 +12,6 @@ import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_co
 import 'package:geoedu/screen/live_stream/livestream_screen/view/livestream_view.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/last_round_indicator_widget.dart';
 import 'package:geoedu/utilities/asset_res.dart';
-import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/utilities/text_style_custom.dart';
 import 'package:geoedu/utilities/theme_res.dart';
 
@@ -89,7 +85,9 @@ class _LiveBattleOverlayWidgetState extends State<LiveBattleOverlayWidget> {
       final List<StreamView> streamViews = widget.controller.streamViews;
 
       // 1. Host
-      final hostStreamId = '${stream.hostId}';
+      final int? hostUserId =
+          stream.hostId ?? widget.controller.liveData.value.hostId;
+      final hostStreamId = '$hostUserId';
       final LivestreamUserState? hostState = userStates.firstWhereOrNull(
             (e) => '${e.userId}' == hostStreamId,
           ) ??
@@ -97,10 +95,35 @@ class _LiveBattleOverlayWidgetState extends State<LiveBattleOverlayWidget> {
               ? userStates.firstWhereOrNull(
                   (e) => '${e.userId}' == streamViews[0].streamId)
               : null);
-      final AppUser? hostUser = hostState?.getUser(liveUsers) ?? stream.hostUser;
+      AppUser? hostUser = hostState?.getUser(liveUsers) ??
+          stream.hostUser ??
+          widget.controller.effectiveHostUser;
+      if (hostUser == null && hostUserId != null) {
+        hostUser = AppUser(
+          userId: hostUserId,
+          username: 'Host',
+          fullname: 'Host',
+        );
+      }
 
       // 2. Opponent (accepted PK call participant)
-      final opponentUserId = stream.pkOpponentId;
+      int? opponentUserId =
+          stream.pkOpponentId ?? widget.controller.pkOpponentId.value;
+      opponentUserId ??=
+          stream.coHostIds?.firstWhereOrNull((id) => id != hostUserId);
+      if (opponentUserId == null && widget.controller.coHostList.isNotEmpty) {
+        opponentUserId = widget.controller.coHostList
+            .firstWhereOrNull((u) => u.userId != hostUserId)
+            ?.userId;
+      }
+      if (opponentUserId == null && streamViews.length > 1) {
+        final otherStream = streamViews.firstWhereOrNull((v) =>
+            v.streamId != hostStreamId && v.streamId != stream.roomID);
+        if (otherStream != null) {
+          opponentUserId = int.tryParse(otherStream.streamId);
+        }
+      }
+
       LivestreamUserState? coHostState;
       if (opponentUserId != null) {
         coHostState = userStates.firstWhereOrNull(
@@ -110,30 +133,43 @@ class _LiveBattleOverlayWidgetState extends State<LiveBattleOverlayWidget> {
         coHostState = userStates.firstWhereOrNull(
           (e) => '${e.userId}' == streamViews[1].streamId,
         );
+        opponentUserId = coHostState?.userId;
       }
-      final AppUser? coHostUser =
-          coHostState?.getUser(liveUsers) ?? widget.controller.pkOpponentUser.value;
+
+      AppUser? coHostUser = coHostState?.getUser(liveUsers) ??
+          widget.controller.pkOpponentUser.value ??
+          (opponentUserId != null
+              ? liveUsers.firstWhereOrNull((u) => u.userId == opponentUserId)
+              : null);
+      coHostUser ??= opponentUserId != null
+          ? AppUser(
+              userId: opponentUserId,
+              username: 'Opponent',
+              fullname: 'Opponent',
+            )
+          : null;
 
       // Diamond scores for host & opponent
       final int hostDiamonds = hostState?.currentBattleCoin ?? 0;
       final int opponentDiamonds = coHostState?.currentBattleCoin ?? 0;
 
       // Stream Views for both participants
-      final hostStreamView = streamViews
-              .firstWhereOrNull((v) => v.streamId == hostStreamId) ??
+      final hostStreamView = streamViews.firstWhereOrNull((v) =>
+              v.streamId == hostStreamId || v.streamId == stream.roomID) ??
           (streamViews.isNotEmpty ? streamViews[0] : null);
       final opponentStreamView = (opponentUserId != null
               ? streamViews
                   .firstWhereOrNull((v) => v.streamId == '$opponentUserId')
               : null) ??
           (streamViews.length > 1
-              ? streamViews
-                  .firstWhereOrNull((v) => v.streamId != hostStreamId)
+              ? streamViews.firstWhereOrNull((v) =>
+                  v.streamId != hostStreamId && v.streamId != stream.roomID)
               : null);
 
       // Check if audience has switched to viewing the opponent
       final bool isAudienceSwapped = widget.isAudience &&
           widget.controller.selectedBattleHostId.value != null &&
+          opponentUserId != null &&
           widget.controller.selectedBattleHostId.value == opponentUserId;
 
       // Primary (Left) vs Secondary (Right)
@@ -149,10 +185,10 @@ class _LiveBattleOverlayWidgetState extends State<LiveBattleOverlayWidget> {
       final int rightScore =
           isAudienceSwapped ? hostDiamonds : opponentDiamonds;
 
-      final List<StreamView> displayStreamViews = [
-        if (leftStreamView != null) leftStreamView,
-        if (rightStreamView != null) rightStreamView,
-      ];
+      final int? leftUserId =
+          leftUser?.userId ?? (isAudienceSwapped ? opponentUserId : hostUserId);
+      final int? rightUserId =
+          rightUser?.userId ?? (isAudienceSwapped ? hostUserId : opponentUserId);
 
       return SafeArea(
         bottom: false,
@@ -169,73 +205,27 @@ class _LiveBattleOverlayWidgetState extends State<LiveBattleOverlayWidget> {
                 child: Stack(
                   alignment: Alignment.topCenter,
                   children: [
-                    // Side-by-side video feeds
+                    // Side-by-side video feeds: Left and Right
                     Positioned.fill(
                       child: Row(
-                        children: List.generate(
-                          displayStreamViews.length,
-                          (index) {
-                            final streamView = displayStreamViews[index];
-                            final targetUserId = index == 0
-                                ? (leftUser?.userId)
-                                : (rightUser?.userId);
-
-                            return Expanded(
-                              child: GestureDetector(
-                                onTap: () {
-                                  if (widget.isAudience &&
-                                      targetUserId != null) {
-                                    widget.controller
-                                        .switchBattleHost(targetUserId);
-                                  } else {
-                                    widget.controller
-                                        .toggleBattleFocus(index);
-                                  }
-                                },
-                                child: Stack(
-                                  children: [
-                                    Positioned.fill(
-                                      child: LiveStreamUserView(
-                                        isNameAndSpeakerVisible: false,
-                                        controller: widget.controller,
-                                        streamingView: streamView,
-                                      ),
-                                    ),
-                                    // User Name pill at bottom of each video
-                                    Positioned(
-                                      bottom: 6,
-                                      left: index == 0 ? 8 : null,
-                                      right: index == 1 ? 8 : null,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 3),
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withOpacity(0.55),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                        ),
-                                        child: Text(
-                                          (index == 0
-                                                  ? leftUser?.fullname ??
-                                                      leftUser?.username
-                                                  : rightUser?.fullname ??
-                                                      rightUser?.username) ??
-                                              '',
-                                          style: TextStyleCustom.outFitSemiBold600(
-                                            color: Colors.white,
-                                            fontSize: 12,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
+                        children: [
+                          Expanded(
+                            child: _buildParticipantTile(
+                              index: 0,
+                              user: leftUser,
+                              streamView: leftStreamView,
+                              userId: leftUserId,
+                            ),
+                          ),
+                          Expanded(
+                            child: _buildParticipantTile(
+                              index: 1,
+                              user: rightUser,
+                              streamView: rightStreamView,
+                              userId: rightUserId,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
 
@@ -273,6 +263,91 @@ class _LiveBattleOverlayWidgetState extends State<LiveBattleOverlayWidget> {
         ),
       );
     });
+  }
+
+  Widget _buildParticipantTile({
+    required int index,
+    required AppUser? user,
+    required StreamView? streamView,
+    required int? userId,
+  }) {
+    final displayName = user?.fullname ?? user?.username ?? (index == 0 ? 'Host' : 'Opponent');
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (streamView != null)
+          LiveStreamUserView(
+            isNameAndSpeakerVisible: false,
+            controller: widget.controller,
+            streamingView: streamView,
+          )
+        else
+          Container(
+            color: Colors.black.withValues(alpha: 0.85),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CustomImage(
+                    size: const Size(60, 60),
+                    radius: 30,
+                    image: user?.profile?.addBaseURL(),
+                    fullName: displayName,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    displayName,
+                    style: TextStyleCustom.outFitSemiBold600(
+                      color: Colors.white70,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        // Transparent tap interceptor covering the entire tile with HitTestBehavior.opaque
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              if (widget.isAudience && userId != null) {
+                widget.controller.switchBattleHost(userId);
+              } else {
+                widget.controller.toggleBattleFocus(index);
+              }
+            },
+          ),
+        ),
+
+        // User Name pill at bottom of each video (IgnorePointer so taps hit interceptor)
+        Positioned(
+          bottom: 6,
+          left: index == 0 ? 8 : null,
+          right: index == 1 ? 8 : null,
+          child: IgnorePointer(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                displayName,
+                style: TextStyleCustom.outFitSemiBold600(
+                  color: Colors.white,
+                  fontSize: 12,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -380,7 +455,7 @@ class BuildPkProgressBar extends StatelessWidget {
               color: const Color(0xFF1F1D36),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFFE040FB).withOpacity(0.55),
+                  color: const Color(0xFFE040FB).withValues(alpha: 0.55),
                   blurRadius: 10,
                 ),
               ],
@@ -426,11 +501,19 @@ class BuildPkScoreAndTimerSection extends StatelessWidget {
         children: [
           // Left Dark Score Card (Rank 3, 2, 1)
           Expanded(
-            child: _buildSideCard(
-              context,
-              score: leftScore,
-              isLeft: true,
-              user: leftUser,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                if (leftUser?.userId != null) {
+                  controller.switchBattleHost(leftUser!.userId!);
+                }
+              },
+              child: _buildSideCard(
+                context,
+                score: leftScore,
+                isLeft: true,
+                user: leftUser,
+              ),
             ),
           ),
 
@@ -469,13 +552,13 @@ class BuildPkScoreAndTimerSection extends StatelessWidget {
                       border: Border.all(
                         color: isLowTime
                             ? const Color(0xFFFF5252)
-                            : Colors.white.withOpacity(0.12),
+                            : Colors.white.withValues(alpha: 0.12),
                         width: 0.8,
                       ),
                       boxShadow: isLowTime
                           ? [
                               BoxShadow(
-                                color: const Color(0xFFFF1744).withOpacity(0.5),
+                                color: const Color(0xFFFF1744).withValues(alpha: 0.5),
                                 blurRadius: 8,
                               ),
                             ]
@@ -496,11 +579,19 @@ class BuildPkScoreAndTimerSection extends StatelessWidget {
 
           // Right Dark Score Card (Rank 1, 2, 3)
           Expanded(
-            child: _buildSideCard(
-              context,
-              score: rightScore,
-              isLeft: false,
-              user: rightUser,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                if (rightUser?.userId != null) {
+                  controller.switchBattleHost(rightUser!.userId!);
+                }
+              },
+              child: _buildSideCard(
+                context,
+                score: rightScore,
+                isLeft: false,
+                user: rightUser,
+              ),
             ),
           ),
         ],
@@ -529,7 +620,7 @@ class BuildPkScoreAndTimerSection extends StatelessWidget {
         color: const Color(0xFF1C1B33),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withOpacity(0.08),
+          color: Colors.white.withValues(alpha: 0.08),
           width: 0.8,
         ),
       ),

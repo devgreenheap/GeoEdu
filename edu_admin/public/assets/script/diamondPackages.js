@@ -143,6 +143,10 @@ $(document).ready(function () {
     $('#diamondPackagesTable').on("click", ".edit", function (e) {
         e.preventDefault();
         var id = $(this).attr("rel");
+        var productid = $(this).data("productid");
+        var productname = $(this).data("productname");
+        var productoriprice = $(this).data("productoriprice");
+        var productdiscprice = $(this).data("productdiscprice");
         var diamondamount = $(this).data("diamondamount");
         var diamondprice = $(this).data("diamondprice");
         var discountedprice = $(this).data("discountedprice");
@@ -152,6 +156,10 @@ $(document).ready(function () {
         var image = $(this).data("image");
 
         $("#editDiamondPackageId").val(id);
+        $("#edit_product_id").val(productid || "");
+        $("#edit_product_name").val(productname || "");
+        $("#edit_product_original_price").val(productoriprice !== undefined && productoriprice !== null ? productoriprice : "");
+        $("#edit_product_discounted_price").val(productdiscprice !== undefined && productdiscprice !== null ? productdiscprice : "");
         $("#edit_diamond_amount").val(diamondamount);
         $("#edit_diamond_plan_price").val(diamondprice);
         $("#edit_discounted_price").val(discountedprice);

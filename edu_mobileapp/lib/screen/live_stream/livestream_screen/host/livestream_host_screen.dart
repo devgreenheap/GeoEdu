@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:geoedu/common/widget/live_summary_dialog.dart';
 import 'package:geoedu/model/livestream/livestream.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/view/battle_view.dart';
@@ -90,11 +89,6 @@ class _LivestreamHostScreenState extends State<LivestreamHostScreen> {
                 }
               },
             ),
-            IgnorePointer(
-              ignoring: true,
-              child: EntryEffectLayer(controller: controller),
-            ),
-            GiftEffectWidget(activeGifts: controller.activeGifts),
             LiveVideoRoomOverlay(
               controller: controller,
               isHost: widget.isHost,
@@ -102,6 +96,11 @@ class _LivestreamHostScreenState extends State<LivestreamHostScreen> {
                   ? controller.hostEndStream
                   : controller.onCloseAudienceBtn,
             ),
+            IgnorePointer(
+              ignoring: true,
+              child: EntryEffectLayer(controller: controller),
+            ),
+            GiftEffectWidget(activeGifts: controller.activeGifts),
             Obx(
               () {
                 Livestream stream = controller.liveData.value;

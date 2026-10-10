@@ -491,6 +491,48 @@
                                             </div>
                                         </div>
                                     </div>
+
+                                    {{-- Silver Jewel GST (%) --}}
+                                    <div class="col-md-4 mb-3">
+                                        <div class="bg-secondary-lighten border p-3 rounded-3 h-100">
+                                            <label for="silver_jewel_gst_percent" class="form-label fw-bold mb-1">{{ __('Silver Jewel GST (%)') }}</label>
+                                            <p class="font-12 text-muted mb-2">{{ __('Applied to silver jewel products during package invoice calculation.') }}</p>
+                                            <div class="input-group">
+                                                <input type="number" step="0.01" min="0" max="100" class="form-control"
+                                                    id="silver_jewel_gst_percent" name="silver_jewel_gst_percent"
+                                                    value="{{ $setting->silver_jewel_gst_percent ?? '' }}" placeholder="0.00">
+                                                <span class="input-group-text">%</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {{-- Making Charge Percent (%) --}}
+                                    <div class="col-md-4 mb-3">
+                                        <div class="bg-secondary-lighten border p-3 rounded-3 h-100">
+                                            <label for="making_charge_percent" class="form-label fw-bold mb-1">{{ __('Making Charge Percent (%)') }}</label>
+                                            <p class="font-12 text-muted mb-2">{{ __('Making charge percentage applied during package invoice calculation.') }}</p>
+                                            <div class="input-group">
+                                                <input type="number" step="0.01" min="0" max="100" class="form-control"
+                                                    id="making_charge_percent" name="making_charge_percent"
+                                                    value="{{ $setting->making_charge_percent ?? '' }}" placeholder="0.00">
+                                                <span class="input-group-text">%</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {{-- Handling Fee (₹) --}}
+                                    <div class="col-md-4 mb-3">
+                                        <div class="bg-secondary-lighten border p-3 rounded-3 h-100">
+                                            <label for="handling_fee" class="form-label fw-bold mb-1">{{ __('Handling Fee (₹)') }}</label>
+                                            <p class="font-12 text-muted mb-2">{{ __('Fixed handling fee reflected in the invoice calculation.') }}</p>
+                                            <div class="input-group">
+                                                <span class="input-group-text">₹</span>
+                                                <input type="number" step="0.01" min="0" class="form-control"
+                                                    id="handling_fee" name="handling_fee"
+                                                    value="{{ $setting->handling_fee ?? '' }}" placeholder="0.00">
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <hr class="my-3">
@@ -517,7 +559,7 @@
                                         <div class="bg-secondary-lighten border p-2 rounded-3">
                                             <label for="invoice_hsn_code" class="form-label">{{ __('HSN Code') }}</label>
                                             <input type="text" class="form-control" id="invoice_hsn_code" name="invoice_hsn_code"
-                                                value="{{ $setting->invoice_hsn_code ?? '998439' }}" required>
+                                                value="{{ $setting->invoice_hsn_code ?? '998439' }}" placeholder="e.g. 7113 / 998439" required>
                                         </div>
                                     </div>
                                     <div class="col-md-4 mb-3">

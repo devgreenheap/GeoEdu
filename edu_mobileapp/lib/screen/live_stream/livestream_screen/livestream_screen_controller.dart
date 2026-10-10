@@ -219,23 +219,48 @@ class LivestreamScreenController extends BaseController {
   Rx<int?> selectedBattleHostId = Rx<int?>(null);
   RxBool isSwitchingHost = false.obs;
   Rx<AppUser?> switchingTargetUser = Rx<AppUser?>(null);
+  bool _isSwitching = false;
 
   AppUser? get effectiveSelectedBattleHost {
     final targetId = selectedBattleHostId.value ?? liveData.value.hostId;
     if (targetId == null) return null;
-    return firestoreController.users.firstWhereOrNull((u) => u.userId == targetId) ??
-        liveUsersStates.firstWhereOrNull((u) => u.userId == targetId)?.getUser(firestoreController.users) ??
-        (targetId == liveData.value.hostId ? liveData.value.hostUser : null);
+    if (selectedGiftUser.value != null && selectedGiftUser.value?.userId == targetId) {
+      return selectedGiftUser.value;
+    }
+    final resolved = firestoreController.users.firstWhereOrNull((u) => u.userId == targetId) ??
+        liveUsersStates.firstWhereOrNull((u) => u.userId == targetId)?.getUser(firestoreController.users);
+    if (resolved != null) return resolved;
+
+    if (targetId == liveData.value.hostId) {
+      return liveData.value.hostUser ?? effectiveHostUser;
+    }
+    if (targetId == pkOpponentId.value || targetId == liveData.value.pkOpponentId) {
+      return pkOpponentUser.value ?? AppUser(userId: targetId, username: 'Opponent', fullname: 'Opponent');
+    }
+    return AppUser(userId: targetId, username: 'Host', fullname: 'Host');
   }
 
   Future<void> switchBattleHost(int targetHostId) async {
-    if (selectedBattleHostId.value == targetHostId) return;
+    if (selectedBattleHostId.value == targetHostId || _isSwitching) return;
+    _isSwitching = true;
     HapticManager.shared.medium();
-    final targetUser = firestoreController.users.firstWhereOrNull((u) => u.userId == targetHostId) ??
+
+    AppUser? targetUser = firestoreController.users.firstWhereOrNull((u) => u.userId == targetHostId) ??
         liveUsersStates.firstWhereOrNull((u) => u.userId == targetHostId)?.getUser(firestoreController.users);
-    switchingTargetUser.value = targetUser;
-    isSwitchingHost.value = true;
-    await Future.delayed(const Duration(milliseconds: 750));
+    if (targetUser == null) {
+      if (targetHostId == liveData.value.hostId) {
+        targetUser = liveData.value.hostUser ?? effectiveHostUser;
+      } else if (targetHostId == pkOpponentId.value || targetHostId == liveData.value.pkOpponentId) {
+        targetUser = pkOpponentUser.value;
+      }
+      targetUser ??= AppUser(
+        userId: targetHostId,
+        username: (targetHostId == liveData.value.hostId) ? 'Host' : 'Opponent',
+        fullname: (targetHostId == liveData.value.hostId) ? 'Host' : 'Opponent',
+      );
+    }
+
+    // IMMEDIATELY update selected state so videos swap instantly and gift recipient updates!
     selectedBattleHostId.value = targetHostId;
     selectedGiftUser.value = targetUser;
     if (targetHostId == liveData.value.hostId) {
@@ -243,7 +268,12 @@ class LivestreamScreenController extends BaseController {
     } else {
       selectedBattleSide.value = BattleView.blue;
     }
+
+    switchingTargetUser.value = targetUser;
+    isSwitchingHost.value = true;
+    await Future.delayed(const Duration(milliseconds: 350));
     isSwitchingHost.value = false;
+    _isSwitching = false;
   }
 
   void toggleBattleFocus(int index) {
@@ -784,6 +814,8 @@ class LivestreamScreenController extends BaseController {
       "asset_url": assetUrl,
       "thumbnail_url": thumbnailUrl ?? '',
       "audio": audioPath,
+      "receiver_id": user.userId,
+      "receiver_username": user.username,
       "timestamp": DateTime.now().millisecondsSinceEpoch,
     });
 
@@ -1749,9 +1781,18 @@ class LivestreamScreenController extends BaseController {
         _previousCoHostIds = currentCoHostIds;
         _initialLiveDocLoaded = true;
 
-        // Ensure remote audio/video playback is active for all connected co-hosts
+        // Ensure remote audio/video playback is active for connected co-hosts
+        final bool isBattle = stream.type == LivestreamType.battle ||
+            stream.battleType == BattleType.waiting ||
+            stream.battleType == BattleType.running;
+        final int? effectiveOpponentId = stream.pkOpponentId ?? pkOpponentId.value;
+
         for (final cId in currentCoHostIds) {
           if (cId != myUserId && cId != stream.hostId) {
+            // During PK Battle, only play opponent's stream, not extra co-hosts
+            if (isBattle && effectiveOpponentId != null && cId != effectiveOpponentId) {
+              continue;
+            }
             if (!streamViews.any((s) => s.streamId == '$cId')) {
               startPlayStream('$cId');
             }
@@ -1759,6 +1800,7 @@ class LivestreamScreenController extends BaseController {
         }
 
         liveData.value = stream;
+        _handlePkBattleParticipantCleanup(stream);
         if (stream.pinnedComment != null) {
           pinnedComment.value = stream.pinnedComment!;
         }
@@ -2288,9 +2330,11 @@ class LivestreamScreenController extends BaseController {
       showSnackBar('Hosts cannot send gifts to themselves');
       return;
     }
-    AppUser? hostUser = effectiveHostUser;
+    // Always prioritize the selected battle host during PK Battle!
+    AppUser? hostUser = effectiveSelectedBattleHost ?? effectiveHostUser;
     if (hostUser == null) {
-      final hostId = liveData.value.hostId ??
+      final hostId = selectedBattleHostId.value ??
+          liveData.value.hostId ??
           int.tryParse(liveData.value.roomID ?? '');
       if (hostId != null && hostId > 0) {
         hostUser = AppUser(
@@ -2298,7 +2342,9 @@ class LivestreamScreenController extends BaseController {
           username: 'Host',
           fullname: 'Host',
         );
-        liveData.value.hostUser = hostUser;
+        if (hostId == liveData.value.hostId) {
+          liveData.value.hostUser = hostUser;
+        }
       }
     }
 
@@ -2743,15 +2789,20 @@ class LivestreamScreenController extends BaseController {
       streamViews.refresh();
       if (isHost) {
         isMinViewerTimeout.value = false;
-        bool isBattleOn = liveData.value.type == LivestreamType.battle;
+        bool isOpponentLeaving = liveData.value.pkOpponentId == streamId ||
+            pkOpponentId.value == streamId;
+        bool isBattleOn = liveData.value.type == LivestreamType.battle ||
+            liveData.value.battleType == BattleType.waiting ||
+            liveData.value.battleType == BattleType.running;
+
         updateLiveStreamData(
           coHostId: FieldValue.arrayRemove([streamId]),
-          type: isBattleOn ? LivestreamType.livestream : null,
-          battleType: isBattleOn ? BattleType.initiate : null,
+          type: (isBattleOn && isOpponentLeaving) ? LivestreamType.livestream : null,
+          battleType: (isBattleOn && isOpponentLeaving) ? BattleType.initiate : null,
         );
         liveStreamDocRef.update({
           'pk_invited_user_ids': FieldValue.arrayRemove([streamId]),
-          if (liveData.value.pkOpponentId == streamId) 'pk_opponent_id': null,
+          if (isOpponentLeaving) 'pk_opponent_id': null,
         }).catchError((_) {});
         updateUserStateToFirestore(streamId,
             type: LivestreamUserType.audience,
@@ -3255,8 +3306,97 @@ class LivestreamScreenController extends BaseController {
     isPlayerMute.value = !isPlayerMute.value;
   }
 
-  void toggleView() {
-    isViewVisible.value = !isViewVisible.value;
+  void _handlePkBattleParticipantCleanup(Livestream stream) {
+    final bool isBattle = stream.type == LivestreamType.battle ||
+        stream.battleType == BattleType.waiting ||
+        stream.battleType == BattleType.running;
+    if (!isBattle) return;
+
+    final int? pkHostId = stream.hostId;
+    final int? pkOppId = stream.pkOpponentId ??
+        pkOpponentId.value ??
+        (stream.coHostIds?.firstWhereOrNull((id) => id != pkHostId));
+    if (pkHostId == null || pkOppId == null) return;
+
+    // 1. If local user is an active call participant but NOT one of the two PK hosts:
+    if (!isHost && myUserId != pkHostId && myUserId != pkOppId) {
+      final bool isCurrentlyCoHost =
+          (stream.coHostIds?.contains(myUserId) ?? false) ||
+          liveUsersStates.any((u) => u.userId == myUserId && u.type == LivestreamUserType.coHost) ||
+          streamViews.any((s) => s.streamId == '$myUserId');
+
+      if (isCurrentlyCoHost) {
+        Loggers.info('[PK BATTLE] Reverting non-PK participant $myUserId to viewer mode.');
+        hasDismissedJoinCallBanner.value = false;
+
+        // Safely stop local preview and publishing
+        final myView = streamViews.firstWhereOrNull((s) => s.streamId == '$myUserId');
+        if (myView != null) {
+          stopPreview(viewId: myView.streamViewId);
+        }
+        stopPublish();
+
+        // Update local user state in Firestore to audience
+        updateUserStateToFirestore(
+          myUserId,
+          type: LivestreamUserType.audience,
+          audioStatus: VideoAudioStatus.offByMe,
+          videoStatus: VideoAudioStatus.offByMe,
+          battleCoin: 0,
+          currentBattleCoin: 0,
+        );
+
+        // Remove from stream.coHostIds in Firestore
+        updateLiveStreamData(coHostId: FieldValue.arrayRemove([myUserId]));
+
+        // Remove own view from streamViews
+        streamViews.removeWhere((s) => s.streamId == '$myUserId');
+        streamViews.refresh();
+
+        showSnackBar('You have returned to viewer mode to watch the PK Battle.');
+      }
+    }
+
+    // 2. If Host: clean up any extra participants from coHostIds and Firestore
+    if (isHost) {
+      final extraCoHostIds = (stream.coHostIds ?? [])
+          .where((id) => id != pkHostId && id != pkOppId)
+          .toList();
+      for (final extraId in extraCoHostIds) {
+        Loggers.info('[PK BATTLE] Host auto-removing non-PK participant $extraId from active call.');
+        stopPlayStream('$extraId');
+        streamViews.removeWhere((s) => s.streamId == '$extraId');
+        liveStreamDocRef.update({
+          'co_host_ids': FieldValue.arrayRemove([extraId]),
+          'pk_invited_user_ids': FieldValue.arrayRemove([extraId]),
+        }).catchError((_) {});
+        updateUserStateToFirestore(
+          extraId,
+          type: LivestreamUserType.audience,
+          audioStatus: VideoAudioStatus.offByMe,
+          videoStatus: VideoAudioStatus.offByMe,
+          battleCoin: 0,
+          currentBattleCoin: 0,
+        );
+      }
+      if (extraCoHostIds.isNotEmpty) {
+        streamViews.refresh();
+      }
+    }
+
+    // 3. On all devices (viewers, host, opponent): stop playing any non-PK stream
+    final staleStreamViews = streamViews.where((s) {
+      final sid = int.tryParse(s.streamId);
+      return sid != null && sid != pkHostId && sid != pkOppId && sid != myUserId;
+    }).toList();
+
+    for (final stale in staleStreamViews) {
+      stopPlayStream(stale.streamId);
+      streamViews.removeWhere((s) => s.streamId == stale.streamId);
+    }
+    if (staleStreamViews.isNotEmpty) {
+      streamViews.refresh();
+    }
   }
 
   /// Host invites an active call participant (co-host) to PK Battle
@@ -3344,6 +3484,7 @@ class LivestreamScreenController extends BaseController {
           'battle_created_at': now,
         });
       });
+      _handlePkBattleParticipantCleanup(liveData.value);
       showSnackBar('PK Battle starting!');
     } catch (e) {
       final msg = e.toString().replaceFirst('Exception: ', '');
@@ -3378,6 +3519,7 @@ class LivestreamScreenController extends BaseController {
       battleDuration: durationMinutes,
       battleCreatedAt: DateTime.now().millisecondsSinceEpoch,
     );
+    _handlePkBattleParticipantCleanup(liveData.value);
   }
 
   Future<void> startAnotherRound(int durationMinutes) async {

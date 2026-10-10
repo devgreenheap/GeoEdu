@@ -82,16 +82,16 @@ class _LiveStreamAudienceScreenState extends State<LiveStreamAudienceScreen> {
                   );
               }
             }),
-            IgnorePointer(
-              ignoring: true,
-              child: EntryEffectLayer(controller: controller),
-            ),
-            GiftEffectWidget(activeGifts: controller.activeGifts),
             LiveVideoRoomOverlay(
               controller: controller,
               isHost: widget.isHost,
               onBackOrClose: _handleBackOrClose,
             ),
+            IgnorePointer(
+              ignoring: true,
+              child: EntryEffectLayer(controller: controller),
+            ),
+            GiftEffectWidget(activeGifts: controller.activeGifts),
             Obx(
               () {
                 Livestream stream = controller.liveData.value;

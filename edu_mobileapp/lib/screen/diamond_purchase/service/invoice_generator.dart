@@ -8,6 +8,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:geoedu/common/extensions/string_extension.dart';
 import 'package:geoedu/common/manager/session_manager.dart';
 import 'package:geoedu/model/diamond_purchase/diamond_purchase_model.dart';
 import 'package:geoedu/utilities/asset_res.dart';
@@ -136,42 +137,30 @@ class InvoiceGenerator {
 
     final hsnCode = setting?.invoiceHsnCode?.trim().isNotEmpty == true
         ? setting!.invoiceHsnCode!.trim()
-        : '998439';
+        : '7113';
 
     final invoiceTitle = setting?.invoiceTitle?.trim().isNotEmpty == true
         ? setting!.invoiceTitle!.trim()
-        : 'Tax Invoice';
+        : 'PRODUCT INVOICE';
 
     final prefix = setting?.invoicePrefix?.trim().isNotEmpty == true
         ? setting!.invoicePrefix!.trim()
-        : 'GEO';
-
-    final currency = setting?.invoiceCurrency?.trim().isNotEmpty == true
-        ? setting!.invoiceCurrency!.trim()
-        : 'Rs.';
+        : 'GH001';
 
     final signatoryName =
         setting?.invoiceSignatoryName?.trim().isNotEmpty == true
             ? setting!.invoiceSignatoryName!.trim()
-            : 'GeoEdu Auth';
+            : 'Authorized Signatory';
 
     final termsText = setting?.invoiceTermsText?.trim().isNotEmpty == true
         ? setting!.invoiceTermsText!.trim()
-        : 'Refer to geoedu.com/terms for Policy, Terms & Conditions.';
-
-    final footerText = setting?.invoiceFooterText?.trim().isNotEmpty == true
-        ? setting!.invoiceFooterText!.trim()
-        : "Tax payable on reverse charge - No.\n*In case of inter-state supply IGST will be applicable. Within state supplies are liable for CGST & SGST.";
-
-    final defaultPlaceOfSupply =
-        setting?.invoicePlaceOfSupply?.trim().isNotEmpty == true
-            ? setting!.invoicePlaceOfSupply!.trim()
-            : 'Tamil Nadu, India';
+        : '';
 
     // 2. Load Company Logo (Admin uploaded network logo -> local asset fallback)
     pw.MemoryImage? logoImage;
     if (setting?.invoiceCompanyLogo?.trim().isNotEmpty == true) {
-      logoImage = await _fetchImageBytes(setting!.invoiceCompanyLogo!.trim());
+      final logoUrl = setting!.invoiceCompanyLogo!.trim().addBaseURL();
+      logoImage = await _fetchImageBytes(logoUrl);
     }
     if (logoImage == null) {
       try {
@@ -183,8 +172,8 @@ class InvoiceGenerator {
     // 3. Load Authorized Signature Image (if configured)
     pw.MemoryImage? signatureImage;
     if (setting?.invoiceSignatureImage?.trim().isNotEmpty == true) {
-      signatureImage =
-          await _fetchImageBytes(setting!.invoiceSignatureImage!.trim());
+      final sigUrl = setting!.invoiceSignatureImage!.trim().addBaseURL();
+      signatureImage = await _fetchImageBytes(sigUrl);
     }
 
     // 4. Tax Configuration & Mathematical Calculation
@@ -204,27 +193,53 @@ class InvoiceGenerator {
         effectiveSgstRate + effectiveCgstRate + effectiveIgstRate;
 
     final double netAmount = transaction.amount ?? 0.0;
-    final double originalPrice = (transaction.originalPrice != null &&
-            transaction.originalPrice! >= netAmount)
-        ? transaction.originalPrice!
-        : netAmount;
-    final double discount =
-        (transaction.discount != null && transaction.discount! > 0)
-            ? transaction.discount!
-            : (originalPrice > netAmount ? (originalPrice - netAmount) : 0.0);
+    final String productName = (transaction.productName?.trim().isNotEmpty == true)
+        ? transaction.productName!.trim()
+        : 'Jewellery Product';
 
-    // Taxable Value
-    final double taxableValue = (netAmount > 0 && totalTaxRate > 0)
-        ? (netAmount / (1.0 + (totalTaxRate / 100.0)))
+    final String productId = (transaction.productId?.trim().isNotEmpty == true)
+        ? transaction.productId!.trim()
+        : ('DIA${(transaction.id ?? 1).toString().padLeft(3, '0')}');
+
+    final double originalPrice = (transaction.productOriginalPrice != null &&
+            transaction.productOriginalPrice! > 0)
+        ? transaction.productOriginalPrice!
+        : ((transaction.originalPrice != null &&
+                transaction.originalPrice! >= netAmount)
+            ? transaction.originalPrice!
+            : netAmount);
+
+    final double discountedPrice = (transaction.productDiscountedPrice != null &&
+            transaction.productDiscountedPrice! > 0)
+        ? transaction.productDiscountedPrice!
         : netAmount;
 
-    // Individual Tax Amounts
-    final double sgstAmount =
-        sgstEnabled ? (taxableValue * (sgstPercent / 100.0)) : 0.0;
-    final double cgstAmount =
-        cgstEnabled ? (taxableValue * (cgstPercent / 100.0)) : 0.0;
-    final double igstAmount =
-        igstEnabled ? (taxableValue * (igstPercent / 100.0)) : 0.0;
+    final double discount = (transaction.discount != null && transaction.discount! > 0)
+        ? transaction.discount!
+        : ((originalPrice > discountedPrice) ? (originalPrice - discountedPrice) : 0.0);
+
+    // Dynamic Making Charge, Handling Fee & Silver Jewel GST from Invoice Settings (DB)
+    final double handlingFee = setting?.handlingFee ?? 0.0;
+    final double makingChargePercent = setting?.makingChargePercent ?? 0.0;
+    final double silverJewelGstPercent = setting?.silverJewelGstPercent ?? 0.0;
+
+    final double makingChargeAmount = (makingChargePercent > 0)
+        ? (discountedPrice * (makingChargePercent / 100.0))
+        : 0.0;
+
+    final double effectiveGstPercent = (silverJewelGstPercent > 0)
+        ? silverJewelGstPercent
+        : totalTaxRate;
+
+    final double gstBase = discountedPrice + makingChargeAmount + handlingFee;
+    final double gstAmount = (effectiveGstPercent > 0)
+        ? (gstBase * (effectiveGstPercent / 100.0))
+        : 0.0;
+
+    // Final Amount
+    final double finalAmount = (makingChargePercent > 0 || silverJewelGstPercent > 0 || handlingFee > 0)
+        ? (discountedPrice + makingChargeAmount + handlingFee + gstAmount)
+        : netAmount;
 
     // 5. Transaction Metadata
     final user = SessionManager.instance.getUser();
@@ -234,312 +249,461 @@ class InvoiceGenerator {
             ? user!.fullname!
             : (user?.username?.trim().isNotEmpty == true
                 ? user!.username!
-                : 'GeoEdu User'));
+                : 'Customer'));
 
-    final txnId = transaction.paymentId?.trim().isNotEmpty == true
-        ? transaction.paymentId!
-        : (transaction.transactionId?.trim().isNotEmpty == true
-            ? transaction.transactionId!
-            : 'TXN${transaction.id ?? 1001}');
-
-    final dateTimeStr = transaction.createdAt?.trim().isNotEmpty == true
-        ? transaction.createdAt!.replaceAll(' ', '; ')
-        : (transaction.dateTime != null
-            ? '${transaction.dateTime!.year}-${transaction.dateTime!.month.toString().padLeft(2, '0')}-${transaction.dateTime!.day.toString().padLeft(2, '0')}; ${transaction.time ?? ''}'
-            : '${transaction.date ?? ''}; ${transaction.time ?? ''}');
-
-    final paymentMode = transaction.paymentMode ?? 'Online / Razorpay';
-    final placeOfSupply = transaction.placeOfSupply?.trim().isNotEmpty == true
-        ? transaction.placeOfSupply!
-        : defaultPlaceOfSupply;
-
-    // Dynamic Invoice Number
     final now = DateTime.now();
-    final finYear = '${now.year}-${now.year + 1}';
-    final invoiceNumber =
-        '$prefix/$finYear/${now.month}/${transaction.id ?? 18620978}';
+    final String dateTimeStr = transaction.createdAt?.trim().isNotEmpty == true
+        ? transaction.createdAt!.trim()
+        : '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
 
-    final amountInWords = 'Rupees ${numberToWords(netAmount)} Only';
-    final headerGrey = PdfColor.fromHex('D6D6D6');
+    final String customerPhone = transaction.userPhone?.trim().isNotEmpty == true
+        ? transaction.userPhone!
+        : (user?.userMobileNo?.trim().isNotEmpty == true
+            ? user!.userMobileNo!
+            : '7550178929');
+    final String companyPhone = setting?.invoicePhoneNumber?.trim() ?? '';
+    final String companyEmail = setting?.invoiceCompanyEmail?.trim() ?? '';
+    final String baseUrl = (setting?.itemBaseUrl?.trim().isNotEmpty == true)
+        ? setting!.itemBaseUrl!.trim().replaceAll(RegExp(r'/+$'), '')
+        : 'https://geoedu.com';
+    final String verificationUrl =
+        '$baseUrl/verify-invoice/${transaction.id ?? 1}';
+
+    // Dynamic Invoice Number (e.g. GH001/10-26)
+    final finYear = '${now.year % 100}-${(now.year + 1) % 100}';
+    final invoiceNumber =
+        '$prefix/${now.month.toString().padLeft(2, '0')}-$finYear';
+
+    final amountInWords = 'Rupees ${numberToWords(finalAmount)} Only';
 
     pdf.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.symmetric(horizontal: 40, vertical: 36),
+        margin: const pw.EdgeInsets.symmetric(horizontal: 36, vertical: 30),
         build: (pw.Context context) {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // 1. Centered Title
-              pw.Center(
-                child: pw.Text(
-                  invoiceTitle,
-                  style: pw.TextStyle(
-                    fontSize: 22,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-              ),
-              pw.SizedBox(height: 16),
-
-              // 2. Top Right Company Details & Logo
+              // 1. Header (Logo + Company Name on Left, GSTIN on Right)
               pw.Row(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
                 children: [
-                  pw.Spacer(),
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      // Logo & App Name
-                      pw.Row(
-                        crossAxisAlignment: pw.CrossAxisAlignment.center,
-                        children: [
-                          if (logoImage != null)
-                            pw.Container(
-                              width: 36,
-                              height: 36,
-                              margin: const pw.EdgeInsets.only(right: 8),
-                              child: pw.Image(logoImage, fit: pw.BoxFit.contain),
-                            ),
-                          pw.Text(
-                            setting?.appName ?? 'GeoEdu',
-                            style: pw.TextStyle(
-                              fontSize: 16,
-                              fontWeight: pw.FontWeight.bold,
-                            ),
-                          ),
-                        ],
+                  if (logoImage != null)
+                    pw.Container(
+                      height: 38,
+                      width: 38,
+                      margin: const pw.EdgeInsets.only(right: 8),
+                      child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                    ),
+                  pw.Expanded(
+                    child: pw.Text(
+                      companyName,
+                      style: pw.TextStyle(
+                        fontSize: 11,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.black,
                       ),
-                      pw.SizedBox(height: 6),
+                    ),
+                  ),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: [
                       pw.Text(
-                        companyName,
+                        'GSTIN:',
                         style: pw.TextStyle(
-                          fontSize: 10,
+                          fontSize: 8.5,
                           fontWeight: pw.FontWeight.bold,
                         ),
                       ),
-                      pw.SizedBox(height: 4),
-                      pw.SizedBox(
-                        width: 220,
-                        child: pw.Text(
-                          companyAddress,
-                          style: const pw.TextStyle(
-                            fontSize: 8.5,
-                            color: PdfColors.black,
-                          ),
-                        ),
-                      ),
-                      pw.SizedBox(height: 4),
+                      pw.SizedBox(height: 1),
                       pw.Text(
-                        'GSTIN: $gstin',
-                        style: const pw.TextStyle(fontSize: 8.5),
-                      ),
-                      pw.SizedBox(height: 2),
-                      pw.Text(
-                        'HSN Code: $hsnCode',
-                        style: const pw.TextStyle(fontSize: 8.5),
-                      ),
-                      pw.SizedBox(height: 2),
-                      pw.Text(
-                        'Invoice #: $invoiceNumber',
+                        gstin,
                         style: const pw.TextStyle(fontSize: 8.5),
                       ),
                     ],
                   ),
                 ],
               ),
-              pw.SizedBox(height: 20),
+              pw.Container(
+                height: 0.8,
+                color: PdfColors.grey400,
+                margin: const pw.EdgeInsets.symmetric(vertical: 8),
+              ),
 
-              // 3. Customer & Transaction Details
-              pw.SizedBox(
-                width: 340,
+              // 2. Centered Title
+              pw.Center(
+                child: pw.Text(
+                  invoiceTitle,
+                  style: pw.TextStyle(
+                    fontSize: 13,
+                    fontWeight: pw.FontWeight.bold,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+              pw.SizedBox(height: 12),
+
+              // 3. Customer & Bill Info Grid
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Row(
+                        children: [
+                          pw.Text('Mr./Ms : ',
+                              style: pw.TextStyle(
+                                  fontSize: 8.5,
+                                  fontWeight: pw.FontWeight.bold)),
+                          pw.Text(customerName,
+                              style: const pw.TextStyle(fontSize: 8.5)),
+                        ],
+                      ),
+                      pw.SizedBox(height: 3),
+                      pw.Row(
+                        children: [
+                          pw.Text('Mobile No : ',
+                              style: pw.TextStyle(
+                                  fontSize: 8.5,
+                                  fontWeight: pw.FontWeight.bold)),
+                          pw.Text(customerPhone,
+                              style: const pw.TextStyle(fontSize: 8.5)),
+                        ],
+                      ),
+                    ],
+                  ),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: [
+                      pw.Row(
+                        children: [
+                          pw.Text('Bill No : ',
+                              style: pw.TextStyle(
+                                  fontSize: 8.5,
+                                  fontWeight: pw.FontWeight.bold)),
+                          pw.Text(invoiceNumber,
+                              style: const pw.TextStyle(fontSize: 8.5)),
+                        ],
+                      ),
+                      pw.SizedBox(height: 3),
+                      pw.Row(
+                        children: [
+                          pw.Text('Bill Date / Time : ',
+                              style: pw.TextStyle(
+                                  fontSize: 8.5,
+                                  fontWeight: pw.FontWeight.bold)),
+                          pw.Text(dateTimeStr,
+                              style: const pw.TextStyle(fontSize: 8.5)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 14),
+
+              // 4. Product Details Table (Matching Pale Golden Header & Border Styling)
+              pw.Container(
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.black, width: 0.8),
+                ),
                 child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    _buildMetaRow('Name', customerName),
-                    pw.SizedBox(height: 8),
-                    _buildMetaRow('Transaction Date &\nTime', dateTimeStr),
-                    pw.SizedBox(height: 8),
-                    _buildMetaRow('Transaction ID #', txnId),
-                    pw.SizedBox(height: 8),
-                    _buildMetaRow('Mode of Payment', paymentMode),
-                    pw.SizedBox(height: 8),
-                    _buildMetaRow('Place of Supply', placeOfSupply),
+                    // Header Row
+                    pw.Container(
+                      color: PdfColor.fromHex('FDF4C5'),
+                      decoration: const pw.BoxDecoration(
+                        border: pw.Border(
+                          bottom: pw.BorderSide(
+                              color: PdfColors.black, width: 0.8),
+                        ),
+                      ),
+                      child: pw.Row(
+                        children: [
+                          pw.Expanded(
+                            flex: 6,
+                            child: pw.Container(
+                              padding: const pw.EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 5),
+                              decoration: const pw.BoxDecoration(
+                                border: pw.Border(
+                                    right: pw.BorderSide(
+                                        color: PdfColors.black, width: 0.8)),
+                              ),
+                              child: pw.Text(
+                                'Product Details',
+                                style: pw.TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: pw.FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                          pw.Expanded(
+                            flex: 2,
+                            child: pw.Container(
+                              padding: const pw.EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 5),
+                              decoration: const pw.BoxDecoration(
+                                border: pw.Border(
+                                    right: pw.BorderSide(
+                                        color: PdfColors.black, width: 0.8)),
+                              ),
+                              child: pw.Center(
+                                child: pw.Text(
+                                  'Quantity',
+                                  style: pw.TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: pw.FontWeight.bold),
+                                ),
+                              ),
+                            ),
+                          ),
+                          pw.Expanded(
+                            flex: 3,
+                            child: pw.Container(
+                              padding: const pw.EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 5),
+                              child: pw.Align(
+                                alignment: pw.Alignment.centerRight,
+                                child: pw.Text(
+                                  'Amount',
+                                  style: pw.TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: pw.FontWeight.bold),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Item Row
+                    pw.Row(
+                      crossAxisAlignment: pw.CrossAxisAlignment.center,
+                      children: [
+                        pw.Expanded(
+                          flex: 6,
+                          child: pw.Container(
+                            padding: const pw.EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 8),
+                            decoration: const pw.BoxDecoration(
+                              border: pw.Border(
+                                  right: pw.BorderSide(
+                                      color: PdfColors.black, width: 0.8)),
+                            ),
+                            child: pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.start,
+                              children: [
+                                pw.Text(
+                                  productName,
+                                  style: pw.TextStyle(
+                                      fontSize: 9.5,
+                                      fontWeight: pw.FontWeight.bold),
+                                ),
+                                pw.SizedBox(height: 2),
+                                pw.Text(
+                                  'Product ID: $productId   |   HSN / SAC: $hsnCode',
+                                  style: const pw.TextStyle(
+                                      fontSize: 7.5,
+                                      color: PdfColors.grey700),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        pw.Expanded(
+                          flex: 2,
+                          child: pw.Container(
+                            padding: const pw.EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 8),
+                            decoration: const pw.BoxDecoration(
+                              border: pw.Border(
+                                  right: pw.BorderSide(
+                                      color: PdfColors.black, width: 0.8)),
+                            ),
+                            child: pw.Center(
+                              child: pw.Text(
+                                '1',
+                                style: const pw.TextStyle(fontSize: 9.5),
+                              ),
+                            ),
+                          ),
+                        ),
+                        pw.Expanded(
+                          flex: 3,
+                          child: pw.Container(
+                            padding: const pw.EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 8),
+                            child: pw.Align(
+                              alignment: pw.Alignment.centerRight,
+                              child: pw.Text(
+                                discountedPrice.toStringAsFixed(2),
+                                style: const pw.TextStyle(fontSize: 9.5),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
-              pw.SizedBox(height: 20),
+              pw.SizedBox(height: 10),
 
-              // 4. Line Items Table (Matches template layout)
-              // Header row
-              pw.Container(
-                color: headerGrey,
-                padding: const pw.EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 6),
-                child: pw.Row(
-                  children: [
-                    pw.Expanded(
-                      flex: 6,
-                      child: pw.Text(
-                        'Description',
-                        style: pw.TextStyle(
-                          fontSize: 10,
-                          fontWeight: pw.FontWeight.bold,
+              // 5. Right-Aligned Financial Breakdown
+              pw.Row(
+                children: [
+                  pw.Spacer(),
+                  pw.SizedBox(
+                    width: 220,
+                    child: pw.Column(
+                      children: [
+                        _buildSummaryLine('Sub Total:',
+                            discountedPrice.toStringAsFixed(2)),
+                        if (makingChargeAmount > 0)
+                          _buildSummaryLine(
+                              'Making Charge (${makingChargePercent.toStringAsFixed(1)}%):',
+                              makingChargeAmount.toStringAsFixed(2)),
+                        if (handlingFee > 0)
+                          _buildSummaryLine('Shipping / Handling Cost:',
+                              handlingFee.toStringAsFixed(2)),
+                        if (effectiveGstPercent > 0)
+                          _buildSummaryLine(
+                              'GST (${effectiveGstPercent.toStringAsFixed(1)}%):',
+                              gstAmount.toStringAsFixed(2))
+                        else
+                          _buildSummaryLine('GST:', '0.00'),
+                        _buildSummaryLine(
+                            'Discount:', discount.toStringAsFixed(2)),
+                        pw.Container(
+                          height: 0.5,
+                          color: PdfColors.grey400,
+                          margin: const pw.EdgeInsets.symmetric(vertical: 2),
                         ),
-                      ),
+                        _buildSummaryLine(
+                            'Total:', finalAmount.toStringAsFixed(2),
+                            isBold: true),
+                      ],
                     ),
-                    pw.Expanded(
-                      flex: 4,
-                      child: pw.Text(
-                        'Amount',
-                        style: pw.TextStyle(
-                          fontSize: 10,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 10),
+
+              // 6. Total in Words (Bracketed Italic)
+              pw.Center(
+                child: pw.Text(
+                  '[$amountInWords]',
+                  style: pw.TextStyle(
+                    fontStyle: pw.FontStyle.italic,
+                    fontSize: 8.5,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.black,
+                  ),
                 ),
               ),
+              pw.SizedBox(height: 12),
 
-              // Table Rows
-              _buildTableRow(
-                  'Diamonds Purchase', '$currency${originalPrice.toStringAsFixed(1)}'),
-              _buildTableRow(
-                  'Discount', '$currency${discount.toStringAsFixed(1)}'),
-              _buildTableRow(
-                'Net Amount towards purchase (Inclusive of GST)',
-                '$currency${netAmount.toStringAsFixed(1)}',
-                isBold: true,
-              ),
-              _buildTableRow(
-                  'Total Taxable Value - Diamonds Purchase*',
-                  '$currency${taxableValue.toStringAsFixed(2)}'),
-
-              // Dynamic Tax Rows: Only displayed if enabled by Admin
-              if (sgstEnabled)
-                _buildTableRow('SGST (${sgstPercent.toStringAsFixed(1)}%)',
-                    '$currency${sgstAmount.toStringAsFixed(2)}'),
-              if (cgstEnabled)
-                _buildTableRow('CGST (${cgstPercent.toStringAsFixed(1)}%)',
-                    '$currency${cgstAmount.toStringAsFixed(2)}'),
-              if (igstEnabled)
-                _buildTableRow('IGST (${igstPercent.toStringAsFixed(1)}%)',
-                    '$currency${igstAmount.toStringAsFixed(2)}'),
-
-              _buildTableRow(
-                'Grand Total\nRounded Off*',
-                '$currency${netAmount.toStringAsFixed(1)}',
-                isBold: true,
-              ),
-
-              // Total in words row
-              pw.Container(
-                color: headerGrey,
-                padding: const pw.EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 8),
-                child: pw.Row(
-                  children: [
-                    pw.Expanded(
-                      flex: 6,
-                      child: pw.Text(
-                        'Total Amount (In words)',
-                        style: const pw.TextStyle(fontSize: 9),
-                      ),
-                    ),
-                    pw.Expanded(
-                      flex: 4,
-                      child: pw.Text(
-                        amountInWords,
-                        style: pw.TextStyle(
-                          fontSize: 9,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              pw.SizedBox(height: 36),
-
-              // 5. Authorised Signatory Section
+              // 7. Signatory & QR Verification Code
               pw.Row(
                 children: [
                   pw.Spacer(),
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.center,
                     children: [
-                      pw.Text(
-                        'For $companyName',
-                        style: pw.TextStyle(
-                          fontSize: 10,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                      pw.SizedBox(height: 10),
-                      // Dynamic Signature Image or Stylized Text Fallback
                       if (signatureImage != null)
                         pw.Container(
-                          width: 120,
-                          height: 36,
+                          width: 100,
+                          height: 28,
                           alignment: pw.Alignment.center,
-                          child: pw.Image(signatureImage,
-                              fit: pw.BoxFit.contain),
+                          child:
+                              pw.Image(signatureImage, fit: pw.BoxFit.contain),
                         )
                       else
-                        pw.Container(
-                          width: 120,
-                          height: 24,
-                          alignment: pw.Alignment.center,
-                          child: pw.Text(
-                            signatoryName,
-                            style: pw.TextStyle(
-                              fontSize: 14,
-                              fontStyle: pw.FontStyle.italic,
-                              color: PdfColors.blueGrey800,
-                            ),
+                        pw.Text(
+                          signatoryName,
+                          style: pw.TextStyle(
+                            fontSize: 11,
+                            fontStyle: pw.FontStyle.italic,
+                            color: PdfColors.blueGrey800,
                           ),
                         ),
-                      pw.Container(
-                        width: 120,
-                        height: 1,
-                        color: PdfColors.black,
-                      ),
-                      pw.SizedBox(height: 4),
+                      pw.SizedBox(height: 2),
                       pw.Text(
-                        'Authorised Signatory',
+                        'Authorized Signatory',
                         style: pw.TextStyle(
-                          fontSize: 10,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
+                            fontSize: 8, fontWeight: pw.FontWeight.bold),
+                      ),
+                      pw.SizedBox(height: 5),
+                      pw.BarcodeWidget(
+                        barcode: pw.Barcode.qrCode(),
+                        data: verificationUrl,
+                        width: 65,
+                        height: 65,
+                      ),
+                      pw.SizedBox(height: 2),
+                      pw.Text(
+                        'Scan to re-open invoice',
+                        style: const pw.TextStyle(
+                            fontSize: 6.5, color: PdfColors.grey600),
                       ),
                     ],
                   ),
                 ],
               ),
+              pw.SizedBox(height: 8),
+
+              // 8. Declaration & Dark Accent Bar
+              pw.Text(
+                'Declaration',
+                style: pw.TextStyle(
+                    fontSize: 8.5, fontWeight: pw.FontWeight.bold),
+              ),
+              pw.Container(
+                height: 3.5,
+                color: PdfColor.fromHex('222222'),
+                margin: const pw.EdgeInsets.symmetric(vertical: 3),
+              ),
+              pw.Text(
+                termsText.isNotEmpty
+                    ? termsText
+                    : 'I have read, understood, and accept the terms and conditions mentioned above, the guidelines regarding quality specified at the backside of this invoice, were explained to me. The above jewels mentioned in the invoice are according to my specification and I purchased/sold the jewels at my own wish/need, after due verification. Hereby, indicating the acceptance for above terms & conditions, received the product in good condition, and doing the payment. I further acknowledge the amount stated is correct and accurate.',
+                style:
+                    const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey800),
+                textAlign: pw.TextAlign.justify,
+              ),
 
               pw.Spacer(),
 
-              // 6. Dynamic Footer Notes
-              if (termsText.isNotEmpty) ...[
-                pw.Text(
-                  termsText,
-                  style: pw.TextStyle(
-                    fontSize: 7.5,
-                    fontWeight: pw.FontWeight.bold,
+              // 9. Footer
+              pw.Container(
+                height: 0.5,
+                color: PdfColors.grey400,
+                margin: const pw.EdgeInsets.only(bottom: 4),
+              ),
+              if (companyAddress.isNotEmpty)
+                pw.Center(
+                  child: pw.Text(
+                    companyAddress,
+                    style: const pw.TextStyle(
+                        fontSize: 7.5, color: PdfColors.black),
+                    textAlign: pw.TextAlign.center,
                   ),
                 ),
-                pw.SizedBox(height: 3),
-              ],
-              if (footerText.isNotEmpty)
-                pw.Text(
-                  footerText,
+              pw.SizedBox(height: 2),
+              pw.Center(
+                child: pw.Text(
+                  [
+                    if (companyPhone.isNotEmpty) 'Phone: $companyPhone',
+                    if (companyEmail.isNotEmpty) 'Email: $companyEmail',
+                  ].join('   |   '),
                   style: const pw.TextStyle(
-                    fontSize: 7,
-                    color: PdfColors.grey700,
-                  ),
+                      fontSize: 7.5, color: PdfColors.black),
+                  textAlign: pw.TextAlign.center,
                 ),
+              ),
             ],
           );
         },
@@ -549,59 +713,25 @@ class InvoiceGenerator {
     return pdf.save();
   }
 
-  static pw.Widget _buildMetaRow(String label, String value) {
-    return pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.SizedBox(
-          width: 130,
-          child: pw.Text(
-            label,
-            style: const pw.TextStyle(
-              fontSize: 9.5,
-              color: PdfColors.black,
-            ),
-          ),
-        ),
-        pw.Expanded(
-          child: pw.Text(
-            value,
-            style: pw.TextStyle(
-              fontSize: 9.5,
-              fontWeight: pw.FontWeight.bold,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  static pw.Widget _buildTableRow(String title, String amount,
+  static pw.Widget _buildSummaryLine(String label, String value,
       {bool isBold = false}) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
       child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Expanded(
-            flex: 6,
-            child: pw.Text(
-              title,
-              style: pw.TextStyle(
-                fontSize: 9,
-                fontWeight:
-                    isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
-              ),
+          pw.Text(
+            label,
+            style: pw.TextStyle(
+              fontSize: 8.5,
+              fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
             ),
           ),
-          pw.Expanded(
-            flex: 4,
-            child: pw.Text(
-              amount,
-              style: pw.TextStyle(
-                fontSize: 9,
-                fontWeight:
-                    isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
-              ),
+          pw.Text(
+            value,
+            style: pw.TextStyle(
+              fontSize: 8.5,
+              fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
             ),
           ),
         ],

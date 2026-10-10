@@ -37,6 +37,10 @@ class DiamondTransactionModel {
   final String? userEmail;
   final String? paymentMode;
   final String? placeOfSupply;
+  final String? productId;
+  final String? productName;
+  final double? productOriginalPrice;
+  final double? productDiscountedPrice;
 
   DiamondTransactionModel({
     this.id,
@@ -59,6 +63,10 @@ class DiamondTransactionModel {
     this.userEmail,
     this.paymentMode,
     this.placeOfSupply,
+    this.productId,
+    this.productName,
+    this.productOriginalPrice,
+    this.productDiscountedPrice,
   });
 
   factory DiamondTransactionModel.fromJson(Map<String, dynamic> json) {
@@ -123,6 +131,18 @@ class DiamondTransactionModel {
       userEmail: json['user_email'],
       paymentMode: json['payment_mode'] ?? 'UPI',
       placeOfSupply: json['place_of_supply'] ?? 'Tamil Nadu, India',
+      productId: json['product_id'] ?? json['productId'],
+      productName: json['product_name'] ?? json['productName'],
+      productOriginalPrice: json['product_original_price'] != null
+          ? double.tryParse(json['product_original_price'].toString())
+          : (json['productOriginalPrice'] != null
+              ? double.tryParse(json['productOriginalPrice'].toString())
+              : null),
+      productDiscountedPrice: json['product_discounted_price'] != null
+          ? double.tryParse(json['product_discounted_price'].toString())
+          : (json['productDiscountedPrice'] != null
+              ? double.tryParse(json['productDiscountedPrice'].toString())
+              : null),
     );
   }
 
@@ -148,6 +168,10 @@ class DiamondTransactionModel {
       'user_email': userEmail,
       'payment_mode': paymentMode,
       'place_of_supply': placeOfSupply,
+      'product_id': productId,
+      'product_name': productName,
+      'product_original_price': productOriginalPrice,
+      'product_discounted_price': productDiscountedPrice,
     };
   }
 }

@@ -249,6 +249,10 @@ class WalletController extends Controller
                     'diamonds' => intval($item->diamond_amount),
                     'original_price' => $originalPrice,
                     'discounted_price' => $discountedPrice,
+                    'product_id' => $item->product_id ?: ('DIA' . str_pad($item->id, 3, '0', STR_PAD_LEFT)),
+                    'product_name' => $item->product_name,
+                    'product_original_price' => !is_null($item->product_original_price) ? floatval($item->product_original_price) : null,
+                    'product_discounted_price' => !is_null($item->product_discounted_price) ? floatval($item->product_discounted_price) : null,
                     'offer_entry_effect_id' => !is_null($item->offer_entry_effect_id) ? intval($item->offer_entry_effect_id) : null,
                     'button_text' => 'Buy For',
                     'status' => $item->status,
@@ -816,6 +820,11 @@ class WalletController extends Controller
             }
             $discount = max(0, round($origPrice - $amount, 2));
 
+            $productName = !empty($pack?->product_name) ? $pack->product_name : 'Jewellery Product';
+            $productId = !empty($pack?->product_id) ? $pack->product_id : ('DIA' . str_pad($item->diamond_pack_id ?: $item->id, 3, '0', STR_PAD_LEFT));
+            $productOrigPrice = !is_null($pack?->product_original_price) ? floatval($pack->product_original_price) : $origPrice;
+            $productDiscPrice = !is_null($pack?->product_discounted_price) ? floatval($pack->product_discounted_price) : $amount;
+
             return [
                 'id' => $item->id,
                 'user_id' => $item->user_id,
@@ -830,6 +839,10 @@ class WalletController extends Controller
                 'amount' => $amount,
                 'original_price' => $origPrice,
                 'discount' => $discount,
+                'product_id' => $productId,
+                'product_name' => $productName,
+                'product_original_price' => $productOrigPrice,
+                'product_discounted_price' => $productDiscPrice,
                 'currency' => '₹',
                 'payment_mode' => 'UPI',
                 'place_of_supply' => 'Tamil Nadu, India',
@@ -1376,9 +1389,14 @@ class WalletController extends Controller
         $data = $result->map(function ($item) use ($settings) {
             $imgUrl = GlobalFunction::generateFileUrl($item->image);
             $image = "<img class='rounded' width='80' height='80' src='{$imgUrl}' alt=''>";
+            $productId = !empty($item->product_id) ? $item->product_id : ('DIA' . str_pad($item->id, 3, '0', STR_PAD_LEFT));
 
             $edit = "<a href='#'
                         rel='{$item->id}'
+                        data-productid='{$productId}'
+                        data-productname='{$item->product_name}'
+                        data-productoriprice='{$item->product_original_price}'
+                        data-productdiscprice='{$item->product_discounted_price}'
                         data-diamondamount='{$item->diamond_amount}'
                         data-diamondprice='{$item->diamond_plan_price}'
                         data-discountedprice='{$item->discounted_price}'
@@ -1405,9 +1423,13 @@ class WalletController extends Controller
 
             return [
                 $image,
+                "<span class='badge bg-primary-lighten text-primary fw-bold'>{$productId}</span>",
+                $item->product_name ?? '-',
                 $item->diamond_amount,
                 $settings->currency.$item->diamond_plan_price,
                 !is_null($item->discounted_price) ? $settings->currency.$item->discounted_price : '-',
+                !is_null($item->product_original_price) ? $settings->currency.$item->product_original_price : '-',
+                !is_null($item->product_discounted_price) ? $settings->currency.$item->product_discounted_price : '-',
                 !is_null($item->offer_entry_effect_id) ? ('#'.$item->offer_entry_effect_id) : '-',
                 $createdAt,
                 $status,
@@ -1443,9 +1465,13 @@ class WalletController extends Controller
             }
             $item->image = GlobalFunction::saveFileAndGivePath($request->image);
         }
+        $item->product_id = $request->filled('product_id') ? trim($request->product_id) : ('DIA' . str_pad($item->id, 3, '0', STR_PAD_LEFT));
         $item->diamond_amount = $request->diamond_amount;
         $item->diamond_plan_price = $request->diamond_plan_price;
         $item->discounted_price = $request->filled('discounted_price') ? $request->discounted_price : null;
+        $item->product_name = $request->filled('product_name') ? $request->product_name : null;
+        $item->product_original_price = $request->filled('product_original_price') ? $request->product_original_price : null;
+        $item->product_discounted_price = $request->filled('product_discounted_price') ? $request->product_discounted_price : null;
         $item->offer_entry_effect_id = $request->filled('offer_entry_effect_id') ? $request->offer_entry_effect_id : null;
         $item->appstore_product_id = $request->appstore_product_id;
         $item->playstore_product_id = $request->playstore_product_id;
@@ -1457,13 +1483,22 @@ class WalletController extends Controller
     function addDiamondPackage(Request $request){
         $item = new DiamondPackages();
         $item->image = GlobalFunction::saveFileAndGivePath($request->image);
+        $item->product_id = $request->filled('product_id') ? trim($request->product_id) : null;
         $item->diamond_amount = $request->diamond_amount;
         $item->diamond_plan_price = $request->diamond_plan_price;
         $item->discounted_price = $request->filled('discounted_price') ? $request->discounted_price : null;
+        $item->product_name = $request->filled('product_name') ? $request->product_name : null;
+        $item->product_original_price = $request->filled('product_original_price') ? $request->product_original_price : null;
+        $item->product_discounted_price = $request->filled('product_discounted_price') ? $request->product_discounted_price : null;
         $item->offer_entry_effect_id = $request->filled('offer_entry_effect_id') ? $request->offer_entry_effect_id : null;
         $item->appstore_product_id = $request->appstore_product_id;
         $item->playstore_product_id = $request->playstore_product_id;
         $item->save();
+
+        if (empty($item->product_id)) {
+            $item->product_id = 'DIA' . str_pad($item->id, 3, '0', STR_PAD_LEFT);
+            $item->save();
+        }
 
         return GlobalFunction::sendSimpleResponse(true, 'Diamond package added successfully');
     }

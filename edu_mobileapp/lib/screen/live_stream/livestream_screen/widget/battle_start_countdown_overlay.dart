@@ -69,8 +69,10 @@ class _BattleStartCountdownOverlayState
         controller.battleStartPlayer.seek(const Duration(seconds: 0));
         controller.battleStartPlayer.play();
         timer?.cancel();
-        controller.updateLiveStreamData(
-            battleType: BattleType.running, type: LivestreamType.battle);
+        if (controller.isHost) {
+          controller.updateLiveStreamData(
+              battleType: BattleType.running, type: LivestreamType.battle);
+        }
       }
     });
   }
