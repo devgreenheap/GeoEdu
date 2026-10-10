@@ -13,6 +13,11 @@ class LiveStreams extends Model
 
     public function user()
     {
-        return $this->hasOne(Users::class, 'id', 'user_id');
+        return $this->belongsTo(Users::class, 'user_id', 'id');
+    }
+
+    public function host()
+    {
+        return $this->belongsTo(Users::class, 'user_id', 'id');
     }
 }

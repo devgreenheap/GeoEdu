@@ -517,8 +517,7 @@ class LiveStreamController extends Controller
 
         $limit = intval($request->limit ?? 20);
         $targetUserId = intval($request->user_id ?? $authUser->id);
-        $query = LiveStreams::with('user:id,username,fullname,profile_photo,is_verify')
-            ->where('user_id', $targetUserId)
+        $query = LiveStreams::where('user_id', $targetUserId)
             ->orderBy('id', 'DESC')
             ->limit($limit);
 
@@ -526,7 +525,11 @@ class LiveStreamController extends Controller
             $query->where('id', '<', intval($request->last_item_id));
         }
 
-        $rows = $query->get();
+        try {
+            $rows = $query->with('user:id,username,fullname,profile_photo,is_verify')->get();
+        } catch (\Throwable $e) {
+            $rows = $query->get();
+        }
 
         $defaultRecordingUrl = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
         $fallbackVideoLink = DummyLiveVideos::where('status', 1)->value('link');
@@ -601,13 +604,13 @@ class LiveStreamController extends Controller
                     ? intval($followersGainedByStream[$item->id])
                     : intval($item->followers_gained ?? 0);
 
+                $itemUser = $item->user ?? $targetUser;
+
                 $thumbnail = null;
                 if (!empty($item->thumbnail)) {
                     $thumbnail = GlobalFunction::generateFileUrl($item->thumbnail);
-                } elseif ($item->user && !empty($item->user->profile_photo)) {
-                    $thumbnail = GlobalFunction::generateFileUrl($item->user->profile_photo);
-                } elseif (!empty($targetUser->profile_photo)) {
-                    $thumbnail = GlobalFunction::generateFileUrl($targetUser->profile_photo);
+                } elseif ($itemUser && !empty($itemUser->profile_photo)) {
+                    $thumbnail = GlobalFunction::generateFileUrl($itemUser->profile_photo);
                 }
 
                 $videoUrl = !empty($item->video_url)
@@ -626,12 +629,12 @@ class LiveStreamController extends Controller
                     'stars_earned' => $starsEarned,
                     'total_comments' => $totalComments,
                     'followers_gained' => $followersGained,
-                    'host_username' => $item->user->username ?? $targetUser->username ?? null,
-                    'host_fullname' => $item->user->fullname ?? $targetUser->fullname ?? null,
-                    'host_profile_photo' => ($item->user && !empty($item->user->profile_photo))
-                        ? GlobalFunction::generateFileUrl($item->user->profile_photo)
-                        : (!empty($targetUser->profile_photo) ? GlobalFunction::generateFileUrl($targetUser->profile_photo) : null),
-                    'host_is_verify' => intval($item->user->is_verify ?? $targetUser->is_verify ?? 0),
+                    'host_username' => $itemUser->username ?? null,
+                    'host_fullname' => $itemUser->fullname ?? null,
+                    'host_profile_photo' => ($itemUser && !empty($itemUser->profile_photo))
+                        ? GlobalFunction::generateFileUrl($itemUser->profile_photo)
+                        : null,
+                    'host_is_verify' => intval($itemUser->is_verify ?? 0),
                     'started_at' => !empty($item->started_at) ? Carbon::parse($item->started_at)->format('Y-m-d H:i:s') : null,
                     'ended_at' => !empty($item->ended_at) ? Carbon::parse($item->ended_at)->format('Y-m-d H:i:s') : null,
                     'status' => intval($item->status ?? 0),

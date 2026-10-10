@@ -13,6 +13,11 @@ class AudioRoomHistory extends Model
 
     public function host()
     {
-        return $this->hasOne(Users::class, 'id', 'host_id');
+        return $this->belongsTo(Users::class, 'host_id', 'id');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(Users::class, 'host_id', 'id');
     }
 }
