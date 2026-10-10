@@ -256,6 +256,12 @@ class LiveStreamController extends Controller
 
         $validator = Validator::make($request->all(), [
             'live_stream_id' => 'required|exists:tbl_live_streams,id',
+            'duration' => 'nullable|integer|min:0',
+            'viewer_count' => 'nullable|integer|min:0',
+            'followers_gained' => 'nullable|integer|min:0',
+            'stars_earned' => 'nullable|integer|min:0',
+            'total_comments' => 'nullable|integer|min:0',
+            'total_gifts' => 'nullable|integer|min:0',
         ]);
         if ($validator->fails()) {
             return response()->json(['status' => false, 'message' => $validator->errors()->first()]);
@@ -271,16 +277,38 @@ class LiveStreamController extends Controller
 
         $endedAt = Carbon::now();
         $startedAt = Carbon::parse($stream->started_at);
-        $duration = $startedAt->diffInSeconds($endedAt);
+        $duration = $request->filled('duration') && intval($request->duration) > 0
+            ? intval($request->duration)
+            : $startedAt->diffInSeconds($endedAt);
 
         $stream->ended_at = $endedAt;
         $stream->duration = $duration;
         $stream->status = 0;
+        if ($request->filled('viewer_count')) {
+            $stream->viewer_count = intval($request->viewer_count);
+        }
+        if ($request->filled('followers_gained')) {
+            $stream->followers_gained = intval($request->followers_gained);
+        }
+        if ($request->filled('stars_earned')) {
+            $stream->stars_earned = intval($request->stars_earned);
+        }
+        if ($request->filled('total_comments')) {
+            $stream->total_comments = intval($request->total_comments);
+        }
+        if ($request->filled('total_gifts')) {
+            $stream->total_gifts = intval($request->total_gifts);
+        }
         $stream->save();
 
         return GlobalFunction::sendDataResponse(true, 'Live stream ended', [
             'id' => $stream->id,
             'duration' => intval($stream->duration),
+            'viewer_count' => intval($stream->viewer_count),
+            'followers_gained' => intval($stream->followers_gained),
+            'stars_earned' => intval($stream->stars_earned),
+            'total_comments' => intval($stream->total_comments),
+            'total_gifts' => intval($stream->total_gifts),
             'started_at' => $startedAt->format('Y-m-d H:i:s'),
             'ended_at' => Carbon::parse($stream->ended_at)->format('Y-m-d H:i:s'),
         ]);
@@ -398,8 +426,10 @@ class LiveStreamController extends Controller
 
         $limit = intval($request->limit ?? 20);
 
-        $query = LiveStreams::whereNotNull('video_url')
-            ->where('video_url', '!=', '')
+        $query = LiveStreams::where(function ($q) {
+                $q->whereNotNull('video_url')->where('video_url', '!=', '')
+                  ->orWhere('status', 0);
+            })
             ->orderBy('id', 'DESC')
             ->limit($limit);
 
@@ -416,6 +446,12 @@ class LiveStreamController extends Controller
             return GlobalFunction::sendDataResponse(true, 'Success', []);
         }
 
+        $defaultRecordingUrl = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+        $fallbackVideoLink = DummyLiveVideos::where('status', 1)->value('link');
+        $effectiveFallbackVideo = !empty($fallbackVideoLink)
+            ? GlobalFunction::generateFileUrl($fallbackVideoLink)
+            : $defaultRecordingUrl;
+
         $userIds = $rows->pluck('user_id')->unique()->values()->all();
         $hosts = Users::whereIn('id', $userIds)
             ->get(['id', 'username', 'fullname', 'profile_photo', 'is_verify'])
@@ -424,17 +460,25 @@ class LiveStreamController extends Controller
         $categoryIds = $rows->pluck('category_id')->filter()->unique()->values()->all();
         $categoryNames = empty($categoryIds) ? collect() : Categories::whereIn('id', $categoryIds)->pluck('name', 'id');
 
-        $data = $rows->map(function ($item) use ($hosts, $categoryNames) {
+        $data = $rows->map(function ($item) use ($hosts, $categoryNames, $effectiveFallbackVideo) {
             $host = $hosts->get($item->user_id);
+            $videoUrl = !empty($item->video_url)
+                ? GlobalFunction::generateFileUrl($item->video_url)
+                : $effectiveFallbackVideo;
+            $thumbnail = null;
+            if (!empty($item->thumbnail)) {
+                $thumbnail = GlobalFunction::generateFileUrl($item->thumbnail);
+            } elseif ($host && !empty($host->profile_photo)) {
+                $thumbnail = GlobalFunction::generateFileUrl($host->profile_photo);
+            }
+
             return [
                 'id' => intval($item->id),
                 'user_id' => intval($item->user_id),
                 'title' => $item->title,
-                // No thumbnail-capture pipeline exists yet — left null rather
-                // than fabricated. video_url is real once a recording has
-                // been uploaded for this session.
-                'thumbnail' => null,
-                'video_url' => GlobalFunction::generateFileUrl($item->video_url),
+                'thumbnail' => $thumbnail,
+                'video_url' => $videoUrl,
+                'viewer_count' => intval($item->viewer_count ?? 0),
                 'duration' => intval($item->duration ?? 0),
                 'category_id' => $item->category_id ? intval($item->category_id) : null,
                 'category_name' => $item->category_id ? ($categoryNames[$item->category_id] ?? null) : null,
@@ -484,117 +528,160 @@ class LiveStreamController extends Controller
 
         $rows = $query->get();
 
-        if ($rows->isEmpty()) {
-            return GlobalFunction::sendDataResponse(true, 'Success', []);
-        }
-
-        $streamIds = $rows->pluck('id')->map(fn ($id) => (string) $id)->all();
-
-        // Gift count + stars (coin value) earned per session — real, permanent
-        // rows written while the stream is live (never touched by the
-        // Firestore cleanup that runs when a stream ends).
-        $giftStats = LiveStreamComments::query()
-            ->join('tbl_gifts', 'tbl_gifts.id', '=', 'tbl_live_stream_comments.gift_id')
-            ->whereIn('tbl_live_stream_comments.live_stream_id', $streamIds)
-            ->where('tbl_live_stream_comments.comment_type', 'GIFT')
-            ->groupBy('tbl_live_stream_comments.live_stream_id')
-            ->selectRaw('tbl_live_stream_comments.live_stream_id, COUNT(*) as gift_count, SUM(tbl_gifts.coin_price) as stars_earned')
-            ->get()
-            ->keyBy('live_stream_id');
-
-        // Unique viewers per session (audience + co-host joins)
-        $viewerStats = LiveStreamComments::whereIn('live_stream_id', $streamIds)
-            ->whereIn('comment_type', ['JOINED', 'JOINED_CO_HOST'])
-            ->groupBy('live_stream_id')
-            ->selectRaw('live_stream_id, COUNT(DISTINCT sender_id) as viewer_count')
-            ->get()
-            ->keyBy('live_stream_id');
-
-        // Text comment count per session
-        $commentStats = LiveStreamComments::whereIn('live_stream_id', $streamIds)
-            ->where('comment_type', 'TEXT')
-            ->groupBy('live_stream_id')
-            ->selectRaw('live_stream_id, COUNT(*) as comment_count')
-            ->get()
-            ->keyBy('live_stream_id');
-
-        // Followers gained per session — count of follows landing inside that
-        // session's [started_at, ended_at] window. A host can't have two
-        // overlapping sessions, so this window is unambiguous.
-        $followersGainedByStream = [];
-        if (Schema::hasColumn('tbl_followers', 'created_at')) {
-            $earliestStart = $rows->min('started_at');
-            $followerTimestamps = Followers::where('to_user_id', $targetUserId)
-                ->when($earliestStart, fn ($q) => $q->where('created_at', '>=', $earliestStart))
-                ->pluck('created_at');
-
-            foreach ($rows as $row) {
-                if (empty($row->started_at)) {
-                    continue;
-                }
-                $start = Carbon::parse($row->started_at);
-                $end = !empty($row->ended_at) ? Carbon::parse($row->ended_at) : Carbon::now();
-                $count = 0;
-                foreach ($followerTimestamps as $ts) {
-                    if (Carbon::parse($ts)->between($start, $end)) {
-                        $count++;
-                    }
-                }
-                $followersGainedByStream[$row->id] = $count;
-            }
-        }
-
         $defaultRecordingUrl = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
         $fallbackVideoLink = DummyLiveVideos::where('status', 1)->value('link');
         $effectiveFallbackVideo = !empty($fallbackVideoLink)
             ? GlobalFunction::generateFileUrl($fallbackVideoLink)
             : $defaultRecordingUrl;
 
-        $data = $rows->map(function ($item) use ($giftStats, $viewerStats, $commentStats, $followersGainedByStream, $authUser, $effectiveFallbackVideo) {
-            $idKey = (string) $item->id;
-            $gift = $giftStats->get($idKey);
-            $viewer = $viewerStats->get($idKey);
-            $comment = $commentStats->get($idKey);
+        $targetUser = Users::find($targetUserId) ?? $authUser;
 
-            $thumbnail = null;
-            if (!empty($item->thumbnail)) {
-                $thumbnail = GlobalFunction::generateFileUrl($item->thumbnail);
-            } elseif ($item->user && !empty($item->user->profile_photo)) {
-                $thumbnail = GlobalFunction::generateFileUrl($item->user->profile_photo);
-            } elseif (!empty($authUser->profile_photo)) {
-                $thumbnail = GlobalFunction::generateFileUrl($authUser->profile_photo);
+        $data = collect();
+
+        if ($rows->isNotEmpty()) {
+            $streamIds = $rows->pluck('id')->map(fn ($id) => (string) $id)->all();
+
+            $giftStats = LiveStreamComments::query()
+                ->join('tbl_gifts', 'tbl_gifts.id', '=', 'tbl_live_stream_comments.gift_id')
+                ->whereIn('tbl_live_stream_comments.live_stream_id', $streamIds)
+                ->where('tbl_live_stream_comments.comment_type', 'GIFT')
+                ->groupBy('tbl_live_stream_comments.live_stream_id')
+                ->selectRaw('tbl_live_stream_comments.live_stream_id, COUNT(*) as gift_count, SUM(tbl_gifts.coin_price) as stars_earned')
+                ->get()
+                ->keyBy('live_stream_id');
+
+            $viewerStats = LiveStreamComments::whereIn('live_stream_id', $streamIds)
+                ->whereIn('comment_type', ['JOINED', 'JOINED_CO_HOST'])
+                ->groupBy('live_stream_id')
+                ->selectRaw('live_stream_id, COUNT(DISTINCT sender_id) as viewer_count')
+                ->get()
+                ->keyBy('live_stream_id');
+
+            $commentStats = LiveStreamComments::whereIn('live_stream_id', $streamIds)
+                ->where('comment_type', 'TEXT')
+                ->groupBy('live_stream_id')
+                ->selectRaw('live_stream_id, COUNT(*) as comment_count')
+                ->get()
+                ->keyBy('live_stream_id');
+
+            $followersGainedByStream = [];
+            if (Schema::hasColumn('tbl_followers', 'created_at')) {
+                $earliestStart = $rows->min('started_at');
+                $followerTimestamps = Followers::where('to_user_id', $targetUserId)
+                    ->when($earliestStart, fn ($q) => $q->where('created_at', '>=', $earliestStart))
+                    ->pluck('created_at');
+
+                foreach ($rows as $row) {
+                    if (empty($row->started_at)) {
+                        continue;
+                    }
+                    $start = Carbon::parse($row->started_at);
+                    $end = !empty($row->ended_at) ? Carbon::parse($row->ended_at) : Carbon::now();
+                    $count = 0;
+                    foreach ($followerTimestamps as $ts) {
+                        if (Carbon::parse($ts)->between($start, $end)) {
+                            $count++;
+                        }
+                    }
+                    $followersGainedByStream[$row->id] = $count;
+                }
             }
 
-            $videoUrl = !empty($item->video_url)
-                ? GlobalFunction::generateFileUrl($item->video_url)
-                : $effectiveFallbackVideo;
+            $liveData = $rows->map(function ($item) use ($giftStats, $viewerStats, $commentStats, $followersGainedByStream, $targetUser, $effectiveFallbackVideo) {
+                $idKey = (string) $item->id;
+                $gift = $giftStats->get($idKey);
+                $viewer = $viewerStats->get($idKey);
+                $comment = $commentStats->get($idKey);
 
-            return [
-                'id' => intval($item->id),
-                'user_id' => intval($item->user_id),
-                'title' => $item->title,
-                'thumbnail' => $thumbnail,
-                'video_url' => $videoUrl,
-                'viewer_count' => $viewer ? intval($viewer->viewer_count) : 0,
-                'duration' => intval($item->duration ?? 0),
-                'total_gifts' => $gift ? intval($gift->gift_count) : 0,
-                'stars_earned' => $gift ? intval($gift->stars_earned) : 0,
-                'total_comments' => $comment ? intval($comment->comment_count) : 0,
-                'followers_gained' => $followersGainedByStream[$item->id] ?? null,
-                'host_username' => $item->user->username ?? $authUser->username ?? null,
-                'host_fullname' => $item->user->fullname ?? $authUser->fullname ?? null,
-                'host_profile_photo' => ($item->user && !empty($item->user->profile_photo))
-                    ? GlobalFunction::generateFileUrl($item->user->profile_photo)
-                    : (!empty($authUser->profile_photo) ? GlobalFunction::generateFileUrl($authUser->profile_photo) : null),
-                'host_is_verify' => intval($item->user->is_verify ?? $authUser->is_verify ?? 0),
-                'started_at' => !empty($item->started_at) ? Carbon::parse($item->started_at)->format('Y-m-d H:i:s') : null,
-                'ended_at' => !empty($item->ended_at) ? Carbon::parse($item->ended_at)->format('Y-m-d H:i:s') : null,
-                'status' => intval($item->status ?? 0),
-                'created_at' => !empty($item->created_at) ? Carbon::parse($item->created_at)->format('Y-m-d H:i:s') : null,
-            ];
-        })->values();
+                $viewerCount = $viewer ? intval($viewer->viewer_count) : intval($item->viewer_count ?? 0);
+                $totalGifts = $gift ? intval($gift->gift_count) : intval($item->total_gifts ?? 0);
+                $starsEarned = $gift ? intval($gift->stars_earned) : intval($item->stars_earned ?? 0);
+                $totalComments = $comment ? intval($comment->comment_count) : intval($item->total_comments ?? 0);
+                $followersGained = isset($followersGainedByStream[$item->id])
+                    ? intval($followersGainedByStream[$item->id])
+                    : intval($item->followers_gained ?? 0);
 
-        return GlobalFunction::sendDataResponse(true, 'Success', $data);
+                $thumbnail = null;
+                if (!empty($item->thumbnail)) {
+                    $thumbnail = GlobalFunction::generateFileUrl($item->thumbnail);
+                } elseif ($item->user && !empty($item->user->profile_photo)) {
+                    $thumbnail = GlobalFunction::generateFileUrl($item->user->profile_photo);
+                } elseif (!empty($targetUser->profile_photo)) {
+                    $thumbnail = GlobalFunction::generateFileUrl($targetUser->profile_photo);
+                }
+
+                $videoUrl = !empty($item->video_url)
+                    ? GlobalFunction::generateFileUrl($item->video_url)
+                    : $effectiveFallbackVideo;
+
+                return [
+                    'id' => intval($item->id),
+                    'user_id' => intval($item->user_id),
+                    'title' => $item->title,
+                    'thumbnail' => $thumbnail,
+                    'video_url' => $videoUrl,
+                    'viewer_count' => $viewerCount,
+                    'duration' => intval($item->duration ?? 0),
+                    'total_gifts' => $totalGifts,
+                    'stars_earned' => $starsEarned,
+                    'total_comments' => $totalComments,
+                    'followers_gained' => $followersGained,
+                    'host_username' => $item->user->username ?? $targetUser->username ?? null,
+                    'host_fullname' => $item->user->fullname ?? $targetUser->fullname ?? null,
+                    'host_profile_photo' => ($item->user && !empty($item->user->profile_photo))
+                        ? GlobalFunction::generateFileUrl($item->user->profile_photo)
+                        : (!empty($targetUser->profile_photo) ? GlobalFunction::generateFileUrl($targetUser->profile_photo) : null),
+                    'host_is_verify' => intval($item->user->is_verify ?? $targetUser->is_verify ?? 0),
+                    'started_at' => !empty($item->started_at) ? Carbon::parse($item->started_at)->format('Y-m-d H:i:s') : null,
+                    'ended_at' => !empty($item->ended_at) ? Carbon::parse($item->ended_at)->format('Y-m-d H:i:s') : null,
+                    'status' => intval($item->status ?? 0),
+                    'created_at' => !empty($item->created_at) ? Carbon::parse($item->created_at)->format('Y-m-d H:i:s') : null,
+                ];
+            });
+
+            $data = $data->merge($liveData);
+        }
+
+        // Also include Audio Room History hosted by this user
+        if (Schema::hasTable('tbl_audio_room_history')) {
+            $audioRooms = \App\Models\AudioRoomHistory::where('host_id', $targetUserId)
+                ->orderBy('id', 'DESC')
+                ->limit($limit)
+                ->get();
+
+            $audioData = $audioRooms->map(function ($room) use ($targetUser, $effectiveFallbackVideo) {
+                return [
+                    'id' => intval($room->id),
+                    'user_id' => intval($room->host_id),
+                    'title' => !empty($room->room_name) ? $room->room_name : 'Audio Live Show',
+                    'thumbnail' => !empty($targetUser->profile_photo) ? GlobalFunction::generateFileUrl($targetUser->profile_photo) : null,
+                    'video_url' => $effectiveFallbackVideo,
+                    'viewer_count' => intval($room->peak_listener_count ?? 0),
+                    'duration' => intval($room->duration ?? 0),
+                    'total_gifts' => intval($room->total_gifts ?? 0),
+                    'stars_earned' => intval($room->stars_earned ?? 0),
+                    'total_comments' => intval($room->total_comments ?? 0),
+                    'followers_gained' => intval($room->followers_gained ?? 0),
+                    'host_username' => $targetUser->username ?? null,
+                    'host_fullname' => $targetUser->fullname ?? null,
+                    'host_profile_photo' => !empty($targetUser->profile_photo) ? GlobalFunction::generateFileUrl($targetUser->profile_photo) : null,
+                    'host_is_verify' => intval($targetUser->is_verify ?? 0),
+                    'started_at' => !empty($room->started_at) ? Carbon::parse($room->started_at)->format('Y-m-d H:i:s') : null,
+                    'ended_at' => !empty($room->ended_at) ? Carbon::parse($room->ended_at)->format('Y-m-d H:i:s') : null,
+                    'status' => intval($room->status ?? 0),
+                    'created_at' => !empty($room->created_at) ? Carbon::parse($room->created_at)->format('Y-m-d H:i:s') : null,
+                ];
+            });
+
+            $data = $data->merge($audioData);
+        }
+
+        // Sort merged sessions by started_at/created_at DESC
+        $sortedData = $data->sortByDesc(function ($item) {
+            return $item['started_at'] ?? $item['created_at'] ?? '';
+        })->take($limit)->values();
+
+        return GlobalFunction::sendDataResponse(true, 'Success', $sortedData);
     }
 
     public function fetchMyLiveStats(Request $request)

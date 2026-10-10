@@ -34,9 +34,9 @@ class AudioCallListScreen extends StatelessWidget {
           ),
         ),
         actions: [
-          Builder(builder: (context) {
-            final level = SessionManager.instance.getUser()?.getLevel;
-            return LevelBadge(level: level?.id != null ? level?.level : null);
+          Obx(() {
+            final level = SessionManager.instance.myUserLevel.value;
+            return LevelBadge(level: level);
           }),
           const SizedBox(width: 12),
         ],

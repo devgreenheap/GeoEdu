@@ -222,6 +222,9 @@ class DashboardScreenController extends BaseController with GetSingleTickerProvi
     if (index == 1) {
       onFeedPostScrollDown(index);
     }
+    if (index == 0) {
+      SessionManager.instance.refreshUser();
+    }
     if (selectedPageIndex.value == index) return;
 
     // If leaving Live tab (index 3), immediately cut off all live audio!

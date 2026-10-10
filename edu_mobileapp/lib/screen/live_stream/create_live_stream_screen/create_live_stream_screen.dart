@@ -13,6 +13,7 @@ import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/model/post_story/hashtag_model.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/screen/live_stream/create_live_stream_screen/create_live_stream_screen_controller.dart';
+import 'package:geoedu/common/manager/haptic_manager.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/utilities/text_style_custom.dart';
@@ -372,6 +373,72 @@ class CreateLiveStreamScreen extends StatelessWidget {
                                             );
                                           }).toList(),
                                         )),
+                                    const SizedBox(height: 14),
+                                    Text('Join Call Seats (Max 7)',
+                                        style: TextStyleCustom.outFitLight300(
+                                            fontSize: 13,
+                                            color: whitePure(context)
+                                                .withValues(alpha: .7))),
+                                    const SizedBox(height: 8),
+                                    SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      physics: const BouncingScrollPhysics(),
+                                      child: Obx(() => Row(
+                                            children: controller.seatOptions
+                                                .map((seats) {
+                                              final isSelected = controller
+                                                      .maxParticipants.value ==
+                                                  seats;
+                                              return GestureDetector(
+                                                onTap: () {
+                                                  HapticManager.shared.light();
+                                                  controller.maxParticipants
+                                                      .value = seats;
+                                                },
+                                                child: Container(
+                                                  margin: const EdgeInsets.only(
+                                                      right: 8),
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                          horizontal: 14,
+                                                          vertical: 8),
+                                                  decoration: BoxDecoration(
+                                                    color: isSelected
+                                                        ? ColorRes.primaryColor
+                                                            .withValues(
+                                                                alpha: 0.25)
+                                                        : Colors.white
+                                                            .withValues(
+                                                                alpha: 0.1),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            18),
+                                                    border: Border.all(
+                                                      color: isSelected
+                                                          ? ColorRes.primaryColor
+                                                          : whitePure(context)
+                                                              .withValues(
+                                                                  alpha: .25),
+                                                      width: isSelected
+                                                          ? 1.5
+                                                          : 1,
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    '$seats ${seats == 1 ? "Seat" : "Seats"}',
+                                                    style: TextStyleCustom
+                                                        .outFitRegular400(
+                                                      fontSize: 13,
+                                                      color: isSelected
+                                                          ? ColorRes.primaryColor
+                                                          : whitePure(context),
+                                                    ),
+                                                  ),
+                                                ),
+                                              );
+                                            }).toList(),
+                                          )),
+                                    ),
                                     const SizedBox(height: 16),
                                     Text('Choose Category',
                                         style: TextStyleCustom.outFitLight300(

@@ -38,7 +38,6 @@ class NotificationScreenController extends BaseController {
 
   void iniData() {
     fetchActivityNotifications();
-    fetchAdminNotification();
   }
 
   Future<void> refreshActivityNotifications() async {

@@ -133,7 +133,7 @@ class _RecordedVideoPlayerScreenState extends State<RecordedVideoPlayerScreen> {
                         backgroundColor: ColorRes.primaryColor,
                         foregroundColor: Colors.white,
                       ),
-                      onTap: () => _initPlayer(fallbackVideoUrl),
+                      onPressed: () => _initPlayer(fallbackVideoUrl),
                       child: const Text('Play Sample Recording'),
                     ),
                   ],

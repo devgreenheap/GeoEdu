@@ -64,15 +64,20 @@ class GlobalFunction extends Model
                 ->sum('g.coin_price')
         );
 
-        $nextLevel = self::findNextUserLevelByCurrentLevelId(intval($user->level_id ?? 0));
-        if (
-            $nextLevel
-            && $currentHostFollowers >= intval($nextLevel->host_followers_count ?? 0)
-            && $currentLiveComments >= intval($nextLevel->live_comments_count ?? 0)
-            && $currentSendGiftDiamonds >= intval($nextLevel->send_gifts_count ?? 0)
-        ) {
-            $user->level_id = intval($nextLevel->id);
-            $user->save();
+        while (true) {
+            $nextLevel = self::findNextUserLevelByCurrentLevelId(intval($user->level_id ?? 0));
+            if (
+                $nextLevel
+                && intval($nextLevel->id) !== intval($user->level_id ?? 0)
+                && $currentHostFollowers >= intval($nextLevel->host_followers_count ?? 0)
+                && $currentLiveComments >= intval($nextLevel->live_comments_count ?? 0)
+                && $currentSendGiftDiamonds >= intval($nextLevel->send_gifts_count ?? 0)
+            ) {
+                $user->level_id = intval($nextLevel->id);
+                $user->save();
+            } else {
+                break;
+            }
         }
     }
 

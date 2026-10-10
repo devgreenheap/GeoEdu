@@ -61,6 +61,11 @@ class MessageScreenController extends BaseController {
     selectedChatCategory.value = index;
   }
 
+  Future<void> onRefresh() async {
+    await fetchSuggestedUsers();
+    await _listenToUserChatsAndRequests();
+  }
+
   Future<void> _listenToUserChatsAndRequests() async {
     isLoading.value = true;
     db

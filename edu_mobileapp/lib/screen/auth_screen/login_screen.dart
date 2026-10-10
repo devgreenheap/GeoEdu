@@ -6,6 +6,7 @@ import 'package:geoedu/screen/auth_screen/auth_screen_controller.dart';
 import 'package:geoedu/screen/auth_screen/otp_verification_screen.dart';
 import 'package:geoedu/screen/auth_screen/registration_screen.dart';
 import 'package:geoedu/screen/auth_screen/widget/auth_theme.dart';
+import 'package:geoedu/screen/splash_screen/splash_screen_controller.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 
 /// Premium dark-theme Login Screen — unified with the 3-step registration flow.
@@ -23,6 +24,11 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    // Ensure any residual splash controller is completely purged
+    if (Get.isRegistered<SplashScreenController>()) {
+      Get.delete<SplashScreenController>(force: true);
+    }
+
     controller = Get.isRegistered<AuthScreenController>()
         ? Get.find<AuthScreenController>()
         : Get.put(AuthScreenController());

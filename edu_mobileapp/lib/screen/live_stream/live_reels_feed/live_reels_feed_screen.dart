@@ -55,11 +55,31 @@ class _LiveReelsFeedScreenState extends State<LiveReelsFeedScreen>
         }
 
         if (controller.liveStreams.isEmpty) {
-          return _buildEmptyState(context);
+          return RefreshIndicator(
+            onRefresh: controller.refreshStreams,
+            color: ColorRes.primaryColor,
+            backgroundColor: ColorRes.cardBackground,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height - 120,
+                child: _buildEmptyState(context),
+              ),
+            ),
+          );
         }
 
-        return Stack(
-          children: [
+        return RefreshIndicator(
+          onRefresh: controller.refreshStreams,
+          color: ColorRes.primaryColor,
+          backgroundColor: ColorRes.cardBackground,
+          notificationPredicate: (notification) {
+            return controller.currentIndex.value == 0;
+          },
+          child: Stack(
+            children: [
             // Vertical TikTok / Instagram Reels feed
             PageView.builder(
               controller: controller.pageController,
@@ -137,9 +157,10 @@ class _LiveReelsFeedScreenState extends State<LiveReelsFeedScreen>
                 ),
               ),
           ],
-        );
-      }),
-    );
+        ),
+      );
+    }),
+  );
   }
 
   Widget _buildLoadingState(BuildContext context) {
@@ -293,20 +314,21 @@ class _LiveReelsFeedScreenState extends State<LiveReelsFeedScreen>
               ),
             ),
 
-            const SizedBox(height: 14),
-
-            // Pull to Refresh Button
-            TextButton.icon(
-              onPressed: controller.refreshStreams,
-              icon: const Icon(Icons.refresh_rounded, color: Colors.white70, size: 18),
-              label: const Text(
-                "Refresh Live Feed",
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+            const SizedBox(height: 18),
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.arrow_downward_rounded, color: Colors.white38, size: 16),
+                SizedBox(width: 6),
+                Text(
+                  "Swipe down to refresh",
+                  style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
+              ],
             ),
           ],
         ),

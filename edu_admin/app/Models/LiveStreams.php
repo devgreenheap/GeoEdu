@@ -10,4 +10,9 @@ class LiveStreams extends Model
     use HasFactory;
 
     public $table = 'tbl_live_streams';
+
+    public function user()
+    {
+        return $this->hasOne(Users::class, 'id', 'user_id');
+    }
 }

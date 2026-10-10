@@ -36,6 +36,7 @@ extension UserExtension on User {
     String? streamMode,
     bool? isAutoMode,
     String? thumbnailUrl,
+    int? maxParticipants = 7,
   }) {
     return Livestream(
         isActive: true,
@@ -64,6 +65,7 @@ extension UserExtension on User {
         streamMode: streamMode,
         isAutoMode: isAutoMode,
         thumbnailUrl: thumbnailUrl,
+        maxParticipants: maxParticipants,
         screenshotDisabled: disableScreenshotStatus);
   }
 

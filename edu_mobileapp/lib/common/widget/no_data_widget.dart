@@ -69,6 +69,7 @@ class NoDataWidgetWithScroll extends StatelessWidget {
       children: [
         NoDataView(safeAreaTop: true, title: title, description: description),
         SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
           child: SizedBox(width: double.infinity, height: Get.height),
         ),
       ],

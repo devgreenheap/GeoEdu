@@ -7,6 +7,7 @@ import 'package:geoedu/common/widget/post_list.dart';
 import 'package:geoedu/common/widget/reel_list.dart';
 import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/screen/saved_post_screen/saved_post_screen_controller.dart';
+import 'package:geoedu/utilities/color_res.dart';
 
 class SavedPostScreen extends StatelessWidget {
   const SavedPostScreen({super.key});
@@ -38,22 +39,28 @@ class SavedPostScreen extends StatelessWidget {
                           ? controller.posts.isEmpty
                           : controller.reels.isEmpty)
                   ? const LoaderWidget()
-                  : PageView(
-                      controller: controller.pageController,
-                      onPageChanged: controller.onChangeTab,
-                      children: [
-                        ReelList(
-                          reels: controller.reels,
-                          isLoading: controller.isReelLoading,
-                          onFetchMoreData: controller.fetchReel,
-                          onBackResponse: controller.onBackResponse,
-                        ),
-                        PostList(
-                          posts: controller.posts,
-                          isLoading: controller.isPostLoading,
-                          onFetchMoreData: controller.fetchPost,
-                        ),
-                      ],
+                  : RefreshIndicator(
+                      onRefresh: controller.onRefresh,
+                      color: ColorRes.themeColor,
+                      child: PageView(
+                        controller: controller.pageController,
+                        onPageChanged: controller.onChangeTab,
+                        physics: const AlwaysScrollableScrollPhysics(
+                            parent: BouncingScrollPhysics()),
+                        children: [
+                          ReelList(
+                            reels: controller.reels,
+                            isLoading: controller.isReelLoading,
+                            onFetchMoreData: controller.fetchReel,
+                            onBackResponse: controller.onBackResponse,
+                          ),
+                          PostList(
+                            posts: controller.posts,
+                            isLoading: controller.isPostLoading,
+                            onFetchMoreData: controller.fetchPost,
+                          ),
+                        ],
+                      ),
                     ),
             ),
           )

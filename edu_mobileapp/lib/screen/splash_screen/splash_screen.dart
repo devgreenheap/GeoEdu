@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:geoedu/common/widget/custom_shimmer_fill_text.dart';
-import 'package:geoedu/common/widget/theme_blur_bg.dart';
 import 'package:geoedu/screen/splash_screen/splash_screen_controller.dart';
 import 'package:geoedu/utilities/app_res.dart';
 import 'package:geoedu/utilities/text_style_custom.dart';

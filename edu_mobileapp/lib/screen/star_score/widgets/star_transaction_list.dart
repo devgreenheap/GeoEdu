@@ -155,25 +155,27 @@ class _StarTransactionListState extends State<StarTransactionList>
     }
 
     if (transactions.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Image.asset(AssetRes.starScoreStar, height: 48, width: 48),
-            const SizedBox(height: 16),
-            const Text(
-              'No transactions yet',
-              style: TextStyle(color: Colors.white38, fontSize: 16),
+      return RefreshIndicator(
+        onRefresh: _onRefresh,
+        color: const Color(0xFFB6FF52),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+          child: SizedBox(
+            height: 400,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(AssetRes.starScoreStar, height: 48, width: 48),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'No transactions yet',
+                    style: TextStyle(color: Colors.white38, fontSize: 16),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            IconButton(
-              onPressed: () {
-                setState(() => isLoading = true);
-                _fetchTransactions();
-              },
-              icon: const Icon(Icons.refresh, color: Colors.white38, size: 32),
-            ),
-          ],
+          ),
         ),
       );
     }
@@ -183,6 +185,7 @@ class _StarTransactionListState extends State<StarTransactionList>
       color: const Color(0xFFB6FF52),
       child: ListView.separated(
         controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
         padding: const EdgeInsets.symmetric(vertical: 10),
         itemCount: transactions.length + (isLoadingMore ? 1 : 0),
         separatorBuilder: (context, index) => const SizedBox(height: 10),

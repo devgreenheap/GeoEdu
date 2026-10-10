@@ -10,6 +10,7 @@ import 'package:geoedu/screen/comment_sheet/helper/comment_helper.dart';
 import 'package:geoedu/screen/comment_sheet/widget/comment_bottom_text_field_view.dart';
 import 'package:geoedu/screen/post_screen/post_card.dart';
 import 'package:geoedu/screen/post_screen/post_screen_controller.dart';
+import 'package:geoedu/utilities/color_res.dart';
 
 class SinglePostScreen extends StatefulWidget {
   final Post post;
@@ -43,17 +44,28 @@ class _SinglePostScreenState extends State<SinglePostScreen> {
         children: [
           CustomAppBar(title: LKey.post.tr),
           Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  PostCard(
-                      post: widget.post,
-                      shouldShowPinOption: false,
-                      likeKey: GlobalKey(),
-                      postByIdData: widget.postByIdData,
-                      isFromSinglePost: true),
-                  CommentSheet(post: widget.post, isFromBottomSheet: false)
-                ],
+            child: RefreshIndicator(
+              onRefresh: () async {
+                if (Get.isRegistered<CommentSheetController>()) {
+                  final commentCtrl = Get.find<CommentSheetController>();
+                  commentCtrl.commentsList.clear();
+                  await commentCtrl.fetchComments(isEmpty: true);
+                }
+              },
+              color: ColorRes.themeColor,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                child: Column(
+                  children: [
+                    PostCard(
+                        post: widget.post,
+                        shouldShowPinOption: false,
+                        likeKey: GlobalKey(),
+                        postByIdData: widget.postByIdData,
+                        isFromSinglePost: true),
+                    CommentSheet(post: widget.post, isFromBottomSheet: false)
+                  ],
+                ),
               ),
             ),
           ),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -235,7 +236,7 @@ Widget buildColumnAcceptCallCard(
   });
 }
 
-class ParticipantVideoCard extends StatelessWidget {
+class ParticipantVideoCard extends StatefulWidget {
   final LivestreamScreenController controller;
   final int userId;
   final StreamView? streamingView;
@@ -258,21 +259,91 @@ class ParticipantVideoCard extends StatelessWidget {
   });
 
   @override
+  State<ParticipantVideoCard> createState() => _ParticipantVideoCardState();
+}
+
+class _ParticipantVideoCardState extends State<ParticipantVideoCard> {
+  bool _bannerDismissed = false;
+  Timer? _autoDismissTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _bannerDismissed = widget.bannerDismissed ||
+        widget.controller.hasDismissedJoinCallBanner.value;
+    if (widget.isMe && !_bannerDismissed) {
+      _startAutoDismissTimer();
+    }
+  }
+
+  @override
+  void didUpdateWidget(ParticipantVideoCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.bannerDismissed && !_bannerDismissed) {
+      _dismissBanner();
+    } else if (widget.isMe &&
+        !oldWidget.isMe &&
+        !_bannerDismissed &&
+        !widget.controller.hasDismissedJoinCallBanner.value) {
+      _startAutoDismissTimer();
+    }
+  }
+
+  void _startAutoDismissTimer() {
+    _autoDismissTimer?.cancel();
+    _autoDismissTimer = Timer(const Duration(seconds: 5), () {
+      _dismissBanner();
+    });
+  }
+
+  void _dismissBanner() {
+    _autoDismissTimer?.cancel();
+    _autoDismissTimer = null;
+    if (widget.isMe) {
+      widget.controller.hasDismissedJoinCallBanner.value = true;
+    }
+    if (mounted && !_bannerDismissed) {
+      setState(() {
+        _bannerDismissed = true;
+      });
+      widget.onDismissBanner?.call();
+    }
+  }
+
+  @override
+  void dispose() {
+    _autoDismissTimer?.cancel();
+    _autoDismissTimer = null;
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Obx(() {
+      final controller = widget.controller;
+      final userId = widget.userId;
+      final streamingView = widget.streamingView;
+      final isMe = widget.isMe;
+      final width = widget.width;
+      final height = widget.height;
+
       final state = controller.liveUsersStates
           .firstWhereOrNull((element) => element.userId == userId);
       final user = controller.firestoreController.users
           .firstWhereOrNull((u) => u.userId == userId);
 
       final isAudioOff = isMe
-          ? !controller.isAudioOn.value
-          : (state?.audioStatus == VideoAudioStatus.offByHost ||
-              (streamingView == null && state?.audioStatus == VideoAudioStatus.offByMe));
+          ? (!controller.isAudioOn.value ||
+              state?.audioStatus == VideoAudioStatus.offByMe ||
+              state?.audioStatus == VideoAudioStatus.offByHost)
+          : (state?.audioStatus == VideoAudioStatus.offByMe ||
+              state?.audioStatus == VideoAudioStatus.offByHost);
       final isVideoOff = isMe
-          ? !controller.isVideoOn.value
-          : (state?.videoStatus == VideoAudioStatus.offByHost ||
-              (streamingView == null && state?.videoStatus == VideoAudioStatus.offByMe));
+          ? (!controller.isVideoOn.value ||
+              state?.videoStatus == VideoAudioStatus.offByMe ||
+              state?.videoStatus == VideoAudioStatus.offByHost)
+          : (state?.videoStatus == VideoAudioStatus.offByMe ||
+              state?.videoStatus == VideoAudioStatus.offByHost);
 
       final userName = isMe
           ? (controller.myUser.value?.fullname ??
@@ -442,7 +513,7 @@ class ParticipantVideoCard extends StatelessWidget {
                                 ),
                               ),
                             )
-                          : streamingView!.streamView,
+                          : streamingView.streamView,
                     ),
 
                     // 2. Top-Right Indicator / Chevron / End Call
@@ -670,9 +741,34 @@ class ParticipantVideoCard extends StatelessWidget {
           ),
 
           // 4. Purple Info Banner for Self (if not dismissed)
-          if (isMe && !bannerDismissed) ...[
-            const SizedBox(height: 8),
-            _buildPurpleInfoBanner(),
+          if (isMe) ...[
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              switchInCurve: Curves.easeIn,
+              switchOutCurve: Curves.easeOut,
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SizeTransition(
+                  sizeFactor: animation,
+                  child: child,
+                ),
+              ),
+              child: (!_bannerDismissed &&
+                      !controller.hasDismissedJoinCallBanner.value)
+                  ? TapRegion(
+                      key: const ValueKey('purple_banner_region'),
+                      groupId: 'joined_call_banner_${widget.userId}',
+                      behavior: HitTestBehavior.translucent,
+                      onTapOutside: (PointerDownEvent event) {
+                        _dismissBanner();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: _buildPurpleInfoBanner(),
+                      ),
+                    )
+                  : const SizedBox.shrink(key: ValueKey('empty_banner')),
+            ),
           ],
         ],
       );
@@ -739,8 +835,9 @@ class ParticipantVideoCard extends StatelessWidget {
                     ),
                   ),
                   GestureDetector(
+                    behavior: HitTestBehavior.opaque,
                     onTap: () {
-                      onDismissBanner?.call();
+                      _dismissBanner();
                     },
                     child: Padding(
                       padding: const EdgeInsets.only(left: 4),
@@ -1517,13 +1614,38 @@ class LiveStreamUserView extends StatelessWidget {
             ),
           if (!isVideoOff && isAudioOff)
             Align(
-                alignment: Alignment.center,
-                child: Image.asset(
-                  AssetRes.icMicOff,
-                  height: 25,
-                  width: 25,
-                  color: whitePure(context).withValues(alpha: .6),
-                )),
+              alignment: Alignment.center,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.65),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFFFF1744).withValues(alpha: 0.8),
+                    width: 1,
+                  ),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.mic_off_rounded,
+                      color: Color(0xFFFF1744),
+                      size: 16,
+                    ),
+                    SizedBox(width: 5),
+                    Text(
+                      'Muted',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           if (isNameAndSpeakerVisible && streamingView != null)
             _buildUserInfoOverlay(context,
                 streamView: streamingView!,

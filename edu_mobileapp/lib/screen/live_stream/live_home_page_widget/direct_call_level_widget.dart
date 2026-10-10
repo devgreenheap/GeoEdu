@@ -10,18 +10,43 @@ import 'package:geoedu/screen/live_stream/live_stream_search_screen/live_stream_
 import 'package:geoedu/screen/live_stream/livestream_screen/audience/live_stream_audience_screen.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 
-class DirectCallLevelWidget extends StatelessWidget {
+class DirectCallLevelWidget extends StatefulWidget {
   const DirectCallLevelWidget({super.key});
 
   @override
+  State<DirectCallLevelWidget> createState() => _DirectCallLevelWidgetState();
+}
+
+class _DirectCallLevelWidgetState extends State<DirectCallLevelWidget>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Refresh user level immediately on mount
+    SessionManager.instance.refreshUser();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      SessionManager.instance.refreshUser();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final user = SessionManager.instance.getUser();
-    final userLevel = user?.getLevel.level ?? 1;
     final controller = Get.find<LiveStreamSearchScreenController>();
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Row(     
+      child: Row(
         children: [
           // DIRECT CALL CARD
           Expanded(
@@ -62,15 +87,19 @@ class DirectCallLevelWidget extends StatelessWidget {
 
           const SizedBox(width: 12),
 
-          // MY LEVEL CARD
+          // MY LEVEL CARD (Reactive: automatically updates when level increases)
           Expanded(
-            child: _buildMyLevelCard(
-              level: userLevel,
-              onTap: () {
-                Navigator.of(context).push(MaterialPageRoute(
-                    builder: (context) => const LevelScreenNew()));
-              },
-            ),
+            child: Obx(() {
+              final userLevel = SessionManager.instance.myUserLevel.value;
+              return _buildMyLevelCard(
+                level: userLevel,
+                onTap: () async {
+                  await Navigator.of(context).push(MaterialPageRoute(
+                      builder: (context) => const LevelScreenNew()));
+                  SessionManager.instance.refreshUser();
+                },
+              );
+            }),
           ),
         ],
       ),

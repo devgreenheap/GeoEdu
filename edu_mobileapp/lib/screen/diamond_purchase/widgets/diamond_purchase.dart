@@ -617,10 +617,19 @@ class _DiamondPurchaseState extends State<DiamondPurchase> {
     }
 
     if (diamondTransactions.isEmpty) {
-      return const Center(
-        child: Text(
-          'No purchase history',
-          style: TextStyle(color: Colors.white54),
+      return RefreshIndicator(
+        onRefresh: () => _fetchTransactions(),
+        child: const SingleChildScrollView(
+          physics: AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+          child: SizedBox(
+            height: 400,
+            child: Center(
+              child: Text(
+                'No purchase history',
+                style: TextStyle(color: Colors.white54),
+              ),
+            ),
+          ),
         ),
       );
     }

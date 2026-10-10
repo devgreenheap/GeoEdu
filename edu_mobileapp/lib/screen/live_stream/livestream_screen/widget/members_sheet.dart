@@ -249,6 +249,10 @@ class _MembersSheetState extends State<MembersSheet> {
         return Row(
           children: [
             _buildActionBtn(AssetRes.icCheck, ColorRes.green, () {
+              if (controller.coHostList.length >= controller.maxCallSeats) {
+                controller.showSnackBar('Join Call seats are full (${controller.maxCallSeats} seats max)');
+                return;
+              }
               Get.back();
               controller.handleRequestResponse(user: user, isRefused: false);
             }),

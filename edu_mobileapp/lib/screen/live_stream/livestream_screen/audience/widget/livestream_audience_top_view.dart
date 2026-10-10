@@ -186,8 +186,9 @@ class _BuildCenterView extends StatelessWidget {
       Rx<User?> user = Rx(null);
 
       Livestream stream = controller.liveData.value;
-      AppUser? hostUser = controller.firestoreController.users
-          .firstWhereOrNull((element) => element.userId == stream.hostId);
+      AppUser? hostUser = controller.effectiveSelectedBattleHost ??
+          controller.firestoreController.users
+              .firstWhereOrNull((element) => element.userId == stream.hostId);
       user.value = controller.usersList
           .firstWhereOrNull((element) => element.id == hostUser?.userId);
 

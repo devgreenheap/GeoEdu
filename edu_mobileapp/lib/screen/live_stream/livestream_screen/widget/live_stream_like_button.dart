@@ -143,7 +143,7 @@ class _LiveStreamLikeButtonState extends State<LiveStreamLikeButton>
             widget.likeCount!.numberFormat,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 9.5,
+              fontSize: 11,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.1,
               shadows: [

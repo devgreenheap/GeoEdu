@@ -134,19 +134,29 @@ class BattleInlineGiftBar extends StatelessWidget {
             Row(
               children: [
                 _SideChip(
-                  label: targetUser.username ?? LKey.host.tr,
+                  label: users.first.username ?? LKey.host.tr,
                   color: ColorRes.likeRed,
                   selected: side == BattleView.red,
-                  onTap: () =>
-                      controller.selectedBattleSide.value = BattleView.red,
+                  onTap: () {
+                    controller.selectedBattleSide.value = BattleView.red;
+                    if (users.isNotEmpty && users.first.userId != null) {
+                      controller.selectedBattleHostId.value = users.first.userId;
+                      controller.selectedGiftUser.value = users.first;
+                    }
+                  },
                 ),
                 const SizedBox(width: 8),
                 _SideChip(
                   label: users.last.username ?? '',
                   color: ColorRes.battleProgressColor,
                   selected: side == BattleView.blue,
-                  onTap: () =>
-                      controller.selectedBattleSide.value = BattleView.blue,
+                  onTap: () {
+                    controller.selectedBattleSide.value = BattleView.blue;
+                    if (users.length > 1 && users.last.userId != null) {
+                      controller.selectedBattleHostId.value = users.last.userId;
+                      controller.selectedGiftUser.value = users.last;
+                    }
+                  },
                 ),
                 const Spacer(),
                 GradientText(

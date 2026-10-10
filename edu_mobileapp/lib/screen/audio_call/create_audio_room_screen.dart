@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:mime/mime.dart';
 import 'package:geoedu/common/controller/base_controller.dart';
 import 'package:geoedu/common/extensions/string_extension.dart';
 import 'package:geoedu/common/functions/media_picker_helper.dart';
@@ -164,12 +165,99 @@ class CreateAudioRoomController extends BaseController {
     }
   }
 
+  static const Set<String> allowedAudioExtensions = {
+    'mp3',
+    'wav',
+    'm4a',
+    'aac',
+    'ogg',
+    'oga',
+    'flac',
+    'opus',
+    'wma',
+    'amr',
+    'aiff',
+    'aif',
+    'mid',
+    'midi',
+    'mpga',
+  };
+
+  static bool isAudioFile(String path, {String? fileName}) {
+    final name =
+        (fileName ?? path.split(Platform.pathSeparator).last).toLowerCase();
+    final ext = name.contains('.') ? name.split('.').last.trim() : '';
+
+    const nonAudioExtensions = {
+      'jpg',
+      'jpeg',
+      'png',
+      'gif',
+      'webp',
+      'bmp',
+      'heic',
+      'heif',
+      'svg',
+      'mp4',
+      'mov',
+      'avi',
+      'mkv',
+      'webm',
+      '3gp',
+      'flv',
+      'wmv',
+      'm4v',
+      'pdf',
+      'doc',
+      'docx',
+      'txt',
+      'zip',
+      'rar',
+      'apk',
+    };
+    if (nonAudioExtensions.contains(ext)) {
+      return false;
+    }
+
+    if (allowedAudioExtensions.contains(ext)) {
+      return true;
+    }
+
+    final mime = lookupMimeType(path) ?? lookupMimeType(name) ?? '';
+    if (mime.startsWith('audio/')) {
+      return true;
+    }
+
+    return false;
+  }
+
   Future<void> pickDeviceMusic() async {
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.audio);
-      if (result != null && result.files.single.path != null) {
-        selectedMusicPath.value = result.files.single.path!;
-        selectedMusicName.value = result.files.single.name;
+      FilePickerResult? result;
+      try {
+        result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: allowedAudioExtensions.toList(),
+        );
+      } catch (pickerErr) {
+        Loggers.warning('Custom FilePicker fallback to audio type: $pickerErr');
+        result = await FilePicker.platform.pickFiles(type: FileType.audio);
+      }
+
+      if (result != null &&
+          result.files.isNotEmpty &&
+          result.files.single.path != null) {
+        final path = result.files.single.path!;
+        final name = result.files.single.name;
+
+        if (!isAudioFile(path, fileName: name)) {
+          showSnackBar(
+              'Only audio files are allowed for background music (MP3, M4A, WAV, AAC, etc.)');
+          return;
+        }
+
+        selectedMusicPath.value = path;
+        selectedMusicName.value = name;
       }
     } catch (e) {
       Loggers.error('pickDeviceMusic error: $e');
@@ -249,7 +337,12 @@ class CreateAudioRoomController extends BaseController {
 
       List<String> musicList = [];
       if (selectedMusicPath.value.isNotEmpty) {
-        musicList.add(selectedMusicPath.value);
+        if (isAudioFile(selectedMusicPath.value,
+            fileName: selectedMusicName.value)) {
+          musicList.add(selectedMusicPath.value);
+        } else {
+          clearSelectedMusic();
+        }
       }
 
       // 1. Call backend API to record the audio live room session (matching Video Call flow)
@@ -1076,7 +1169,10 @@ class CreateAudioRoomScreen extends StatelessWidget {
   Widget _buildMusicPlayerContent(CreateAudioRoomController controller) {
     return Obx(() {
       final musicName = controller.selectedMusicName.value;
-      if (musicName.isNotEmpty) {
+      if (musicName.isNotEmpty &&
+          CreateAudioRoomController.isAudioFile(
+              controller.selectedMusicPath.value,
+              fileName: musicName)) {
         return Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

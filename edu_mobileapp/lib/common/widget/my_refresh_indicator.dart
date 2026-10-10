@@ -23,7 +23,10 @@ class MyRefreshIndicator extends StatelessWidget {
         key: refreshKey,
         onRefresh: onRefresh,
         notificationPredicate: (notification) {
-          return notification.depth == depth;
+          if (depth == 0) {
+            return notification.depth == 0;
+          }
+          return notification.depth == depth || notification.depth == 0;
         },
         color: themeAccentSolid(context),
         backgroundColor: whitePure(context),

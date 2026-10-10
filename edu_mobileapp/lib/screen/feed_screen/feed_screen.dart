@@ -37,9 +37,10 @@ class FeedScreen extends StatelessWidget {
                           safeAreaTop: false,
                           title: LKey.noUserPostsTitle.tr,
                           description: LKey.noUserPostsDescription.tr),
-                      SingleChildScrollView(
+                      const SingleChildScrollView(
+                        physics: AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                         child: SizedBox(
-                            width: double.infinity, height: Get.height),
+                            width: double.infinity, height: 800),
                       ),
                     ],
                   );

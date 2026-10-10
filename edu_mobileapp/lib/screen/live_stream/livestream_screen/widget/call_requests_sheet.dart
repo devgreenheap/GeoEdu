@@ -53,14 +53,36 @@ class _CallRequestsSheetState extends State<CallRequestsSheet> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Call Requests',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Call Requests',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 19,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Obx(() => Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '${controller.coHostList.length}/${controller.maxCallSeats} Seats',
+                            style: const TextStyle(
+                              color: Color(0xFFFFB300),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        )),
+                  ],
                 ),
                 GestureDetector(
                   onTap: () {
@@ -344,6 +366,10 @@ class _CallRequestsSheetState extends State<CallRequestsSheet> {
         GestureDetector(
           onTap: () {
             HapticManager.shared.medium();
+            if (controller.coHostList.length >= controller.maxCallSeats) {
+              controller.showSnackBar('Join Call seats are full (${controller.maxCallSeats} seats max)');
+              return;
+            }
             CallRequestsSheet.sessionHistory.insert(0, {
               'user': user,
               'userId': state.userId,

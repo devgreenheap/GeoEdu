@@ -63,6 +63,7 @@ class _LevelScreenNewState extends State<LevelScreenNew> {
         userId: SessionManager.instance.getUserID(),
       );
       if (freshUser != null && mounted) {
+        SessionManager.instance.setUser(freshUser);
         setState(() {
           user = freshUser;
           _initLevel();

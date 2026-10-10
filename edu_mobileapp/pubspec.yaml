@@ -173,8 +173,7 @@ flutter:
     - "assets/payment audio/"
     - assets/register/
     - assets/interest/
-    - android/app/src/main/res/mipmap-hdpi/
-    - ios/Runner/Assets.xcassets/AppIcon.appiconset/
+
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

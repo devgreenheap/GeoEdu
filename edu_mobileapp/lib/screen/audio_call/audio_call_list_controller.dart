@@ -38,6 +38,12 @@ class AudioCallListController extends BaseController {
     super.onClose();
   }
 
+  Future<void> refreshAudioRooms() async {
+    _audioRoomsSubscription?.cancel();
+    _listenAudioRooms();
+    await Future.delayed(const Duration(milliseconds: 300));
+  }
+
   void _listenAudioRooms() {
     _audioRoomsSubscription = _db
         .collection(FirebaseConst.audioRooms)

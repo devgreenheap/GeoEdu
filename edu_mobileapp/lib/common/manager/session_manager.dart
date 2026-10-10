@@ -16,12 +16,18 @@ class SessionManager {
   RxInt notifyCount = 0.obs;
   RxInt isModerator = 0.obs;
   RxString currentLang = 'en'.obs;
+  RxInt myUserLevel = 1.obs;
+  Rx<User?> rxUser = Rx<User?>(null);
 
   SessionManager() {
     currentLang.value = storage.read(SessionKeys.lang) ?? 'en';
+    final initialUser = getUser();
+    rxUser.value = initialUser;
+    myUserLevel.value = initialUser?.level ?? initialUser?.getLevel.level ?? 1;
     listenNotifyCount();
     listenModerator();
     listenSubscription();
+    listenUser();
   }
 
   void setAuthToken(Token? token) {
@@ -82,6 +88,24 @@ class SessionManager {
     });
   }
 
+  void listenUser() {
+    storage.listenKey(SessionKeys.user, (value) {
+      User? user;
+      if (value is User?) {
+        user = value;
+      } else if (value is Map<String, dynamic>) {
+        user = User.fromJson(value);
+      }
+      if (user != null) {
+        rxUser.value = user;
+        final lvl = user.level ?? user.getLevel.level ?? 1;
+        if (myUserLevel.value != lvl) {
+          myUserLevel.value = lvl;
+        }
+      }
+    });
+  }
+
   void setUser(User? user) {
     if (user != null) {
       // Convert the object to a JSON map and set 'stories' to null
@@ -91,10 +115,24 @@ class SessionManager {
       // Re-create the User object from the modified JSON map
       User newUser = User.fromJson(json);
 
-      // Log the updated user object and store it
-      // Loggers.success(user.toJson());
       storage.write(SessionKeys.user, newUser);
+      rxUser.value = newUser;
+      final lvl = newUser.level ?? newUser.getLevel.level ?? 1;
+      myUserLevel.value = lvl;
     }
+  }
+
+  Future<User?> refreshUser({bool notify = true}) async {
+    final myId = getUserID();
+    if (myId == 0) return null;
+    try {
+      final user = await UserService.instance.fetchUserDetails(userId: myId);
+      if (user != null) {
+        setUser(user);
+        return user;
+      }
+    } catch (_) {}
+    return getUser();
   }
 
   User? getUser() {

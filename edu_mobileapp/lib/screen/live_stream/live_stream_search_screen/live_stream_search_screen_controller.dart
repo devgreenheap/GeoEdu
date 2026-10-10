@@ -471,6 +471,7 @@ class LiveStreamSearchScreenController extends BaseController {
       fetchFavoriteUsers(),
       fetchRecordedLives(),
       fetchMyInterestsForHome(),
+      SessionManager.instance.refreshUser(),
     ]);
     _reorderCategoriesByInterests();
     _applyFilter();

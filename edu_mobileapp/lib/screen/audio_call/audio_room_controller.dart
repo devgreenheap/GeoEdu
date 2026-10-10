@@ -11,6 +11,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/common/widget/live_summary_dialog.dart';
 import 'package:geoedu/screen/audio_call/audio_call_list_controller.dart';
+import 'package:geoedu/screen/audio_call/create_audio_room_screen.dart';
 import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/screen/star_store_diamond_and_effect/star_store_diamond _screen.dart';
 import 'package:geoedu/common/controller/base_controller.dart';
@@ -27,6 +28,7 @@ import 'package:geoedu/model/audio_call/audio_comment.dart';
 import 'package:geoedu/model/audio_call/audio_room.dart';
 import 'package:geoedu/model/audio_call/online_user.dart';
 import 'package:geoedu/model/livestream/entry_effects_model.dart';
+import 'package:geoedu/model/livestream/live_history_model.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/utilities/app_res.dart';
 import 'package:geoedu/utilities/firebase_const.dart';
@@ -556,7 +558,7 @@ class AudioRoomController extends BaseController {
       senderId: myUser!.id!,
       senderName: myUser!.fullname ?? myUser!.username ?? 'User',
       senderPhoto: myUser!.profilePhoto,
-      senderLevel: myUser!.getLevel.level,
+      senderLevel: SessionManager.instance.myUserLevel.value,
       type: AudioCommentType.text,
       text: '👋 waved at $username',
       timestamp: DateTime.now().millisecondsSinceEpoch,
@@ -571,7 +573,7 @@ class AudioRoomController extends BaseController {
       senderId: myUser!.id!,
       senderName: myUser!.fullname ?? myUser!.username ?? 'User',
       senderPhoto: myUser!.profilePhoto,
-      senderLevel: myUser!.getLevel.level,
+      senderLevel: SessionManager.instance.myUserLevel.value,
       type: AudioCommentType.text,
       text: text,
       timestamp: DateTime.now().millisecondsSinceEpoch,
@@ -1178,7 +1180,7 @@ class AudioRoomController extends BaseController {
         senderId: myUser!.id!,
         senderName: myUser!.fullname ?? myUser!.username ?? 'User',
         senderPhoto: myUser!.profilePhoto,
-        senderLevel: myUser!.getLevel.level,
+        senderLevel: SessionManager.instance.myUserLevel.value,
         type: AudioCommentType.joined,
         timestamp: DateTime.now().millisecondsSinceEpoch,
       ));
@@ -1219,7 +1221,7 @@ class AudioRoomController extends BaseController {
         senderId: myUser!.id!,
         senderName: myUser!.fullname ?? myUser!.username ?? 'User',
         senderPhoto: myUser!.profilePhoto,
-        senderLevel: myUser!.getLevel.level,
+        senderLevel: SessionManager.instance.myUserLevel.value,
         type: AudioCommentType.text,
         text: '📹 requested to Join Call',
         timestamp: DateTime.now().millisecondsSinceEpoch,
@@ -1914,17 +1916,39 @@ class AudioRoomController extends BaseController {
   /// the host add tracks to an already-running room's playlist.
   void changeMusic() async {
     if (!isHost) return;
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['mp3', 'aac', 'wav', 'm4a', 'ogg', 'wma', 'flac'],
-      allowMultiple: true,
-    );
+    FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions:
+            CreateAudioRoomController.allowedAudioExtensions.toList(),
+        allowMultiple: true,
+      );
+    } catch (pickerErr) {
+      Loggers.warning('Custom FilePicker fallback to audio type: $pickerErr');
+      result = await FilePicker.platform.pickFiles(
+        type: FileType.audio,
+        allowMultiple: true,
+      );
+    }
     if (result == null || result.files.isEmpty) return;
+
+    final validAudioFiles = result.files.where((file) {
+      if (file.path == null) return false;
+      return CreateAudioRoomController.isAudioFile(file.path!,
+          fileName: file.name);
+    }).toList();
+
+    if (validAudioFiles.isEmpty) {
+      showSnackBar(
+          'Only audio files are allowed for background music (MP3, M4A, WAV, AAC, etc.)');
+      return;
+    }
 
     showLoader();
     try {
       final List<String> added = [];
-      for (final file in result.files) {
+      for (final file in validAudioFiles) {
         if (file.path == null) continue;
         final uploadResult =
             await CommonService.instance.uploadFileGivePath(XFile(file.path!));
@@ -2172,7 +2196,7 @@ class AudioRoomController extends BaseController {
         senderId: myUser!.id!,
         senderName: myUser!.fullname ?? myUser!.username ?? 'User',
         senderPhoto: myUser!.profilePhoto,
-        senderLevel: myUser!.getLevel.level,
+        senderLevel: SessionManager.instance.myUserLevel.value,
         type: AudioCommentType.gift,
         giftName: freshGift.displayName,
         giftImage: freshGift.image,
@@ -2223,6 +2247,44 @@ class AudioRoomController extends BaseController {
     try { _musicPlayer.stop(); } catch (_) {}
     try { _musicPlayer.dispose(); } catch (_) {}
 
+    final durationSeconds = math.max(
+        1,
+        ((DateTime.now().millisecondsSinceEpoch -
+                (room.createdAt ?? DateTime.now().millisecondsSinceEpoch)) /
+            1000)
+            .ceil());
+
+    // ── 2b. Save completed audio live session locally so it immediately appears in My Lives & Insights
+    try {
+      final hostId = room.hostId ?? SessionManager.instance.getUserID();
+      final myUser = SessionManager.instance.getUser();
+      final startTime = DateTime.fromMillisecondsSinceEpoch(
+          room.createdAt ?? (DateTime.now().millisecondsSinceEpoch - durationSeconds * 1000));
+      final completedSession = LiveHistory(
+        id: apiAudioRoomId ?? DateTime.now().millisecondsSinceEpoch,
+        userId: hostId,
+        title: (room.roomName?.isNotEmpty == true) ? room.roomName! : 'Audio Live Show',
+        thumbnail: room.hostPhoto?.addBaseURL() ?? myUser?.profilePhoto,
+        viewerCount: viewers,
+        duration: durationSeconds,
+        totalGifts: gifts,
+        totalComments: commentsCount,
+        followersGained: followers,
+        starsEarned: stars,
+        categoryName: 'Audio Live Show',
+        startedAt: startTime.toIso8601String(),
+        endedAt: DateTime.now().toIso8601String(),
+        status: 0,
+        createdAt: startTime.toIso8601String(),
+        hostUsername: room.hostName ?? myUser?.username,
+        hostFullname: room.hostName ?? myUser?.fullname,
+        hostProfilePhoto: room.hostPhoto?.addBaseURL() ?? myUser?.profilePhoto,
+      );
+      LiveHistoryStorage.saveLiveSession(completedSession);
+    } catch (e) {
+      Loggers.error('LiveHistoryStorage audio save error: $e');
+    }
+
     // ── 3. Fire-and-forget all async cleanup (never block the UI) ────────────
     // Zego leave
     _leaveZegoRoom().catchError((_) {});
@@ -2231,7 +2293,12 @@ class AudioRoomController extends BaseController {
     if (apiAudioRoomId != null) {
       GiftWalletService.instance.endAudioRoom(
         audioRoomId: apiAudioRoomId!,
+        duration: durationSeconds,
         peakListenerCount: viewers,
+        followersGained: followers,
+        starsEarned: stars,
+        totalComments: commentsCount,
+        totalGifts: gifts,
       ).catchError((e) {
         Loggers.error('AudioRoom: end history error: $e');
       });

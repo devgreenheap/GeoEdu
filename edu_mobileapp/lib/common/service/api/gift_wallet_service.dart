@@ -19,6 +19,7 @@ import 'package:geoedu/model/star_store/effects_model.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/model/gift_wallet/star_conversion_model.dart';
 import 'package:geoedu/utilities/app_res.dart';
+import 'package:geoedu/common/manager/session_manager.dart';
 
 class GiftWalletService {
   GiftWalletService._();
@@ -179,6 +180,9 @@ class GiftWalletService {
           if (languageId != null && languageId > 0)
             Params.languageId: languageId,
         });
+    if (response.status == true) {
+      SessionManager.instance.refreshUser();
+    }
     return response;
   }
 
@@ -231,14 +235,24 @@ class GiftWalletService {
 
   Future<void> endAudioRoom({
     required int audioRoomId,
+    int? duration,
     int? peakListenerCount,
+    int? followersGained,
+    int? starsEarned,
+    int? totalComments,
+    int? totalGifts,
   }) async {
     await ApiService.instance.call(
         url: WebService.giftWallet.endAudioRoom,
         fromJson: StatusModel.fromJson,
         param: {
           Params.audioRoomId: audioRoomId,
-          Params.peakListenerCount: peakListenerCount,
+          if (duration != null) 'duration': duration,
+          if (peakListenerCount != null) Params.peakListenerCount: peakListenerCount,
+          if (followersGained != null) 'followers_gained': followersGained,
+          if (starsEarned != null) 'stars_earned': starsEarned,
+          if (totalComments != null) 'total_comments': totalComments,
+          if (totalGifts != null) 'total_gifts': totalGifts,
         });
   }
 
@@ -393,12 +407,24 @@ class GiftWalletService {
 
   Future<LiveStreamApiModel> endLiveStream({
     required int liveStreamId,
+    int? duration,
+    int? viewerCount,
+    int? followersGained,
+    int? starsEarned,
+    int? totalComments,
+    int? totalGifts,
   }) async {
     LiveStreamApiModel response = await ApiService.instance.call(
         url: WebService.giftWallet.endLiveStream,
         fromJson: LiveStreamApiModel.fromJson,
         param: {
           Params.liveStreamId: liveStreamId,
+          if (duration != null) 'duration': duration,
+          if (viewerCount != null) 'viewer_count': viewerCount,
+          if (followersGained != null) 'followers_gained': followersGained,
+          if (starsEarned != null) 'stars_earned': starsEarned,
+          if (totalComments != null) 'total_comments': totalComments,
+          if (totalGifts != null) 'total_gifts': totalGifts,
         });
     return response;
   }

@@ -335,18 +335,26 @@ class ChatsListView extends StatelessWidget {
   Widget build(BuildContext context) {
     final MessageScreenController controller = Get.find();
     return Obx(() {
-      return NoDataView(
-        showShow: controller.chatsUsers.isEmpty,
-        title: LKey.chatListEmptyTitle.tr,
-        description: LKey.chatListEmptyDescription.tr,
-        child: ListView.builder(
-          itemCount: controller.chatsUsers.length,
-          padding: EdgeInsets.zero,
-          itemBuilder: (context, index) {
-            ChatThread chatConversation = controller.chatsUsers[index];
-            chatConversation.bindChatUser();
-            return ChatConversationUserCard(chatConversation: chatConversation);
-          },
+      return RefreshIndicator(
+        color: ColorRes.primaryColor,
+        backgroundColor: ColorRes.cardBackground,
+        onRefresh: controller.onRefresh,
+        child: NoDataView(
+          showShow: controller.chatsUsers.isEmpty,
+          title: LKey.chatListEmptyTitle.tr,
+          description: LKey.chatListEmptyDescription.tr,
+          child: ListView.builder(
+            itemCount: controller.chatsUsers.length,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            padding: EdgeInsets.zero,
+            itemBuilder: (context, index) {
+              ChatThread chatConversation = controller.chatsUsers[index];
+              chatConversation.bindChatUser();
+              return ChatConversationUserCard(chatConversation: chatConversation);
+            },
+          ),
         ),
       );
     });
@@ -361,18 +369,26 @@ class RequestsListView extends StatelessWidget {
     final MessageScreenController controller = Get.find();
 
     return Obx(
-      () => NoDataView(
-        showShow: controller.requestsUsers.isEmpty,
-        title: LKey.chatRequestEmptyTitle.tr,
-        description: LKey.chatRequestEmptyDescription.tr,
-        child: ListView.builder(
-          itemCount: controller.requestsUsers.length,
-          padding: EdgeInsets.zero,
-          itemBuilder: (context, index) {
-            ChatThread chatConversation = controller.requestsUsers[index];
-            chatConversation.bindChatUser();
-            return ChatConversationUserCard(chatConversation: chatConversation);
-          },
+      () => RefreshIndicator(
+        color: ColorRes.primaryColor,
+        backgroundColor: ColorRes.cardBackground,
+        onRefresh: controller.onRefresh,
+        child: NoDataView(
+          showShow: controller.requestsUsers.isEmpty,
+          title: LKey.chatRequestEmptyTitle.tr,
+          description: LKey.chatRequestEmptyDescription.tr,
+          child: ListView.builder(
+            itemCount: controller.requestsUsers.length,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            padding: EdgeInsets.zero,
+            itemBuilder: (context, index) {
+              ChatThread chatConversation = controller.requestsUsers[index];
+              chatConversation.bindChatUser();
+              return ChatConversationUserCard(chatConversation: chatConversation);
+            },
+          ),
         ),
       ),
     );

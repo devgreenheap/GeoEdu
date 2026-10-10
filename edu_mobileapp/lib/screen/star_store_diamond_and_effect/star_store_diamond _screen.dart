@@ -188,25 +188,35 @@ class _StarStoreDiamondScreenState extends State<StarStoreDiamondScreen> {
                 },
               ),
               Expanded(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: currentTab == 0
-                      ? Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                          child: DiamondStore(
-                            onPurchaseCompleted: widget.onPurchaseCompleted,
+                child: RefreshIndicator(
+                  color: const Color(0xFFFFB300),
+                  backgroundColor: const Color(0xFF141724),
+                  onRefresh: () async {
+                    setState(() {});
+                    await Future.delayed(const Duration(milliseconds: 500));
+                  },
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
+                    child: currentTab == 0
+                        ? Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            child: DiamondStore(
+                              onPurchaseCompleted: widget.onPurchaseCompleted,
+                            ),
+                          )
+                        : Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            child: EffectsStoreScreen(
+                              onSwitchToDiamondStore: () {
+                                setState(() {
+                                  currentTab = 0;
+                                });
+                              },
+                            ),
                           ),
-                        )
-                      : Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                          child: EffectsStoreScreen(
-                            onSwitchToDiamondStore: () {
-                              setState(() {
-                                currentTab = 0;
-                              });
-                            },
-                          ),
-                        ),
+                  ),
                 ),
               )
             ],

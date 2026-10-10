@@ -234,9 +234,22 @@ class _DiamondPurchaseHistoryState extends State<DiamondPurchaseHistory> {
     }
 
     if (diamondPurchaseHistoryList.isEmpty) {
-      return const Center(
-          child: Text('No spend history',
-              style: TextStyle(color: Colors.white54)));
+      return RefreshIndicator(
+        onRefresh: () async {
+          await _fetchHistory();
+          await _fetchGiftProfit();
+        },
+        child: const SingleChildScrollView(
+          physics: AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+          child: SizedBox(
+            height: 400,
+            child: Center(
+              child: Text('No spend history',
+                  style: TextStyle(color: Colors.white54)),
+            ),
+          ),
+        ),
+      );
     }
 
     return RefreshIndicator(

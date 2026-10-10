@@ -1,3 +1,5 @@
+import 'package:get_storage/get_storage.dart';
+
 class LiveHistoryResponse {
   bool? status;
   String? message;
@@ -5,15 +7,24 @@ class LiveHistoryResponse {
 
   LiveHistoryResponse({this.status, this.message, this.data});
 
-  factory LiveHistoryResponse.fromJson(Map<String, dynamic> json) =>
-      LiveHistoryResponse(
-        status: json['status'],
-        message: json['message'],
-        data: json['data'] == null
-            ? []
-            : List<LiveHistory>.from(
-                json['data'].map((x) => LiveHistory.fromJson(x))),
-      );
+  factory LiveHistoryResponse.fromJson(Map<String, dynamic> json) {
+    List<LiveHistory> list = [];
+    final rawData = json['data'];
+    if (rawData is List) {
+      for (var x in rawData) {
+        if (x is Map<String, dynamic>) {
+          try {
+            list.add(LiveHistory.fromJson(x));
+          } catch (_) {}
+        }
+      }
+    }
+    return LiveHistoryResponse(
+      status: json['status'] == true || json['status'] == 1,
+      message: json['message']?.toString(),
+      data: list,
+    );
+  }
 }
 
 class LiveHistory {
@@ -63,37 +74,71 @@ class LiveHistory {
     this.hostIsVerify,
   });
 
+  static int? _toInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
   factory LiveHistory.fromJson(Map<String, dynamic> json) => LiveHistory(
-        id: json['id'],
-        userId: json['user_id'],
-        title: json['title'],
-        thumbnail: json['thumbnail'],
-        videoUrl: json['video_url'],
-        viewerCount: json['viewer_count'],
-        duration: json['duration'],
-        totalGifts: json['total_gifts'],
-        totalComments: json['total_comments'],
-        followersGained: json['followers_gained'],
-        starsEarned: json['stars_earned'],
-        categoryName: json['category_name'],
-        startedAt: json['started_at'],
-        endedAt: json['ended_at'],
-        status: json['status'],
-        createdAt: json['created_at'],
-        categoryId: json['category_id'],
-        hostUsername: json['host_username'],
-        hostFullname: json['host_fullname'],
-        hostProfilePhoto: json['host_profile_photo'],
-        hostIsVerify: json['host_is_verify'],
+        id: _toInt(json['id']),
+        userId: _toInt(json['user_id']),
+        title: json['title']?.toString(),
+        thumbnail: json['thumbnail']?.toString(),
+        videoUrl: json['video_url']?.toString(),
+        viewerCount: _toInt(json['viewer_count']),
+        duration: _toInt(json['duration']),
+        totalGifts: _toInt(json['total_gifts']),
+        totalComments: _toInt(json['total_comments']),
+        followersGained: _toInt(json['followers_gained']),
+        starsEarned: _toInt(json['stars_earned']),
+        categoryName: json['category_name']?.toString(),
+        startedAt: json['started_at']?.toString(),
+        endedAt: json['ended_at']?.toString(),
+        status: _toInt(json['status']),
+        createdAt: json['created_at']?.toString(),
+        categoryId: _toInt(json['category_id']),
+        hostUsername: json['host_username']?.toString(),
+        hostFullname: json['host_fullname']?.toString(),
+        hostProfilePhoto: json['host_profile_photo']?.toString(),
+        hostIsVerify: _toInt(json['host_is_verify']),
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'user_id': userId,
+        'title': title,
+        'thumbnail': thumbnail,
+        'video_url': videoUrl,
+        'viewer_count': viewerCount,
+        'duration': duration,
+        'total_gifts': totalGifts,
+        'total_comments': totalComments,
+        'followers_gained': followersGained,
+        'stars_earned': starsEarned,
+        'category_name': categoryName,
+        'started_at': startedAt,
+        'ended_at': endedAt,
+        'status': status,
+        'created_at': createdAt,
+        'category_id': categoryId,
+        'host_username': hostUsername,
+        'host_fullname': hostFullname,
+        'host_profile_photo': hostProfilePhoto,
+        'host_is_verify': hostIsVerify,
+      };
 
   /// A session is still live until the backend flips its status on end.
   bool get isLive => status == 1;
 
   String get timeAgo {
-    if (createdAt == null) return '';
+    final raw = startedAt ?? createdAt;
+    if (raw == null) return '';
     try {
-      final date = DateTime.parse(createdAt!);
+      final date = DateTime.tryParse(raw) ?? DateTime.tryParse(raw.replaceAll(' ', 'T'));
+      if (date == null) return '';
       final diff = DateTime.now().difference(date);
       if (diff.inDays > 365) return '${diff.inDays ~/ 365}y ago';
       if (diff.inDays > 30) return '${diff.inDays ~/ 30}mo ago';
@@ -119,9 +164,65 @@ class LiveHistory {
     final raw = startedAt ?? createdAt;
     if (raw == null) return null;
     try {
-      return DateTime.parse(raw);
+      return DateTime.tryParse(raw) ?? DateTime.tryParse(raw.replaceAll(' ', 'T'));
     } catch (_) {
       return null;
     }
+  }
+}
+
+/// Local persistent storage for completed live sessions to ensure zero data loss
+class LiveHistoryStorage {
+  static const _keyPrefix = 'completed_live_sessions_';
+
+  static List<LiveHistory> getLocalSessions(int userId) {
+    try {
+      final storage = GetStorage('geoedu');
+      List? raw;
+      if (userId > 0) {
+        raw = storage.read('$_keyPrefix$userId');
+      }
+      if (raw == null || raw.isEmpty) {
+        raw = storage.read('${_keyPrefix}current');
+      }
+      if (raw is List) {
+        return raw
+            .map((item) => LiveHistory.fromJson(Map<String, dynamic>.from(item)))
+            .toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  static void saveLiveSession(LiveHistory live) {
+    final uid = live.userId ?? 0;
+    try {
+      final storage = GetStorage('geoedu');
+      final current = getLocalSessions(uid);
+      // Deduplicate by ID or start timestamp
+      final updated = [
+        live,
+        ...current.where((e) =>
+            e.id != live.id &&
+            (e.startedAt == null || e.startedAt != live.startedAt)),
+      ];
+      final toSave = updated.take(50).map((e) => e.toJson()).toList();
+      if (uid > 0) {
+        storage.write('$_keyPrefix$uid', toSave);
+      }
+      storage.write('${_keyPrefix}current', toSave);
+    } catch (_) {}
+  }
+
+  static void removeSession(int userId, int liveId) {
+    try {
+      final storage = GetStorage('geoedu');
+      final current = getLocalSessions(userId);
+      final updated = current.where((e) => e.id != liveId).map((e) => e.toJson()).toList();
+      if (userId > 0) {
+        storage.write('$_keyPrefix$userId', updated);
+      }
+      storage.write('${_keyPrefix}current', updated);
+    } catch (_) {}
   }
 }

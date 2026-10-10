@@ -136,7 +136,7 @@ class UserList<T> extends StatelessWidget {
                   color: Colors.white,
                   onRefresh: () async => controller.searchUsers(reset: true),
                   child: ListView.separated(
-                    physics: const BouncingScrollPhysics(),
+                    physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                       separatorBuilder: (context, index) => Container(
                           margin: const EdgeInsets.symmetric(vertical: 3),
                           height: .5,

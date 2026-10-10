@@ -158,7 +158,7 @@ class UserService {
         fromJson: UserModel.fromJson,
         onError: onError);
     if (userModel.status == true &&
-        userId == SessionManager.instance.getUserID()) {
+        (userId == null || userId == SessionManager.instance.getUserID())) {
       SessionManager.instance.setUser(userModel.data);
     }
     return userModel.data;

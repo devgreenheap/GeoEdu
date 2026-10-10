@@ -68,7 +68,8 @@ class ProfileUserHeader extends StatelessWidget {
           );
         }
 
-        final bannerName = (user?.fullname ?? 'HOST').toUpperCase();
+        final bool isHost = user?.isHost == 1;
+        final bannerName = (user?.fullname ?? (isHost ? 'HOST' : 'GIFTER')).toUpperCase();
 
         return Container(
           color: Colors.black,
@@ -106,9 +107,9 @@ class ProfileUserHeader extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
-                      '★ On GioEdu ★',
-                      style: TextStyle(
+                    Text(
+                      isHost ? '★ Official Live Host ★' : '★ On GioEdu ★',
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
@@ -116,21 +117,67 @@ class ProfileUserHeader extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFCC00),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: const Text(
-                        'Live Sessions & Highlights',
-                        style: TextStyle(
-                          color: Colors.black87,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
+                    if (isHost)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFCC00),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFFFCC00).withValues(alpha: 0.35),
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.videocam_rounded, color: Colors.black87, size: 14),
+                            SizedBox(width: 5),
+                            Text(
+                              'Live Sessions & Highlights',
+                              style: TextStyle(
+                                color: Colors.black87,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFFF9500), Color(0xFFFF5E00)],
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFFF9500).withValues(alpha: 0.35),
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.card_giftcard_rounded, color: Colors.white, size: 14),
+                            SizedBox(width: 5),
+                            Text(
+                              'Gifter & Supporter',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -321,10 +368,11 @@ class ProfileUserHeader extends StatelessWidget {
                         isMe: isMe,
                         controller: controller,
                       ),
-                      const SizedBox(height: 16),
-
-                      // "Similar Hosts To Follow" Section (Real Time Data)
-                      _SimilarHostsToFollowSection(controller: controller),
+                      // "Similar Hosts To Follow" Section (Real Time Data - shown for Hosts)
+                      if (isHost) ...[
+                        _SimilarHostsToFollowSection(controller: controller),
+                        const SizedBox(height: 8),
+                      ],
 
                       UserLinkView(user: user),
                     ],

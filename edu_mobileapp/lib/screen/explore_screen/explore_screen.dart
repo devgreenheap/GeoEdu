@@ -473,6 +473,9 @@ class ExploreScreen extends StatelessWidget {
 
     return Center(
       child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

@@ -317,10 +317,11 @@ class CommonService {
     return model;
   }
 
-  Future<LiveHistoryResponse> fetchMyLives({int? lastItemId}) async {
+  Future<LiveHistoryResponse> fetchMyLives({int? userId, int? lastItemId}) async {
     LiveHistoryResponse response = await ApiService.instance.call(
       url: WebService.giftWallet.fetchMyLives,
       param: {
+        if (userId != null && userId > 0) 'user_id': userId,
         if (lastItemId != null) Params.lastItemId: lastItemId,
       },
       fromJson: LiveHistoryResponse.fromJson,

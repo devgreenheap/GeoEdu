@@ -43,6 +43,7 @@ class LeaderboardTab extends StatelessWidget {
         onRefresh: () => controller.fetchTab(tabIndex),
         child: users.isEmpty
             ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 children: const [
                   Padding(
                     padding: EdgeInsets.only(top: 140),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:geoedu/common/extensions/string_extension.dart';
@@ -142,6 +143,42 @@ class JoinedCallUserSection extends StatefulWidget {
 
 class _JoinedCallUserSectionState extends State<JoinedCallUserSection> {
   bool _bannerDismissed = false;
+  Timer? _autoDismissTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _bannerDismissed =
+        widget.controller.hasDismissedJoinCallBanner.value;
+    if (!_bannerDismissed) {
+      _startAutoDismissTimer();
+    }
+  }
+
+  void _startAutoDismissTimer() {
+    _autoDismissTimer?.cancel();
+    _autoDismissTimer = Timer(const Duration(seconds: 5), () {
+      _dismissBanner();
+    });
+  }
+
+  void _dismissBanner() {
+    _autoDismissTimer?.cancel();
+    _autoDismissTimer = null;
+    widget.controller.hasDismissedJoinCallBanner.value = true;
+    if (mounted && !_bannerDismissed) {
+      setState(() {
+        _bannerDismissed = true;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _autoDismissTimer?.cancel();
+    _autoDismissTimer = null;
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -153,10 +190,33 @@ class _JoinedCallUserSectionState extends State<JoinedCallUserSection> {
         _buildUserVideoCard(),
 
         // 2. Purple Speech-Bubble Information Banner (Matching Reference Image 3)
-        if (!_bannerDismissed) ...[
-          const SizedBox(height: 10),
-          _buildPurpleInfoBanner(),
-        ],
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 250),
+          switchInCurve: Curves.easeIn,
+          switchOutCurve: Curves.easeOut,
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: SizeTransition(
+              sizeFactor: animation,
+              child: child,
+            ),
+          ),
+          child: (!_bannerDismissed &&
+                  !widget.controller.hasDismissedJoinCallBanner.value)
+              ? TapRegion(
+                  key: const ValueKey('joined_call_user_section_banner'),
+                  groupId: 'joined_call_user_section',
+                  behavior: HitTestBehavior.translucent,
+                  onTapOutside: (PointerDownEvent event) {
+                    _dismissBanner();
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: _buildPurpleInfoBanner(),
+                  ),
+                )
+              : const SizedBox.shrink(key: ValueKey('empty_banner')),
+        ),
       ],
     );
   }
@@ -336,10 +396,9 @@ class _JoinedCallUserSectionState extends State<JoinedCallUserSection> {
                     ),
                   ),
                   GestureDetector(
+                    behavior: HitTestBehavior.opaque,
                     onTap: () {
-                      setState(() {
-                        _bannerDismissed = true;
-                      });
+                      _dismissBanner();
                     },
                     child: Padding(
                       padding: const EdgeInsets.only(left: 4),
@@ -354,7 +413,7 @@ class _JoinedCallUserSectionState extends State<JoinedCallUserSection> {
               ),
               const SizedBox(height: 8),
 
-              // Row 2: User silhouette icon + "Show your face to stay visible on"
+              // Row 2: User silhouette icon + "Show your face to stay visible on the live call"
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -374,7 +433,7 @@ class _JoinedCallUserSectionState extends State<JoinedCallUserSection> {
                   const SizedBox(width: 8),
                   const Expanded(
                     child: Text(
-                      'Show your face to stay visible on',
+                      'Show your face to stay visible on the live call',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 12.5,

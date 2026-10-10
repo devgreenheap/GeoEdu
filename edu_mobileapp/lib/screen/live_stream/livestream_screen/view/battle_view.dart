@@ -1,19 +1,19 @@
 import 'dart:math';
 
-import 'package:figma_squircle_updated/figma_squircle.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:geoedu/common/extensions/common_extension.dart';
-import 'package:geoedu/common/extensions/duration_extension.dart';
 import 'package:geoedu/common/extensions/string_extension.dart';
 import 'package:geoedu/common/manager/logger.dart';
 import 'package:geoedu/common/widget/custom_image.dart';
 import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/model/livestream/app_user.dart';
 import 'package:geoedu/model/livestream/livestream.dart';
+import 'package:geoedu/model/livestream/livestream_comment.dart';
 import 'package:geoedu/model/livestream/livestream_user_state.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/view/livestream_view.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/last_round_indicator_widget.dart';
 import 'package:geoedu/utilities/asset_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/utilities/text_style_custom.dart';
@@ -24,11 +24,12 @@ class BattleView extends StatefulWidget {
   final LivestreamScreenController controller;
   final EdgeInsets? margin;
 
-  const BattleView(
-      {super.key,
-      this.isAudience = false,
-      required this.controller,
-      this.margin});
+  const BattleView({
+    super.key,
+    this.isAudience = false,
+    required this.controller,
+    this.margin,
+  });
 
   @override
   State<BattleView> createState() => _BattleViewState();
@@ -36,30 +37,40 @@ class BattleView extends StatefulWidget {
 
 class _BattleViewState extends State<BattleView> {
   @override
+  void initState() {
+    super.initState();
+    widget.controller.battleRunning();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      child: SingleChildScrollView(
-        child: Column(
-          children: [
-            LiveBattleOverlayWidget(
-                controller: widget.controller, margin: widget.margin),
-            Obx(() => BattleTimer(
-                controller: widget.controller,
-                livestream: widget.controller.liveData.value)),
-          ],
-        ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          LiveBattleOverlayWidget(
+            isAudience: widget.isAudience,
+            controller: widget.controller,
+            margin: widget.margin,
+          ),
+        ],
       ),
     );
   }
 }
 
 class LiveBattleOverlayWidget extends StatefulWidget {
+  final bool isAudience;
   final LivestreamScreenController controller;
   final EdgeInsets? margin;
 
-  const LiveBattleOverlayWidget(
-      {super.key, required this.controller, this.margin});
+  const LiveBattleOverlayWidget({
+    super.key,
+    this.isAudience = false,
+    required this.controller,
+    this.margin,
+  });
 
   @override
   State<LiveBattleOverlayWidget> createState() =>
@@ -67,31 +78,28 @@ class LiveBattleOverlayWidget extends StatefulWidget {
 }
 
 class _LiveBattleOverlayWidgetState extends State<LiveBattleOverlayWidget> {
-  List<StreamView> streamViews = [];
-
-  @override
-  void initState() {
-    super.initState();
-    streamViews = widget.controller.streamViews;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      Livestream stream = widget.controller.liveData.value;
-      List<LivestreamUserState> userStates = widget.controller.liveUsersStates;
-      List<AppUser> liveUsers = widget.controller.firestoreController.users;
+      final Livestream stream = widget.controller.liveData.value;
+      final List<LivestreamUserState> userStates =
+          widget.controller.liveUsersStates;
+      final List<AppUser> liveUsers =
+          widget.controller.firestoreController.users;
+      final List<StreamView> streamViews = widget.controller.streamViews;
 
-      // Host
+      // 1. Host
       final hostStreamId = '${stream.hostId}';
-      LivestreamUserState? hostState = userStates.firstWhereOrNull(
-        (e) => '${e.userId}' == hostStreamId,
-      ) ?? (streamViews.isNotEmpty
-          ? userStates.firstWhereOrNull((e) => '${e.userId}' == streamViews[0].streamId)
-          : null);
-      AppUser? hostUser = hostState?.getUser(liveUsers);
+      final LivestreamUserState? hostState = userStates.firstWhereOrNull(
+            (e) => '${e.userId}' == hostStreamId,
+          ) ??
+          (streamViews.isNotEmpty
+              ? userStates.firstWhereOrNull(
+                  (e) => '${e.userId}' == streamViews[0].streamId)
+              : null);
+      final AppUser? hostUser = hostState?.getUser(liveUsers) ?? stream.hostUser;
 
-      // Opponent (accepted PK call participant)
+      // 2. Opponent (accepted PK call participant)
       final opponentUserId = stream.pkOpponentId;
       LivestreamUserState? coHostState;
       if (opponentUserId != null) {
@@ -103,74 +111,163 @@ class _LiveBattleOverlayWidgetState extends State<LiveBattleOverlayWidget> {
           (e) => '${e.userId}' == streamViews[1].streamId,
         );
       }
-      AppUser? coHostUser = coHostState?.getUser(liveUsers);
+      final AppUser? coHostUser =
+          coHostState?.getUser(liveUsers) ?? widget.controller.pkOpponentUser.value;
 
-      // User list: exactly Host + Accepted Opponent (Max 2 members)
-      List<AppUser> users = [
-        if (hostUser != null) hostUser,
-        if (coHostUser != null) coHostUser,
-      ];
+      // Diamond scores for host & opponent
+      final int hostDiamonds = hostState?.currentBattleCoin ?? 0;
+      final int opponentDiamonds = coHostState?.currentBattleCoin ?? 0;
 
-      // Battle coins
-      int red = hostState?.currentBattleCoin ?? 0;
-      int blue = coHostState?.currentBattleCoin ?? 0;
-
-      // Exactly 2 battle stream views: Host + Accepted Opponent
-      final hostStreamView = streamViews.firstWhereOrNull((v) => v.streamId == hostStreamId) ??
+      // Stream Views for both participants
+      final hostStreamView = streamViews
+              .firstWhereOrNull((v) => v.streamId == hostStreamId) ??
           (streamViews.isNotEmpty ? streamViews[0] : null);
       final opponentStreamView = (opponentUserId != null
-          ? streamViews.firstWhereOrNull((v) => v.streamId == '$opponentUserId')
-          : null) ??
-          (streamViews.length > 1 ? streamViews.firstWhereOrNull((v) => v.streamId != hostStreamId) : null);
+              ? streamViews
+                  .firstWhereOrNull((v) => v.streamId == '$opponentUserId')
+              : null) ??
+          (streamViews.length > 1
+              ? streamViews
+                  .firstWhereOrNull((v) => v.streamId != hostStreamId)
+              : null);
 
-      final battleStreamViews = [
-        if (hostStreamView != null) hostStreamView,
-        if (opponentStreamView != null) opponentStreamView,
+      // Check if audience has switched to viewing the opponent
+      final bool isAudienceSwapped = widget.isAudience &&
+          widget.controller.selectedBattleHostId.value != null &&
+          widget.controller.selectedBattleHostId.value == opponentUserId;
+
+      // Primary (Left) vs Secondary (Right)
+      final leftUser = isAudienceSwapped ? coHostUser : hostUser;
+      final rightUser = isAudienceSwapped ? hostUser : coHostUser;
+      final leftStreamView =
+          isAudienceSwapped ? opponentStreamView : hostStreamView;
+      final rightStreamView =
+          isAudienceSwapped ? hostStreamView : opponentStreamView;
+
+      final int leftScore =
+          isAudienceSwapped ? opponentDiamonds : hostDiamonds;
+      final int rightScore =
+          isAudienceSwapped ? hostDiamonds : opponentDiamonds;
+
+      final List<StreamView> displayStreamViews = [
+        if (leftStreamView != null) leftStreamView,
+        if (rightStreamView != null) rightStreamView,
       ];
 
       return SafeArea(
         bottom: false,
         child: Container(
-          height: Get.height / 2.4,
           width: Get.width,
           margin: widget.margin,
-          child: Stack(
-            alignment: Alignment.topCenter,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                padding: const EdgeInsets.only(top: 15.0, bottom: 30),
-                child: Obx(() {
-                  int? focused = widget.controller.expandedBattleUserIndex.value;
-                  return Row(
-                    children: List.generate(
-                      battleStreamViews.length,
-                      (index) {
-                        bool isFocused = focused == index;
-                        bool otherFocused = focused != null && !isFocused;
-                        return Expanded(
-                          flex: isFocused
-                              ? 3
-                              : otherFocused
-                                  ? 1
-                                  : 1,
-                          child: GestureDetector(
-                            onTap: () =>
-                                widget.controller.toggleBattleFocus(index),
-                            child: LiveStreamUserView(
-                              isNameAndSpeakerVisible: false,
-                              controller: widget.controller,
-                              streamingView: battleStreamViews[index],
-                            ),
-                          ),
-                        );
-                      },
+              // Top split video section
+              SizedBox(
+                height: Get.height / 2.7,
+                width: Get.width,
+                child: Stack(
+                  alignment: Alignment.topCenter,
+                  children: [
+                    // Side-by-side video feeds
+                    Positioned.fill(
+                      child: Row(
+                        children: List.generate(
+                          displayStreamViews.length,
+                          (index) {
+                            final streamView = displayStreamViews[index];
+                            final targetUserId = index == 0
+                                ? (leftUser?.userId)
+                                : (rightUser?.userId);
+
+                            return Expanded(
+                              child: GestureDetector(
+                                onTap: () {
+                                  if (widget.isAudience &&
+                                      targetUserId != null) {
+                                    widget.controller
+                                        .switchBattleHost(targetUserId);
+                                  } else {
+                                    widget.controller
+                                        .toggleBattleFocus(index);
+                                  }
+                                },
+                                child: Stack(
+                                  children: [
+                                    Positioned.fill(
+                                      child: LiveStreamUserView(
+                                        isNameAndSpeakerVisible: false,
+                                        controller: widget.controller,
+                                        streamingView: streamView,
+                                      ),
+                                    ),
+                                    // User Name pill at bottom of each video
+                                    Positioned(
+                                      bottom: 6,
+                                      left: index == 0 ? 8 : null,
+                                      right: index == 1 ? 8 : null,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withOpacity(0.55),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: Text(
+                                          (index == 0
+                                                  ? leftUser?.fullname ??
+                                                      leftUser?.username
+                                                  : rightUser?.fullname ??
+                                                      rightUser?.username) ??
+                                              '',
+                                          style: TextStyleCustom.outFitSemiBold600(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
                     ),
-                  );
-                }),
+
+                    // "Last Round" floating indicator pinned near top center
+                    if (stream.lastRoundResult != null)
+                      Positioned(
+                        top: 10,
+                        child: LastRoundIndicatorWidget(
+                          lastRoundResult: stream.lastRoundResult,
+                        ),
+                      ),
+
+                    // 10s countdown animation
+                    BuildLastTenSecondView(controller: widget.controller),
+                  ],
+                ),
               ),
-              BuildProgressBar(red: red, blue: blue),
-              BuildStates(red: red, blue: blue, users: users, stream: stream),
-              BuildLastTenSecondView(controller: widget.controller),
+
+              // Horizontal PK Progress Bar with crystal texture & centered 3D diamond
+              BuildPkProgressBar(
+                red: leftScore,
+                blue: rightScore,
+              ),
+
+              // Compact Score Cards & Centered VS / Timer Capsule (matching screenshot 4)
+              BuildPkScoreAndTimerSection(
+                controller: widget.controller,
+                leftScore: leftScore,
+                rightScore: rightScore,
+                leftUser: leftUser,
+                rightUser: rightUser,
+              ),
             ],
           ),
         ),
@@ -179,240 +276,353 @@ class _LiveBattleOverlayWidgetState extends State<LiveBattleOverlayWidget> {
   }
 }
 
-class BuildProgressBar extends StatelessWidget {
+/// Crystal gradient progress bar with sword circular badges and centered 3D diamond
+class BuildPkProgressBar extends StatelessWidget {
   final int red;
   final int blue;
 
-  const BuildProgressBar({super.key, required this.red, required this.blue});
+  const BuildPkProgressBar({super.key, required this.red, required this.blue});
 
   @override
   Widget build(BuildContext context) {
     final width = Get.width;
-    final total = red + blue == 0 ? 1 : red + blue; // prevent division by zero
-
+    final total = red + blue == 0 ? 1 : red + blue;
     final redWidth = (width * red) / total;
     final blueWidth = (width * blue) / total;
-    final alignmentX = ((redWidth / width) * 2) - 1;
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            Row(
-              children: [
-                AnimatedContainer(
-                  height: 10,
-                  width: redWidth,
-                  color: ColorRes.likeRed,
-                  duration: const Duration(milliseconds: 200),
+    return SizedBox(
+      height: 24,
+      width: width,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          // Gradient split bar
+          Row(
+            children: [
+              AnimatedContainer(
+                height: 12,
+                width: redWidth,
+                duration: const Duration(milliseconds: 250),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF00E5FF), Color(0xFF00B0FF)],
+                  ),
                 ),
-                AnimatedContainer(
-                  height: 10,
-                  width: blueWidth,
-                  color: ColorRes.battleProgressColor,
-                  duration: const Duration(milliseconds: 200),
+              ),
+              AnimatedContainer(
+                height: 12,
+                width: blueWidth,
+                duration: const Duration(milliseconds: 250),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFFE040FB), Color(0xFFFF4081)],
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          // Left Cyan Sword Badge
+          Positioned(
+            left: 2,
+            child: Container(
+              width: 26,
+              height: 26,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [Color(0xFF00E5FF), Color(0xFF0091EA)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0xFF00E5FF),
+                    blurRadius: 6,
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Text('⚔️', style: TextStyle(fontSize: 13)),
+              ),
+            ),
+          ),
+
+          // Right Pink Sword Badge
+          Positioned(
+            right: 2,
+            child: Container(
+              width: 26,
+              height: 26,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [Color(0xFFFF4081), Color(0xFFE040FB)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0xFFFF4081),
+                    blurRadius: 6,
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Text('🗡️', style: TextStyle(fontSize: 13)),
+              ),
+            ),
+          ),
+
+          // Center 3D Purple Diamond
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF1F1D36),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFE040FB).withOpacity(0.55),
+                  blurRadius: 10,
                 ),
               ],
             ),
-            AnimatedAlign(
-              alignment: Alignment(alignmentX, 0),
-              duration: const Duration(milliseconds: 200),
-              child: Image.asset(AssetRes.flashIndicator, height: 40, width: 40),
+            child: const Center(
+              child: Icon(
+                Icons.diamond_rounded,
+                color: Color(0xFFD500F9),
+                size: 22,
+              ),
             ),
-            // AnimatedAlign(
-            //   alignment: Alignment(alignmentX, 0),
-            //   duration: const Duration(milliseconds: 200),
-            //   child: Container(
-            //     height: 30,
-            //     width: 30,
-            //     margin: const EdgeInsets.symmetric(horizontal: 2),
-            //     decoration: BoxDecoration(
-            //       color: whitePure(context),
-            //       shape: BoxShape.circle,
-            //     ),
-            //     alignment: Alignment.center,
-            //     child: Image.asset(AssetRes.icCrown, height: 14, width: 19),
-            //   ),
-            // ),
-          ],
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 }
 
-class BuildStates extends StatelessWidget {
-  final int red;
-  final int blue;
-  final List<AppUser> users;
-  final Livestream stream;
+/// Score cards with Rank 3-2-1 and 1-2-3 frames, centered VS, and timer capsule
+class BuildPkScoreAndTimerSection extends StatelessWidget {
+  final LivestreamScreenController controller;
+  final int leftScore;
+  final int rightScore;
+  final AppUser? leftUser;
+  final AppUser? rightUser;
 
-  const BuildStates(
-      {super.key,
-      required this.red,
-      required this.blue,
-      required this.users,
-      required this.stream});
+  const BuildPkScoreAndTimerSection({
+    super.key,
+    required this.controller,
+    required this.leftScore,
+    required this.rightScore,
+    this.leftUser,
+    this.rightUser,
+  });
 
   @override
   Widget build(BuildContext context) {
-    bool isRedWin = red >= blue;
-
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: Stack(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Column(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              // coin view
+          // Left Dark Score Card (Rank 3, 2, 1)
+          Expanded(
+            child: _buildSideCard(
+              context,
+              score: leftScore,
+              isLeft: true,
+              user: leftUser,
+            ),
+          ),
 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _buildCoinStats(context, topRight: true, coin: red),
-                  _buildCoinStats(context, topRight: false, coin: blue),
-                ],
-              ),
-              // winner tag
-              // if (stream.battleType == BattleType.running) Row( mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [ _buildWinnerTag(context, rightSide: false, winnerTag: isRedWin), _buildWinnerTag(context, rightSide: true, winnerTag: !isRedWin), ], ),
-              // profile name both user
-              if (users.length == 2)
-                Container(
-                  height: 60,
-                  alignment: Alignment.topCenter,
-                  child: Row(
+          // Center Section: VS Badge + Red/Dark Timer Capsule
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // VS Badge
+                Image.asset(
+                  AssetRes.icBattleVs,
+                  width: 36,
+                  height: 36,
+                ),
+                const SizedBox(height: 3),
+
+                // Countdown Timer Capsule
+                Obx(() {
+                  final remaining = controller.remainingBattleSeconds.value;
+                  final duration = Duration(seconds: remaining);
+                  final minutes = duration.inMinutes;
+                  final seconds = duration.inSeconds % 60;
+                  final timeStr =
+                      "${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}";
+                  final isLowTime = remaining <= 10 && remaining > 0;
+
+                  return Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: isLowTime
+                          ? const Color(0xFFFF1744)
+                          : const Color(0xFF221F3D),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isLowTime
+                            ? const Color(0xFFFF5252)
+                            : Colors.white.withOpacity(0.12),
+                        width: 0.8,
+                      ),
+                      boxShadow: isLowTime
+                          ? [
+                              BoxShadow(
+                                color: const Color(0xFFFF1744).withOpacity(0.5),
+                                blurRadius: 8,
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Text(
+                      timeStr,
+                      style: TextStyleCustom.outFitBold700(
+                        color: Colors.white,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+
+          // Right Dark Score Card (Rank 1, 2, 3)
+          Expanded(
+            child: _buildSideCard(
+              context,
+              score: rightScore,
+              isLeft: false,
+              user: rightUser,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSideCard(
+    BuildContext context, {
+    required int score,
+    required bool isLeft,
+    required AppUser? user,
+  }) {
+    // Get top contributors for this user
+    final topContributors = _getTopContributorsForUser(user?.userId);
+
+    // Left order: Rank 3, Rank 2, Rank 1
+    // Right order: Rank 1, Rank 2, Rank 3
+    final rankAssets = isLeft
+        ? [AssetRes.rank3, AssetRes.rank2, AssetRes.rank1]
+        : [AssetRes.rank1, AssetRes.rank2, AssetRes.rank3];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1B33),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.08),
+          width: 0.8,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Row of 3 Ranking frames
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(3, (index) {
+              final rankAsset = rankAssets[index];
+              final contributor = topContributors.length > index
+                  ? topContributors[index]
+                  : null;
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: SizedBox(
+                  width: 26,
+                  height: 26,
+                  child: Stack(
+                    alignment: Alignment.center,
                     children: [
-                      _buildStreamerInfo(context, isLeft: true, user: users[0]),
-                      _buildStreamerInfo(context, isLeft: false, user: users[1])
+                      // Supporter avatar if present
+                      if (contributor != null)
+                        ClipOval(
+                          child: CustomImage(
+                            size: const Size(18, 18),
+                            radius: 9,
+                            image: contributor.profile?.addBaseURL(),
+                            fullName: contributor.fullname,
+                          ),
+                        ),
+                      // Rank ring frame badge
+                      Image.asset(
+                        rankAsset,
+                        width: 26,
+                        height: 26,
+                        fit: BoxFit.contain,
+                      ),
                     ],
                   ),
-                )
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 5),
+
+          // Diamond icon + Score count
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.diamond_rounded,
+                color: Color(0xFFE040FB),
+                size: 15,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '$score',
+                style: TextStyleCustom.outFitBold700(
+                  color: Colors.white,
+                  fontSize: 14,
+                ),
+              ),
             ],
           ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Image.asset(AssetRes.icBattleVs, height: 80, width: 80),
-          ),
-
         ],
       ),
     );
   }
 
-  Widget _buildCoinStats(BuildContext context,
-      {required bool topRight, required int coin}) {
-    return Container(
-      height: 26,
-      constraints: const BoxConstraints(minWidth: 90, maxWidth: 150),
-      decoration: ShapeDecoration(
-        color: whitePure(context),
-        shape: SmoothRectangleBorder(
-          borderRadius: topRight
-              ? const SmoothBorderRadius.only(
-                  topRight: SmoothRadius(cornerRadius: 40, cornerSmoothing: 0))
-              : const SmoothBorderRadius.only(
-                  topLeft: SmoothRadius(cornerRadius: 40, cornerSmoothing: 0)),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: Row(
-        textDirection: TextDirection.ltr,
-        mainAxisSize: MainAxisSize.min,
-        spacing: 5,
-        mainAxisAlignment:
-            topRight ? MainAxisAlignment.start : MainAxisAlignment.end,
-        children: [
-          if (topRight) Image.asset(AssetRes.icCoin, height: 18, width: 18),
-          Text(
-            coin.numberFormat,
-            style: TextStyleCustom.outFitMedium500(
-              fontSize: 13,
-              color: textDarkGrey(context),
-            ),
-          ),
-          if (!topRight) Image.asset(AssetRes.icCoin, height: 18, width: 18),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWinnerTag(BuildContext context,
-      {required bool rightSide, required bool winnerTag}) {
-    
-    return Expanded(
-      child: Container(
-        height: 31,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        alignment: rightSide
-            ? AlignmentDirectional.centerEnd
-            : AlignmentDirectional.centerStart,
-        decoration: BoxDecoration(
-            gradient: LinearGradient(
-                colors: [
-              winnerTag ? ColorRes.green : ColorRes.likeRed,
-              Colors.transparent,
-            ],
-                begin: !rightSide
-                    ? AlignmentDirectional.centerEnd
-                    : AlignmentDirectional.centerStart,
-                end: !rightSide
-                    ? AlignmentDirectional.centerStart
-                    : AlignmentDirectional.centerEnd)),
-        child: Text(
-          (winnerTag ? LKey.victory.tr : LKey.defeat.tr).toUpperCase(),
-          style: TextStyleCustom.unboundedBlack900(
-              color: winnerTag ? ColorRes.green1 : ColorRes.likeRed,
-              fontSize: 17),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStreamerInfo(BuildContext context,
-      {required bool isLeft, required AppUser user}) {
-    return Expanded(
-      child: Container(
-        height: 43,
-        padding: const EdgeInsets.symmetric(
-          horizontal: 10,
-        ),
-        color: isLeft ? ColorRes.likeRed : ColorRes.battleProgressColor,
-        child: Row(
-          mainAxisAlignment:
-              isLeft ? MainAxisAlignment.start : MainAxisAlignment.end,
-          children: [
-            if (isLeft)
-              CustomImage(
-                size: const Size(30, 30),
-                strokeColor: whitePure(context),
-                strokeWidth: 1.5,
-                image: user.profile?.addBaseURL(),
-                fullName: user.fullname,
-              ),
-            SizedBox(width: !isLeft ? 30 : 5),
-            Flexible(
-              child: Text(user.username ?? '',
-                  style: TextStyleCustom.unboundedMedium500(
-                      color: whitePure(context), fontSize: 11),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
-            ),
-            SizedBox(width: isLeft ? 30 : 5),
-            if (!isLeft)
-              CustomImage(
-                size: const Size(30, 30),
-                strokeColor: whitePure(context),
-                strokeWidth: 1.5,
-                image: user.profile?.addBaseURL(),
-                fullName: user.fullname,
-              ),
-          ],
-        ),
-      ),
-    );
+  List<AppUser> _getTopContributorsForUser(int? userId) {
+    if (userId == null) return [];
+    final Map<int, int> supporterCoins = {};
+    for (final c in controller.comments) {
+      if (c.commentType == LivestreamCommentType.gift &&
+          c.receiverId == userId &&
+          c.senderId != null) {
+        supporterCoins[c.senderId!] = (supporterCoins[c.senderId!] ?? 0) +
+            (c.gift?.coinPrice?.toInt() ?? 1);
+      }
+    }
+    final sorted = supporterCoins.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final List<AppUser> users = [];
+    for (final entry in sorted.take(3)) {
+      final u = controller.firestoreController.users
+          .firstWhereOrNull((user) => user.userId == entry.key);
+      if (u != null) users.add(u);
+    }
+    return users;
   }
 }
 
@@ -431,15 +641,14 @@ class _BuildLastTenSecondViewState extends State<BuildLastTenSecondView>
 
   @override
   void initState() {
-    _animationController =
-        AnimationController(vsync: this, duration: const Duration(seconds: 1))
-          ..repeat();
+    _animationController = AnimationController(
+        vsync: this, duration: const Duration(seconds: 1))
+      ..repeat();
     super.initState();
   }
 
   @override
   void dispose() {
-    Loggers.error('Dispose');
     _animationController.dispose();
     super.dispose();
   }
@@ -447,9 +656,9 @@ class _BuildLastTenSecondViewState extends State<BuildLastTenSecondView>
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      Livestream stream = widget.controller.liveData.value;
-      bool isBattleEnd = stream.battleType == BattleType.end;
-      int leftSecond = widget.controller.remainingBattleSeconds.value;
+      final Livestream stream = widget.controller.liveData.value;
+      final bool isBattleEnd = stream.battleType == BattleType.end;
+      final int leftSecond = widget.controller.remainingBattleSeconds.value;
 
       if (leftSecond == 0 || isBattleEnd) {
         return const SizedBox();
@@ -460,28 +669,33 @@ class _BuildLastTenSecondViewState extends State<BuildLastTenSecondView>
           child: AnimatedBuilder(
             animation: _animationController,
             builder: (context, child) => Container(
-              height: 150,
-              width: 150,
+              height: 140,
+              width: 140,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: SweepGradient(
-                    colors: <Color>[
-                      whitePure(context).withValues(alpha: 0),
-                      whitePure(context).withValues(alpha: .5)
-                    ],
-                    transform:
-                        GradientRotation(2 * pi * _animationController.value)),
+                  colors: <Color>[
+                    whitePure(context).withValues(alpha: 0),
+                    whitePure(context).withValues(alpha: .5)
+                  ],
+                  transform:
+                      GradientRotation(2 * pi * _animationController.value),
+                ),
               ),
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
                 transitionBuilder: (child, animation) {
                   return ScaleTransition(scale: animation, child: child);
                 },
-                child: Text('$leftSecond',
-                    style: TextStyleCustom.unboundedBlack900(
-                        color: whitePure(context), fontSize: 100),
-                    key: ValueKey<int>(leftSecond)),
+                child: Text(
+                  '$leftSecond',
+                  style: TextStyleCustom.unboundedBlack900(
+                    color: whitePure(context),
+                    fontSize: 85,
+                  ),
+                  key: ValueKey<int>(leftSecond),
+                ),
               ),
             ),
           ),
@@ -489,152 +703,5 @@ class _BuildLastTenSecondViewState extends State<BuildLastTenSecondView>
       }
       return const SizedBox();
     });
-  }
-}
-
-class BattleTimer extends StatefulWidget {
-  final LivestreamScreenController controller;
-  final Livestream livestream;
-
-  const BattleTimer(
-      {super.key, required this.controller, required this.livestream});
-
-  @override
-  State<BattleTimer> createState() => _BattleTimerState();
-}
-
-class _BattleTimerState extends State<BattleTimer> {
-  @override
-  void initState() {
-    super.initState();
-    widget.controller.battleRunning();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      int leftSecond = widget.controller.remainingBattleSeconds.value;
-      Duration duration = Duration(seconds: leftSecond);
-      Livestream stream = widget.controller.liveData.value;
-      bool isBattleEnd = stream.battleType == BattleType.end;
-
-      // 🔥 get coins to decide winner
-      final states = widget.controller.liveUsersStates;
-      int red = states.isNotEmpty ? states.first.currentBattleCoin : 0;
-      int blue = states.length > 1 ? states[1].currentBattleCoin : 0;
-      bool isRedWin = red >= blue;
-
-      if (!isBattleEnd) {
-        return Container(
-          width: 130,
-          height: 30,
-          margin: const EdgeInsets.symmetric(horizontal: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 15),
-          decoration: BoxDecoration(
-              color: whitePure(context).withOpacity(.1),
-              borderRadius: BorderRadius.circular(30),
-              border: Border.all(width: .8,color: ColorRes.whitePure)
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            duration.printDuration,
-            maxLines: 2,
-            style: TextStyleCustom.unboundedMedium500(
-              color: whitePure(context),
-              fontSize: 18,
-            ),
-          ),
-        );
-      }
-
-      return Container(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.55),
-              offset: const Offset(0, 3), // softer downward shadow
-              blurRadius: 12,
-              spreadRadius: 0, // 🔥 remove fat glow
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            /// 🔴 LEFT WINNER TAG
-            Expanded(
-              child: _WinnerTagSmall(
-                winnerTag: isRedWin,
-              ),
-            ),
-
-            /// ⏱ TIMER CENTER
-            Container(
-              height: 30,
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 15),
-              decoration: BoxDecoration(
-                color: whitePure(context).withOpacity(.1),
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(width: .8,color: ColorRes.whitePure),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                duration.printDuration,
-                style: TextStyleCustom.unboundedMedium500(
-                  color: whitePure(context),
-                  fontSize: 18,
-                ),
-              ),
-            ),
-
-            /// 🔵 RIGHT WINNER TAG
-            Expanded(
-              child: _WinnerTagSmall(
-                winnerTag: !isRedWin,
-                isRight: true,
-              ),
-            ),
-          ],
-        ),
-      );
-    });
-
-  }
-}
-class _WinnerTagSmall extends StatelessWidget {
-  final bool winnerTag;
-  final bool isRight;
-
-  const _WinnerTagSmall({
-    required this.winnerTag,
-    this.isRight = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 100,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Positioned.fill(
-            child: Image.asset(
-              winnerTag
-                  ? AssetRes.pkVictoryBanner
-                  : AssetRes.pkDefeatBanner,
-              fit: BoxFit.contain,
-            ),
-          ),
-          Text(
-            (winnerTag ? LKey.victory.tr : LKey.defeat.tr).toUpperCase(),
-            style: TextStyleCustom.unboundedBlack900(
-              color: Colors.white,
-              fontSize: 14,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

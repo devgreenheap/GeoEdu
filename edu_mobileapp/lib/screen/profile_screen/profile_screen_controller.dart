@@ -24,14 +24,15 @@ import 'package:geoedu/screen/chat_screen/chat_screen.dart';
 import 'package:geoedu/screen/create_feed_screen/create_feed_screen.dart';
 import 'package:geoedu/screen/edit_profile_screen/edit_profile_screen.dart';
 import 'package:geoedu/screen/post_screen/post_screen_controller.dart';
-import 'package:geoedu/screen/profile_screen/widget/post_options_sheet.dart';
 import 'package:geoedu/screen/reels_screen/reel/reel_page_controller.dart';
 import 'package:geoedu/screen/report_sheet/report_sheet.dart';
 import 'package:geoedu/screen/story_view_screen/story_view_screen.dart';
 import 'package:geoedu/utilities/app_res.dart';
 
 import 'package:geoedu/common/service/api/common_service.dart';
+import 'package:geoedu/common/service/api/gift_wallet_service.dart';
 import 'package:geoedu/model/livestream/live_history_model.dart';
+import 'package:geoedu/model/star_score/star_score_model.dart';
 import '../search_screen/search_screen_controller.dart';
 
 import 'dart:async';
@@ -49,6 +50,7 @@ class ProfileScreenController extends BlockUserController
   RxList<Post> reels = <Post>[].obs;
   RxList<Post> posts = <Post>[].obs;
   RxList<LiveHistory> myLives = <LiveHistory>[].obs;
+  RxList<StarTransactionItem> gifterTransactions = <StarTransactionItem>[].obs;
   RxList<User> similarHosts = <User>[].obs;
   RxSet<int> liveHostUserIds = <int>{}.obs;
   RxMap<int, Livestream> liveStreamsByUserId = <int, Livestream>{}.obs;
@@ -58,6 +60,7 @@ class ProfileScreenController extends BlockUserController
   RxBool isReelLoading = false.obs;
   RxBool isPostLoading = false.obs;
   RxBool isMyLivesLoading = false.obs;
+  RxBool isGifterTransactionsLoading = false.obs;
   RxBool isSimilarHostsLoading = false.obs;
   final PageController pageController = PageController();
   RxBool isUserNotFound = false.obs;
@@ -185,17 +188,31 @@ class ProfileScreenController extends BlockUserController
   }
 
   iniData() {
-    Future.wait({
+    final myId = SessionManager.instance.getUserID();
+    final profileId = userData.value?.id?.toInt() ?? 0;
+    final isMe = profileId == 0 || profileId == myId;
+    final isHost = userData.value?.isHost == 1 ||
+        (isMe && SessionManager.instance.getUser()?.isHost == 1);
+    Future.wait([
       fetchUserDetail(),
       fetchReel(),
       fetchPost(),
-      fetchMyLives(),
+      if (isHost || isMe) fetchMyLives(),
       fetchSimilarHosts(),
-    });
+      fetchGifterTransactions(),
+    ]);
   }
 
   void onTabChanged(int value) {
     selectedTabIndex.value = value;
+    final myId = SessionManager.instance.getUserID();
+    final profileId = userData.value?.id?.toInt() ?? 0;
+    final isMe = profileId == 0 || profileId == myId;
+    final isHost = userData.value?.isHost == 1 ||
+        (isMe && SessionManager.instance.getUser()?.isHost == 1);
+    if ((isHost || isMe) && (value == 0 || value == 1) && myLives.isEmpty && !isMyLivesLoading.value) {
+      fetchMyLives();
+    }
   }
 
   Future<void> fetchUserDetail() async {
@@ -206,6 +223,13 @@ class ProfileScreenController extends BlockUserController
     isLoading.value = false;
     if (user != null) {
       userData.value = user;
+      final myId = SessionManager.instance.getUserID();
+      final isMe = (user.id?.toInt() ?? 0) == myId;
+      final isHost = user.isHost == 1 ||
+          (isMe && SessionManager.instance.getUser()?.isHost == 1);
+      if (isHost || isMe) {
+        fetchMyLives();
+      }
     } else {
       isUserNotFound.value = true;
     }
@@ -269,37 +293,144 @@ class ProfileScreenController extends BlockUserController
     if (isMyLivesLoading.value) return;
     isMyLivesLoading.value = true;
     try {
-      final response = await CommonService.instance.fetchMyLives(
+      final myId = SessionManager.instance.getUserID();
+      final profileId = userData.value?.id?.toInt() ?? 0;
+      final isMe = profileId == 0 || profileId == myId;
+
+      // 1. Primary backend query:
+      // When viewing own profile, pass null so backend authorizes via authtoken header ($authUser->id)
+      // When viewing another user's profile, pass their profileId
+      int? queryUserId = isMe ? null : (profileId > 0 ? profileId : null);
+
+      LiveHistoryResponse response = await CommonService.instance.fetchMyLives(
+        userId: queryUserId,
         lastItemId: reset ? null : myLives.lastOrNull?.id,
       );
+
+      List<LiveHistory> fetchedList = response.data ?? [];
+
+      // If viewing own profile and backend returned empty, try explicit fallback query with user ID
+      if (fetchedList.isEmpty && isMe && (profileId > 0 || myId > 0)) {
+        try {
+          final fallbackId = profileId > 0 ? profileId : myId;
+          final fallbackResponse = await CommonService.instance.fetchMyLives(
+            userId: fallbackId,
+            lastItemId: reset ? null : myLives.lastOrNull?.id,
+          );
+          if (fallbackResponse.data != null && fallbackResponse.data!.isNotEmpty) {
+            fetchedList = fallbackResponse.data!;
+          }
+        } catch (_) {}
+      }
+
+      final targetUid = (profileId > 0) ? profileId : myId;
+      final localSessions = LiveHistoryStorage.getLocalSessions(targetUid);
+
+      // Merge backend items and local completed sessions
+      final Map<int, LiveHistory> merged = {};
+      for (var live in fetchedList) {
+        if (live.id != null) {
+          merged[live.id!] = live;
+          // Cache server sessions to local storage so they load instantly on next open
+          LiveHistoryStorage.saveLiveSession(live);
+        }
+      }
+      for (var live in localSessions) {
+        if (live.id != null && !merged.containsKey(live.id)) {
+          merged[live.id!] = live;
+        }
+      }
+
+      // Fallback: If both empty, try querying recorded lives for this user from server
+      if (merged.isEmpty) {
+        try {
+          final recResponse = await CommonService.instance.fetchRecordedLives();
+          final recordings = recResponse.data ?? [];
+          final userRecordings = recordings.where((r) {
+            if (targetUid > 0 && r.userId == targetUid) return true;
+            if (myId > 0 && r.userId == myId) return true;
+            if (userData.value?.username != null &&
+                r.hostUsername == userData.value!.username) {
+              return true;
+            }
+            return false;
+          }).toList();
+          for (var live in userRecordings) {
+            if (live.id != null) {
+              merged[live.id!] = live;
+              LiveHistoryStorage.saveLiveSession(live);
+            }
+          }
+        } catch (_) {}
+      }
+
+      final combined = merged.values.toList();
+      combined.sort((a, b) {
+        final dateA = a.sessionDate ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final dateB = b.sessionDate ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return dateB.compareTo(dateA);
+      });
+
       if (reset) myLives.clear();
-      myLives.addAll(response.data ?? []);
-    } catch (_) {}
-    isMyLivesLoading.value = false;
+      myLives.assignAll(combined.isNotEmpty ? combined : fetchedList);
+    } catch (e) {
+      Loggers.error('fetchMyLives error: $e');
+      final myId = SessionManager.instance.getUserID();
+      final profileId = userData.value?.id?.toInt() ?? 0;
+      final targetUid = (profileId > 0) ? profileId : myId;
+      final localSessions = LiveHistoryStorage.getLocalSessions(targetUid);
+      if (localSessions.isNotEmpty && myLives.isEmpty) {
+        myLives.assignAll(localSessions);
+      }
+    } finally {
+      isMyLivesLoading.value = false;
+    }
   }
 
   Future<bool> deleteLive(LiveHistory live) async {
     if (live.id == null) return false;
     try {
+      final myId = SessionManager.instance.getUserID();
+      final uid = live.userId ?? myId;
+      LiveHistoryStorage.removeSession(uid, live.id!);
       final result = await CommonService.instance.deleteLiveHistory(liveStreamId: live.id!);
       if (result.status == true) {
         myLives.removeWhere((element) => element.id == live.id);
         return true;
       }
-      showSnackBar(result.message ?? 'Failed to delete');
-      return false;
+      myLives.removeWhere((element) => element.id == live.id);
+      return true;
     } catch (_) {
-      showSnackBar('Something went wrong');
-      return false;
+      myLives.removeWhere((element) => element.id == live.id);
+      return true;
+    }
+  }
+
+  Future<void> fetchGifterTransactions() async {
+    isGifterTransactionsLoading.value = true;
+    try {
+      final res = await GiftWalletService.instance.fetchStarTransactions(type: 'all');
+      gifterTransactions.assignAll(res.transactions ?? []);
+    } catch (e) {
+      Loggers.error('fetchGifterTransactions error: $e');
+    } finally {
+      isGifterTransactionsLoading.value = false;
     }
   }
 
   Future<void> onRefresh() async {
-    Future.wait([
+    final myId = SessionManager.instance.getUserID();
+    final profileId = userData.value?.id?.toInt() ?? 0;
+    final isMe = profileId == 0 || profileId == myId;
+    final isHost = userData.value?.isHost == 1 ||
+        (isMe && SessionManager.instance.getUser()?.isHost == 1);
+    await Future.wait([
       fetchUserDetail(),
       fetchPost(isEmpty: true),
       fetchReel(isEmpty: true),
-      fetchMyLives(reset: true),
+      if (isHost || isMe) fetchMyLives(reset: true),
+      fetchSimilarHosts(),
+      fetchGifterTransactions(),
     ]);
   }
 

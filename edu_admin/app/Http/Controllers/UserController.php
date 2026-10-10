@@ -1370,12 +1370,14 @@ class UserController extends Controller
             return response()->json(['status' => false, 'message' => $msg]);
         }
         $baseUser = Users::find($request->user_id);
+        if ($baseUser) {
+            GlobalFunction::settleUserTotalPostLikesCount($baseUser->id);
+            GlobalFunction::settleFollowCount($baseUser->id);
+            GlobalFunction::autoUpgradeUserLevel($baseUser->id);
+            $baseUser->refresh();
+        }
         $rawLevelId = intval($baseUser->level_id ?? 0);
 
-        GlobalFunction::settleUserTotalPostLikesCount($baseUser->id);
-        GlobalFunction::settleFollowCount($baseUser->id);
-
-        $baseUser = Users::find($request->user_id);
         $dataUser = GlobalFunction::prepareUserFullData($baseUser->id);
 
         // Keep fetchUserDetails in sync with the full tbl_users schema.

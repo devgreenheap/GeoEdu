@@ -65,6 +65,10 @@ class CreateLiveStreamScreenController extends BaseController {
   // the language pill in the UI animates red to prompt the host to select one.
   RxBool languageHasError = false.obs;
 
+  // Join Call Seats for Video Call (up to maximum 7 seats)
+  RxInt maxParticipants = 7.obs;
+  final List<int> seatOptions = [1, 2, 3, 4, 5, 6, 7];
+
   // Stream mode: video_room, direct_call, pk_battle
   RxString selectedStreamMode = 'video_room'.obs;
   final List<Map<String, String>> streamModes = [
@@ -432,6 +436,7 @@ class CreateLiveStreamScreenController extends BaseController {
       streamMode: selectedStreamMode.value,
       isAutoMode: isAutoMode.value,
       thumbnailUrl: thumbnailPath ?? user.profilePhoto,
+      maxParticipants: maxParticipants.value,
     );
 
     livestream.isActive = true;

@@ -41,6 +41,9 @@ class Livestream {
   List<int>? pkInvitedUserIds;
   int? targetDiamonds;
   int? favouriteGiftTarget;
+  int? maxParticipants;
+  int? battleRound;
+  Map<String, dynamic>? lastRoundResult;
 
   Livestream(
       {this.watchingCount,
@@ -77,7 +80,10 @@ class Livestream {
       this.pkInvitedUserIds,
       this.targetDiamonds,
       this.favouriteGiftTarget,
-      this.battleDuration = AppRes.battleDurationInMinutes});
+      this.maxParticipants = 7,
+      this.battleDuration = AppRes.battleDurationInMinutes,
+      this.battleRound = 1,
+      this.lastRoundResult});
 
   Livestream.fromJson(Map<String, dynamic> json) {
     type = LivestreamType.fromString(json['type']);
@@ -100,6 +106,12 @@ class Livestream {
     isDummyLive = json['is_dummy_live'] is num ? (json['is_dummy_live'] as num).toInt() : null;
     dummyUserLink = json['dummy_user_link']?.toString();
     battleDuration = json['battle_duration'] is num ? (json['battle_duration'] as num).toInt() : AppRes.battleDurationInMinutes;
+    battleRound = json['battle_round'] is num ? (json['battle_round'] as num).toInt() : 1;
+    if (json['last_round_result'] is Map) {
+      lastRoundResult = Map<String, dynamic>.from(json['last_round_result']);
+    } else {
+      lastRoundResult = null;
+    }
     categoryId = json['category_id'] is num ? (json['category_id'] as num).toInt() : null;
     categoryName = json['category_name']?.toString();
     subCategoryId = json['sub_category_id'] is num ? (json['sub_category_id'] as num).toInt() : null;
@@ -125,6 +137,9 @@ class Livestream {
     }
     targetDiamonds = json['target_diamonds'] is num ? (json['target_diamonds'] as num).toInt() : null;
     favouriteGiftTarget = json['favourite_gift_target'] is num ? (json['favourite_gift_target'] as num).toInt() : null;
+    maxParticipants = json['max_participants'] is num
+        ? (json['max_participants'] as num).toInt()
+        : (json['max_seats'] is num ? (json['max_seats'] as num).toInt() : 7);
   }
 
   Map<String, dynamic> toJson() {
@@ -166,6 +181,12 @@ class Livestream {
     data['pk_invited_user_ids'] = pkInvitedUserIds;
     if (targetDiamonds != null) data['target_diamonds'] = targetDiamonds;
     if (favouriteGiftTarget != null) data['favourite_gift_target'] = favouriteGiftTarget;
+    if (maxParticipants != null) {
+      data['max_participants'] = maxParticipants;
+      data['max_seats'] = maxParticipants;
+    }
+    if (battleRound != null) data['battle_round'] = battleRound;
+    if (lastRoundResult != null) data['last_round_result'] = lastRoundResult;
     return data;
   }
 

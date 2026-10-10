@@ -164,62 +164,73 @@ class _MyEffectsScreenState extends State<MyEffectsScreen> {
                     }
 
                     if (controller.effects.isEmpty) {
-                      return Center(
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 32),
-                          padding: const EdgeInsets.all(28),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1B1822),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: const Color(0xFF3F3532).withValues(alpha: 0.7),
-                              width: 1.2,
-                            ),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 70,
-                                height: 70,
+                      return RefreshIndicator(
+                        color: const Color(0xFFFF7A00),
+                        backgroundColor: const Color(0xFF1B1822),
+                        onRefresh: () => controller.fetchEffects(),
+                        child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                          child: SizedBox(
+                            height: 500,
+                            child: Center(
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 32),
+                                padding: const EdgeInsets.all(28),
                                 decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: const LinearGradient(
-                                    colors: [Color(0xFFFF6D00), Color(0xFFFF3D00)],
+                                  color: const Color(0xFF1B1822),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: const Color(0xFF3F3532).withValues(alpha: 0.7),
+                                    width: 1.2,
                                   ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0xFFFF5722).withValues(alpha: 0.3),
-                                      blurRadius: 16,
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 70,
+                                      height: 70,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        gradient: const LinearGradient(
+                                          colors: [Color(0xFFFF6D00), Color(0xFFFF3D00)],
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFFFF5722).withValues(alpha: 0.3),
+                                            blurRadius: 16,
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Icon(
+                                        Icons.auto_awesome,
+                                        color: Colors.white,
+                                        size: 34,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 18),
+                                    const Text(
+                                      'No Entry Effects Yet',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      'Unlock stunning visual entrance animations to make your live streams unforgettable!',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.white60,
+                                        height: 1.4,
+                                      ),
                                     ),
                                   ],
                                 ),
-                                child: const Icon(
-                                  Icons.auto_awesome,
-                                  color: Colors.white,
-                                  size: 34,
-                                ),
                               ),
-                              const SizedBox(height: 18),
-                              const Text(
-                                'No Entry Effects Yet',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                'Unlock stunning visual entrance animations to make your live streams unforgettable!',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.white60,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ),
                       );

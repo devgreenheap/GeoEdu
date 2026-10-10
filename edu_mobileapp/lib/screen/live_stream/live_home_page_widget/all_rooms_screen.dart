@@ -23,18 +23,29 @@ class AllRoomsScreen extends StatelessWidget {
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text('Live Rooms', style: TextStyle(color: Colors.white)),
       ),
-      body: Obx(() {
-        final items = controller.mergedRoomItems;
-        if (items.isEmpty) {
-          return const Center(
-            child: Text('No live rooms right now', style: TextStyle(color: Colors.white38)),
+      body: RefreshIndicator(
+        onRefresh: controller.onHomeRefresh,
+        color: ColorRes.themeColor,
+        child: Obx(() {
+          final items = controller.mergedRoomItems;
+          if (items.isEmpty) {
+            return const SingleChildScrollView(
+              physics: AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+              child: SizedBox(
+                height: 500,
+                child: Center(
+                  child: Text('No live rooms right now', style: TextStyle(color: Colors.white38)),
+                ),
+              ),
+            );
+          }
+          return SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+            padding: const EdgeInsets.all(10),
+            child: RoomGridWithBanners(items: items, mainAxisExtent: 248),
           );
-        }
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(10),
-          child: RoomGridWithBanners(items: items, mainAxisExtent: 248),
-        );
-      }),
+        }),
+      ),
     );
   }
 }

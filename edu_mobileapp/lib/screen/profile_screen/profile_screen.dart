@@ -128,10 +128,15 @@ class ProfileScreen extends StatelessWidget {
                           child: CircularProgressIndicator(color: Colors.white,),
                         );
                       }
+                      final user = controller.userData.value;
+                      final bool isHost = user?.isHost == 1;
+                      final int tabLength = isHost ? 2 : 3;
+
                       return DefaultTabController(
-                        length: 2,
+                        key: ValueKey('profile_tabs_${user?.id}_${isHost}'),
+                        length: tabLength,
                         child: MyRefreshIndicator(
-                          depth: 4,
+                          depth: 0,
                           onRefresh: controller.onRefresh,
                           child: NestedScrollView(
                             headerSliverBuilder: (context, _) {

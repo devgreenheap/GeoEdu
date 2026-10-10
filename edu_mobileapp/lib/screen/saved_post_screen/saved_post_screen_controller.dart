@@ -71,4 +71,13 @@ class SavedPostScreenController extends BaseController {
       unsavedIds.clear();
     });
   }
+
+  Future<void> onRefresh() async {
+    final result = await Future.wait<List<Post>>([
+      PostService.instance.fetchSavedPosts(type: PostType.reels, lastItemId: null),
+      PostService.instance.fetchSavedPosts(type: PostType.posts, lastItemId: null),
+    ]);
+    reels.assignAll(result[0]);
+    posts.assignAll(result[1]);
+  }
 }

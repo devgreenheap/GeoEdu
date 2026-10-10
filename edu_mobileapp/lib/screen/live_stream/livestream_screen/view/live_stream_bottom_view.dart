@@ -253,12 +253,9 @@ class LiveStreamBottomView extends StatelessWidget {
                     }),
                   ),
                   Obx(() {
-                    Livestream stream = controller.liveData.value;
-                    if ((stream.type == LivestreamType.battle &&
-                            stream.battleType == BattleType.end) ||
-                        controller.isMinViewerTimeout.value) {
+                    if (controller.isMinViewerTimeout.value) {
                       return LivestreamExistMessageBar(
-                          controller: controller, stream: stream);
+                          controller: controller, stream: controller.liveData.value);
                     } else {
                       return const SizedBox();
                     }

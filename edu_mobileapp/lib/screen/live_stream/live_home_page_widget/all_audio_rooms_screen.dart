@@ -20,23 +20,38 @@ class AllAudioRoomsScreen extends StatelessWidget {
       ),
       body: Obx(() {
         final rooms = controller.audioRooms;
-        if (rooms.isEmpty) {
-          return const Center(
-            child: Text('No live audio rooms right now', style: TextStyle(color: Colors.white38)),
-          );
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.all(10),
-          itemCount: rooms.length,
-          separatorBuilder: (context, index) => const SizedBox(height: 10),
-          itemBuilder: (context, index) {
-            final room = rooms[index];
-            return AudioRoomCard(
-              room: room,
-              onTap: () => controller.joinAudioRoom(room),
-              width: double.infinity,
-            );
-          },
+        return RefreshIndicator(
+          color: const Color(0xFFFFB300),
+          backgroundColor: const Color(0xFF141724),
+          onRefresh: controller.refreshAudioRooms,
+          child: rooms.isEmpty
+              ? const SingleChildScrollView(
+                  physics: AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
+                  ),
+                  child: SizedBox(
+                    height: 400,
+                    child: Center(
+                      child: Text('No live audio rooms right now', style: TextStyle(color: Colors.white38)),
+                    ),
+                  ),
+                )
+              : ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
+                  ),
+                  padding: const EdgeInsets.all(10),
+                  itemCount: rooms.length,
+                  separatorBuilder: (context, index) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final room = rooms[index];
+                    return AudioRoomCard(
+                      room: room,
+                      onTap: () => controller.joinAudioRoom(room),
+                      width: double.infinity,
+                    );
+                  },
+                ),
         );
       }),
     );

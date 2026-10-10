@@ -116,7 +116,9 @@ class _ReportIssueScreenState extends State<ReportIssueScreen> {
       isScrollControlled: true,
       builder: (ctx) {
         return Container(
-          maxHeight: MediaQuery.of(context).size.height * 0.75,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.75,
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           decoration: const BoxDecoration(
             color: Color(0xFF1B1824),

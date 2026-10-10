@@ -155,21 +155,34 @@ class _StarWalletScreenState extends State<StarWalletScreen>
               children: [
                 _buildTopBar(),
                 Expanded(
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 10),
-                        _buildHeroStarPodium(),
-                        const SizedBox(height: 16),
-                        _buildGiftProfitSection(),
-                        const SizedBox(height: 16),
-                        _buildConvertStarsToMoneyCard(),
-                        const SizedBox(height: 16),
-                        _buildRequestConversionButton(),
-                        const SizedBox(height: 32),
-                      ],
+                  child: RefreshIndicator(
+                    color: ColorRes.gold,
+                    backgroundColor: const Color(0xFF161922),
+                    onRefresh: () async {
+                      await Future.wait([
+                        _fetchFreshData(),
+                        _fetchGiftProfit(),
+                        _fetchConversionInfo(),
+                      ]);
+                    },
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 10),
+                          _buildHeroStarPodium(),
+                          const SizedBox(height: 16),
+                          _buildGiftProfitSection(),
+                          const SizedBox(height: 16),
+                          _buildConvertStarsToMoneyCard(),
+                          const SizedBox(height: 16),
+                          _buildRequestConversionButton(),
+                          const SizedBox(height: 32),
+                        ],
+                      ),
                     ),
                   ),
                 ),

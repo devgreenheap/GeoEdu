@@ -7,7 +7,6 @@ import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requeste
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/followers_gained_sheet.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/widget/live_host_more_sheet.dart';
 import 'package:geoedu/model/livestream/livestream_user_state.dart';
-import 'package:geoedu/model/livestream/app_user.dart';
 import 'package:geoedu/common/controller/follow_controller.dart';
 import 'package:geoedu/common/extensions/common_extension.dart';
 import 'package:geoedu/common/extensions/string_extension.dart';
@@ -15,7 +14,6 @@ import 'package:geoedu/common/service/api/user_service.dart';
 import 'package:geoedu/common/widget/custom_image.dart';
 import 'package:geoedu/common/widget/live_room/live_share_sheet.dart';
 import 'package:geoedu/common/widget/live_summary_dialog.dart';
-import 'package:geoedu/model/livestream/livestream.dart';
 import 'package:geoedu/model/livestream/livestream_comment.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
 import 'package:geoedu/screen/live_stream/livestream_screen/livestream_screen_controller.dart';
@@ -30,9 +28,10 @@ import 'package:geoedu/screen/report_sheet/report_sheet.dart';
 import 'package:geoedu/common/manager/haptic_manager.dart';
 import 'package:geoedu/common/widget/room_top_gifters_sheet.dart';
 import 'package:geoedu/common/widget/live_room/set_live_target_sheet.dart';
-import 'package:geoedu/languages/languages_keys.dart';
 import 'package:geoedu/utilities/app_res.dart';
 import 'package:geoedu/utilities/color_res.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/connecting_live_room_overlay.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/pk_battle_duration_sheet.dart';
 
 /// Unified Modern Overlay for Video Live Rooms (Host & Audience).
 /// Replicates the proven rich aesthetics and functionality of the Audio Call room:
@@ -328,53 +327,47 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
 
                   const Spacer(),
 
-                  // 3. Middle-Lower: Pin comment + Top gifter + Chat + Floating Join Call
+                  // 3. Middle-Lower: Redesigned Audience Controls & Chat (Matching Reference UI)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        _buildPinnedCommentBanner(controller),
-                        Obx(() => (widget.isHost && controller.isPinInputOpen.value)
-                            ? _buildPinCommentInput(controller)
-                            : const SizedBox.shrink()),
-                        _buildTopGifterPill(controller),
-                        const SizedBox(height: 2),
-                        SizedBox(
-                          height: 125,
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                        // Left Side: Pinned Comment, Top Gifter, Live Chat, Quick Gift Bar
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Expanded(
+                              _buildPinnedCommentBanner(controller),
+                              Obx(() => (widget.isHost && controller.isPinInputOpen.value)
+                                  ? _buildPinCommentInput(controller)
+                                  : const SizedBox.shrink()),
+                              _buildTopGifterPill(controller),
+                              const SizedBox(height: 2),
+                              SizedBox(
+                                height: (MediaQuery.of(context).viewInsets.bottom > 0)
+                                    ? 100
+                                    : 140,
                                 child: _buildChatList(controller),
                               ),
-                              if (!widget.isHost)
-                                Obx(() {
-                                  final isJoinedCoHost = (controller.liveData.value.coHostIds ?? [])
-                                      .contains(controller.myUserId);
-                                  if (isJoinedCoHost) return const SizedBox.shrink();
-                                  return Padding(
-                                    padding: const EdgeInsets.only(left: 8, bottom: 4),
-                                    child: _buildBottomRightJoinCallBtn(controller),
-                                  );
-                                }),
+                              const SizedBox(height: 6),
+                              _buildQuickGiftBar(controller),
                             ],
                           ),
                         ),
+
+                        const SizedBox(width: 10),
+
+                        // Right Side: Prominent Vertical Action Column (Like, Share, Gift, Mute)
+                        _buildAudienceRightActionsColumn(controller),
                       ],
                     ),
                   ),
 
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
 
-                  // 4. PK Battle Start Action (Host when co-host connected)
-                  _buildStartBattlePrompt(controller),
-
-                  // 5. Quick Gift 1-tap Bar (Audience)
-                  _buildQuickGiftBar(controller),
-
-                  // 6. Modern Bottom Bar
+                  // 4. Modern Bottom Bar: Expanded "Say Hi!" input + More (⋮) button
                   _buildBottomBar(controller),
                 ],
               ),
@@ -409,6 +402,14 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
             },
           ),
         ],
+        Obx(() {
+          if (controller.isSwitchingHost.value) {
+            return ConnectingLiveRoomOverlay(
+              targetUser: controller.switchingTargetUser.value,
+            );
+          }
+          return const SizedBox.shrink();
+        }),
       ],
     );
   }
@@ -448,67 +449,129 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
       final bool isSelfJoined =
           !widget.isHost && coHostUserIds.contains(controller.myUserId);
       final bool shouldShowAcceptCard =
-          widget.isHost && coHostUserIds.length < 3;
+          widget.isHost && coHostUserIds.length < controller.maxCallSeats && coHostUserIds.length < 3;
       final bool shouldShowJoinCard =
-          !widget.isHost && !isSelfJoined && coHostUserIds.length < 3;
+          !widget.isHost && !isSelfJoined && coHostUserIds.length < controller.maxCallSeats && coHostUserIds.length < 3;
 
       const double cardWidth = 104.0;
       const double cardHeight = 128.0;
 
+      if (coHostUserIds.isEmpty && !shouldShowAcceptCard && !shouldShowJoinCard) {
+        return const SizedBox.shrink();
+      }
+
+      final screenWidth = MediaQuery.of(context).size.width;
+      final double maxRowWidth = screenWidth - 24;
+
+      Widget buildMemberTile(int userId) {
+        final StreamView? memberStream =
+            streamViews.firstWhereOrNull((s) => s.streamId == '$userId');
+        return ParticipantVideoCard(
+          key: ValueKey('participant_video_card_$userId'),
+          controller: controller,
+          userId: userId,
+          streamingView: memberStream,
+          isMe: userId == controller.myUserId,
+          bannerDismissed: controller.hasDismissedJoinCallBanner.value,
+          onDismissBanner: () {
+            controller.hasDismissedJoinCallBanner.value = true;
+          },
+          width: cardWidth,
+          height: cardHeight,
+        );
+      }
+
+      Widget? actionCard;
+      if (shouldShowAcceptCard) {
+        actionCard = buildColumnAcceptCallCard(
+          context,
+          controller,
+          cardWidth,
+        );
+      } else if (shouldShowJoinCard) {
+        actionCard = AudienceJoinCallDashedCard(
+          controller: controller,
+          width: cardWidth,
+          height: 98,
+        );
+      }
+
+      Widget? slot1Widget;
+      Widget? slot2Widget;
+      final List<Widget> row3Tiles = [];
+
+      if (coHostUserIds.isNotEmpty) {
+        // Slot 1: Member 1 (Top-Right)
+        slot1Widget = buildMemberTile(coHostUserIds[0]);
+
+        if (coHostUserIds.length > 1) {
+          // Slot 2: Member 2 (Middle-Right)
+          slot2Widget = buildMemberTile(coHostUserIds[1]);
+        } else if (actionCard != null) {
+          slot2Widget = actionCard;
+        }
+
+        if (coHostUserIds.length > 2) {
+          // Row 3: Member 3 sits at the bottom-right; Member 4, 5, 6, 7... extend to the left
+          // to form the classic L-shape layout.
+          final bottomMembers = coHostUserIds.sublist(2);
+          for (int i = bottomMembers.length - 1; i >= 0; i--) {
+            if (row3Tiles.isNotEmpty) {
+              row3Tiles.add(const SizedBox(width: 8));
+            }
+            row3Tiles.add(buildMemberTile(bottomMembers[i]));
+          }
+        } else if (coHostUserIds.length == 2 && actionCard != null) {
+          row3Tiles.add(actionCard);
+        }
+      } else if (actionCard != null) {
+        slot1Widget = actionCard;
+      }
+
+      Widget? row3Widget;
+      if (row3Tiles.isNotEmpty) {
+        row3Widget = Align(
+          alignment: Alignment.centerRight,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxRowWidth),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              reverse: true,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: row3Tiles,
+              ),
+            ),
+          ),
+        );
+      }
+
       return Positioned(
         right: 12,
         top: MediaQuery.of(context).padding.top + 78,
-        bottom: MediaQuery.of(context).padding.bottom + 150,
-        child: SizedBox(
-          width: 260,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.vertical,
-            physics: const BouncingScrollPhysics(),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                ...List.generate(
-                  coHostUserIds.length,
-                  (index) {
-                    final userId = coHostUserIds[index];
-                    final StreamView? memberStream = streamViews
-                        .firstWhereOrNull((s) => s.streamId == '$userId');
-
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: ParticipantVideoCard(
-                        controller: controller,
-                        userId: userId,
-                        streamingView: memberStream,
-                        isMe: userId == controller.myUserId,
-                        width: cardWidth,
-                        height: cardHeight,
-                      ),
-                    );
-                  },
-                ),
-                if (shouldShowAcceptCard)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: buildColumnAcceptCallCard(
-                      context,
-                      controller,
-                      cardWidth,
-                    ),
-                  ),
-                if (shouldShowJoinCard)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: AudienceJoinCallDashedCard(
-                      controller: controller,
-                      width: cardWidth,
-                      height: 98,
-                    ),
-                  ),
-              ],
-            ),
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (slot1Widget != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: slot1Widget,
+              ),
+            if (slot2Widget != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: slot2Widget,
+              ),
+            if (row3Widget != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: row3Widget,
+              ),
+          ],
         ),
       );
     });
@@ -730,9 +793,17 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Expanded(
-                            child: SizedBox(
-                              height: isKeyboardOpen ? 120 : 190,
-                              child: _buildHostLiveChatList(controller),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _buildTopGifterPill(controller),
+                                const SizedBox(height: 2),
+                                SizedBox(
+                                  height: isKeyboardOpen ? 120 : 170,
+                                  child: _buildHostLiveChatList(controller),
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(width: 14),
@@ -833,6 +904,52 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
               ],
             ),
             const Spacer(),
+            // Host quick mic
+            GestureDetector(
+              onTap: () => controller.toggleMic(null),
+              child: Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: !controller.isAudioOn.value
+                      ? const Color(0xFFFF1744).withValues(alpha: 0.3)
+                      : Colors.white.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  controller.isAudioOn.value
+                      ? Icons.mic_rounded
+                      : Icons.mic_off_rounded,
+                  color: !controller.isAudioOn.value
+                      ? const Color(0xFFFF1744)
+                      : Colors.white,
+                  size: 16,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            // Host video camera toggle (turn camera on/off)
+            GestureDetector(
+              onTap: () => controller.toggleVideo(null),
+              child: Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: !controller.isVideoOn.value
+                      ? const Color(0xFFFF1744).withValues(alpha: 0.3)
+                      : Colors.white.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  controller.isVideoOn.value
+                      ? Icons.videocam_rounded
+                      : Icons.videocam_off_rounded,
+                  color: !controller.isVideoOn.value
+                      ? const Color(0xFFFF1744)
+                      : Colors.white,
+                  size: 16,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
             const Icon(
               Icons.wifi_rounded,
               color: Color(0xFF00E676),
@@ -1439,7 +1556,7 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
             ),
 
             // Real-Time Comments (Join, Co-host, Gifts, and Messages)
-            ...comments.map((comment) {
+            ...comments.reversed.map((comment) {
               final senderUser = comment.senderUser;
               final senderName =
                   senderUser?.fullname ?? senderUser?.username ?? 'User';
@@ -1477,24 +1594,54 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
       mainAxisSize: MainAxisSize.min,
       children: [
         GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: () {
+            HapticManager.shared.light();
             CallRequestsSheet.show(context);
           },
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    width: 0.8,
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: const Icon(Icons.call_rounded,
+                        color: Colors.white, size: 22),
                   ),
-                ),
-                child: const Icon(Icons.weekend_rounded,
-                    color: Colors.white, size: 22),
+                  Obx(() {
+                    final count = controller.requestList.length;
+                    if (count <= 0) return const SizedBox.shrink();
+                    return Positioned(
+                      top: -2,
+                      right: -2,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFFF5252),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '$count',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ],
               ),
               const SizedBox(height: 3),
               const Text(
@@ -1510,6 +1657,7 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
         ),
         const SizedBox(height: 12),
         GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: () {
             HapticManager.shared.light();
             LiveBeautyFilterSheet.show(context);
@@ -1544,6 +1692,7 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
         ),
         const SizedBox(height: 12),
         GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: () {
             HapticManager.shared.light();
             _showMoreSheet();
@@ -2007,9 +2156,17 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                             onPressed: (isInvited || isCurrentOpponent)
                                 ? null
                                 : () {
-                                    controller.sendPkInviteToCoHost(userId);
-                                    controller.showSnackBar(
-                                        'PK Battle invite sent to $name!');
+                                    PkBattleDurationSheet.show(
+                                      context: context,
+                                      initialDuration:
+                                          controller.selectedBattleDuration.value,
+                                      onStart: (duration) {
+                                        controller.sendPkInviteToCoHost(userId,
+                                            duration: duration);
+                                        controller.showSnackBar(
+                                            'PK Battle ($duration mins) invite sent to $name!');
+                                      },
+                                    );
                                   },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: (isInvited || isCurrentOpponent)
@@ -2051,6 +2208,9 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
 
   void _showCoHostPkInviteDialog(
       LivestreamScreenController controller, int hostId, String hostName) {
+    final duration = controller.liveData.value.battleDuration > 0
+        ? controller.liveData.value.battleDuration
+        : controller.selectedBattleDuration.value;
     Get.dialog(
       AlertDialog(
         backgroundColor: const Color(0xFF1E1E2C),
@@ -2060,9 +2220,9 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                 color: Colors.white,
                 fontSize: 16,
                 fontWeight: FontWeight.bold)),
-        content: const Text(
-          'Accept to compete in this video PK Battle. The battle starts immediately with the host.',
-          style: TextStyle(color: Colors.white70, fontSize: 13),
+        content: Text(
+          'Accept to compete in this $duration-minute video PK Battle. The battle starts immediately with the host.',
+          style: const TextStyle(color: Colors.white70, fontSize: 13),
         ),
         actions: [
           TextButton(
@@ -2222,6 +2382,28 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                       ),
                     ),
                   ),
+                ] else ...[
+                  // For audience / co-hosts: clearly indicate if the host has muted their microphone
+                  if (controller.hostUserState?.audioStatus == VideoAudioStatus.offByMe ||
+                      controller.hostUserState?.audioStatus == VideoAudioStatus.offByHost) ...[
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF1744).withValues(alpha: 0.25),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFFFF1744).withValues(alpha: 0.6),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.mic_off_rounded,
+                        color: Color(0xFFFF1744),
+                        size: 16,
+                      ),
+                    ),
+                  ],
                 ],
                 const SizedBox(width: 4),
                 // Gear / Settings icon
@@ -2558,69 +2740,7 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
 
 
 
-  // -------------------------------------------------------------
-  // PK Battle Start Action (Host when co-host is connected)
-  // -------------------------------------------------------------
-  Widget _buildStartBattlePrompt(LivestreamScreenController controller) {
-    if (!widget.isHost) return const SizedBox.shrink();
-    return Obx(() {
-      final stream = controller.liveData.value;
-      final hasCoHost = controller.streamViews.length >= 2 ||
-          (stream.coHostIds != null && stream.coHostIds!.isNotEmpty);
-      final isBattleRunning = stream.battleType == BattleType.running ||
-          stream.battleType == BattleType.waiting;
-      final canStartBattle = hasCoHost &&
-          !isBattleRunning &&
-          (controller.setting?.liveBattle ?? 1) == 1;
 
-      if (!canStartBattle) return const SizedBox.shrink();
-
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Center(
-          child: GestureDetector(
-            onTap: () {
-              HapticManager.shared.medium();
-              _showVideoPkInviteListSheet(controller);
-            },
-            child: Container(
-              height: 38,
-              padding: const EdgeInsets.symmetric(horizontal: 22),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFFF1744), Color(0xFFFF8A00)],
-                ),
-                borderRadius: BorderRadius.circular(22),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFFF1744).withValues(alpha: 0.45),
-                    blurRadius: 12,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('⚔️', style: TextStyle(fontSize: 16)),
-                  const SizedBox(width: 8),
-                  Text(
-                    LKey.startBattle.tr.toUpperCase(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.6,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    });
-  }
 
   // -------------------------------------------------------------
   // Pinned Comment Banner & Host Pin Comment Input
@@ -2733,28 +2853,43 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
   // -------------------------------------------------------------
   Widget _buildTopGifterPill(LivestreamScreenController controller) {
     return Obx(() {
-      final topUser = controller.topGifterName.value.trim();
-      if (topUser.isEmpty) {
-        return const SizedBox.shrink();
+      String displayName = controller.topGifterName.value.trim();
+      if (displayName.isEmpty) {
+        final membersWithCoins = controller.audienceMemberList
+            .where((m) => m.liveCoin > 0)
+            .toList();
+        if (membersWithCoins.isNotEmpty) {
+          membersWithCoins.sort((a, b) => b.liveCoin.compareTo(a.liveCoin));
+          final topMember = membersWithCoins.first;
+          final name = topMember.user?.username ?? topMember.user?.fullname;
+          if (name != null && name.trim().isNotEmpty) {
+            displayName = name.trim();
+          }
+        }
       }
+
+      final label = displayName.isNotEmpty ? '$displayName - Top Gifter' : 'Top Gifter';
 
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => RoomTopGiftersSheet.show(
-          context: context,
-          roomId: controller.liveData.value.roomID,
-          hostId: controller.liveData.value.hostId,
-          isAudio: false,
-          videoController: controller,
-        ),
+        onTap: () {
+          HapticManager.shared.light();
+          RoomTopGiftersSheet.show(
+            context: context,
+            roomId: controller.liveData.value.roomID,
+            hostId: controller.liveData.value.hostId,
+            isAudio: false,
+            videoController: controller,
+          );
+        },
         child: Container(
-          margin: const EdgeInsets.only(bottom: 4),
+          margin: const EdgeInsets.only(bottom: 6),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.45),
+            color: Colors.black.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: const Color(0xFFFFB300).withValues(alpha: 0.4),
+              color: const Color(0xFFFFB300).withValues(alpha: 0.5),
               width: 1,
             ),
           ),
@@ -2764,7 +2899,9 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
               Container(
                 padding: const EdgeInsets.all(2),
                 decoration: const BoxDecoration(
-                  color: Color(0xFFFFB300),
+                  gradient: LinearGradient(
+                    colors: [Color(0xFFFFD54F), Color(0xFFFF8F00)],
+                  ),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.workspace_premium,
@@ -2772,12 +2909,19 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
               ),
               const SizedBox(width: 4),
               Text(
-                '$topUser - Top Gifter',
+                label,
                 style: const TextStyle(
                   color: Color(0xFFFFB300),
                   fontSize: 10.5,
                   fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
                 ),
+              ),
+              const SizedBox(width: 3),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: const Color(0xFFFFB300).withValues(alpha: 0.7),
+                size: 13,
               ),
             ],
           ),
@@ -3164,18 +3308,18 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
 
       return Container(
         height: 72,
-        margin: const EdgeInsets.only(bottom: 6),
+        margin: EdgeInsets.zero,
         child: IgnorePointer(
           ignoring: isLocked,
           child: AnimatedOpacity(
             duration: const Duration(milliseconds: 200),
             opacity: isLocked ? 0.45 : 1.0,
             child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              padding: const EdgeInsets.only(right: 4),
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
               itemCount: gifts.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 14),
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
               itemBuilder: (context, index) {
                 final gift = gifts[index];
                 final price = gift.coinPrice ?? 0;
@@ -3267,28 +3411,172 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
   }
 
   // -------------------------------------------------------------
-  // Sleek Bottom Bar (Unified for Host & Audience)
+  // Audience Right Vertical Action Column (Like, Share, Gift, Mute)
+  // -------------------------------------------------------------
+  Widget _buildAudienceRightActionsColumn(
+      LivestreamScreenController controller) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // Join Call video request button when viewer is not co-host
+        if (!widget.isHost)
+          Obx(() {
+            final isJoinedCoHost = (controller.liveData.value.coHostIds ?? [])
+                .contains(controller.myUserId);
+            if (isJoinedCoHost) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _buildBottomRightJoinCallBtn(controller),
+            );
+          }),
+
+        // 1. Prominent Like Button with live counter below
+        Obx(() => LiveStreamLikeButton(
+              likeCount: controller.liveData.value.likeCount ?? 0,
+              size: 44,
+              onLikeTap: (fn) => controller.onLikeTap = fn,
+              onTap: controller.onLikeButtonTap,
+            )),
+
+        const SizedBox(height: 8),
+
+        // 2. Share Button (curved reply/share arrow)
+        GestureDetector(
+          onTap: () {
+            HapticManager.shared.light();
+            _shareLive();
+          },
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.16),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.12),
+                width: 0.8,
+              ),
+            ),
+            child: Center(
+              child: Transform.flip(
+                flipX: true,
+                child: const Icon(
+                  Icons.reply_rounded,
+                  color: Colors.white,
+                  size: 23,
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 8),
+
+        // 3. Gift Button
+        GestureDetector(
+          onTap: () {
+            HapticManager.shared.light();
+            VideoRoomGiftCategorySheet.show(
+              context: context,
+              controller: controller,
+            );
+          },
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.16),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.12),
+                width: 0.8,
+              ),
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.card_giftcard_rounded,
+                color: Color(0xFFFFA000),
+                size: 23,
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 8),
+
+        // 4. Mute Button (co-host mic toggle or stream volume toggle)
+        Obx(() {
+          final isCoHost = (controller.liveData.value.coHostIds ?? [])
+              .contains(controller.myUserId);
+          final isMuted = isCoHost
+              ? !controller.isAudioOn.value
+              : controller.isPlayerMute.value;
+
+          return GestureDetector(
+            onTap: () {
+              HapticManager.shared.light();
+              if (isCoHost) {
+                controller.toggleMic(null);
+              } else {
+                controller.togglePlayerAudioToggle();
+              }
+            },
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: isMuted
+                    ? const Color(0xFFFF1744).withValues(alpha: 0.22)
+                    : Colors.white.withValues(alpha: 0.16),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isMuted
+                      ? const Color(0xFFFF1744).withValues(alpha: 0.6)
+                      : Colors.white.withValues(alpha: 0.12),
+                  width: 0.8,
+                ),
+              ),
+              child: Center(
+                child: Icon(
+                  isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                  color: isMuted ? const Color(0xFFFF5252) : Colors.white,
+                  size: 23,
+                ),
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  // -------------------------------------------------------------
+  // Redesigned Audience Bottom Bar (Expanded Input + More Button)
   // -------------------------------------------------------------
   Widget _buildBottomBar(LivestreamScreenController controller) {
     return Padding(
       padding: const EdgeInsets.only(left: 14, right: 14, bottom: 8),
       child: Row(
         children: [
-          // "Say Hi!" input pill with "New" badge
+          // "Say Hi!" input pill with "New" badge, emoji and send icons
           Expanded(
             child: Container(
-              height: 38,
+              height: 44,
               padding: const EdgeInsets.symmetric(horizontal: 10),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white10),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  width: 0.8,
+                ),
               ),
               child: Row(
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 5, vertical: 2),
+                        horizontal: 6, vertical: 3),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         colors: [Color(0xFFFF8A00), Color(0xFFFF3D00)],
@@ -3324,136 +3612,68 @@ class _LiveVideoRoomOverlayState extends State<LiveVideoRoomOverlay> {
                     ),
                   ),
                   GestureDetector(
+                    onTap: () {
+                      FocusScope.of(context).requestFocus(FocusNode());
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: Icon(
+                        Icons.sentiment_satisfied_alt_rounded,
+                        color: Colors.white70,
+                        size: 21,
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
                     onTap: controller.onTextCommentSend,
-                    child: const Icon(Icons.send_rounded,
-                        color: Color(0xFFFF7A19), size: 18),
+                    child: const Padding(
+                      padding: EdgeInsets.only(left: 4, right: 2),
+                      child: Icon(Icons.send_rounded,
+                          color: Color(0xFFFF7A19), size: 20),
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
 
-          // Co-Host mic toggle if in call (audience side)
-          if (!widget.isHost)
-            Obx(() {
-              final isCoHost = (controller.liveData.value.coHostIds ?? [])
-                  .contains(controller.myUserId);
-              if (!isCoHost) return const SizedBox.shrink();
-              final isAudioOn = controller.isAudioOn.value;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: GestureDetector(
-                  onTap: () => controller.toggleMic(null),
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: !isAudioOn
-                          ? const Color(0xFFFF1744).withValues(alpha: 0.25)
-                          : Colors.white.withValues(alpha: 0.14),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: !isAudioOn
-                            ? const Color(0xFFFF1744)
-                            : Colors.white24,
-                        width: 1.2,
-                      ),
-                    ),
-                    child: Icon(
-                      isAudioOn ? Icons.mic_rounded : Icons.mic_off_rounded,
-                      color: !isAudioOn
-                          ? const Color(0xFFFF1744)
-                          : Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                ),
-              );
-            }),
-
-          // Share button
-          GestureDetector(
-            onTap: _shareLive,
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.14),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.reply_rounded,
-                  color: Colors.white, size: 20),
-            ),
-          ),
-          const SizedBox(width: 8),
-
-          // Gift button: sets favourite gift for Host, opens sheet for Viewer
+          // More (⋮) button on the bottom right
           GestureDetector(
             onTap: () {
-              if (widget.isHost) {
-                controller.showFavouriteGiftSheet(context);
-              } else {
-                VideoRoomGiftCategorySheet.show(
+              HapticManager.shared.light();
+              final isCoHost = (controller.liveData.value.coHostIds ?? [])
+                  .contains(controller.myUserId);
+              if (isCoHost) {
+                LiveHostMoreSheet.show(
                   context: context,
                   controller: controller,
+                  onShare: _shareLive,
                 );
+              } else {
+                _showMoreSheet();
               }
             },
             child: Container(
-              width: 38,
-              height: 38,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.14),
+                color: Colors.white.withValues(alpha: 0.16),
                 shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  width: 0.8,
+                ),
               ),
-              child: const Icon(Icons.card_giftcard_rounded,
-                  color: Color(0xFFFF7A19), size: 20),
+              child: const Center(
+                child: Icon(
+                  Icons.more_vert_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
             ),
           ),
-          const SizedBox(width: 8),
-
-          // Heart like button
-          Obx(() => LiveStreamLikeButton(
-            likeCount: controller.liveData.value.likeCount ?? 0,
-            size: 38,
-            onLikeTap: (fn) => controller.onLikeTap = fn,
-            onTap: controller.onLikeButtonTap,
-          )),
-
-          // More (⋮) button for joined call user (Reference Image 3 & 4)
-          if (!widget.isHost)
-            Obx(() {
-              final isCoHost = (controller.liveData.value.coHostIds ?? [])
-                  .contains(controller.myUserId);
-              if (!isCoHost) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: GestureDetector(
-                  onTap: () {
-                    HapticManager.shared.light();
-                    LiveHostMoreSheet.show(
-                      context: context,
-                      controller: controller,
-                      onShare: _shareLive,
-                    );
-                  },
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.14),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.more_vert_rounded,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                  ),
-                ),
-              );
-            }),
         ],
       ),
     );

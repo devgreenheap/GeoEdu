@@ -35,13 +35,14 @@ import 'package:geoedu/model/livestream/livestream.dart';
 import 'package:geoedu/model/livestream/livestream_comment.dart';
 import 'package:geoedu/model/livestream/livestream_user_state.dart';
 import 'package:geoedu/model/user_model/user_model.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/audience/widget/live_stream_join_sheet.dart';
 import 'package:geoedu/common/widget/live_summary_dialog.dart';
 import 'package:geoedu/screen/live_stream/live_stream_search_screen/live_stream_search_screen_controller.dart';
 import 'package:geoedu/screen/gift_sheet/send_gift_sheet.dart';
 import 'package:geoedu/screen/gift_sheet/send_gift_sheet_controller.dart';
 import 'package:geoedu/utilities/color_res.dart';
 import 'package:geoedu/screen/live_stream/live_stream_end_screen/widget/livestream_summary.dart';
-import 'package:geoedu/screen/live_stream/livestream_screen/audience/widget/live_stream_join_sheet.dart';
+import 'package:geoedu/model/livestream/live_history_model.dart';
 import 'package:geoedu/screen/report_sheet/report_sheet.dart';
 import 'package:geoedu/screen/dashboard_screen/dashboard_screen_controller.dart';
 import 'package:geoedu/utilities/app_res.dart';
@@ -55,6 +56,8 @@ import 'package:geoedu/screen/live_stream/livestream_screen/widget/call_requests
 import 'package:geoedu/common/widget/live_room/favourite_gift_sheet.dart';
 import 'package:geoedu/common/widget/live_room/target_achieved_dialog.dart';
 import 'package:geoedu/common/widget/live_room/set_live_target_sheet.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/pk_battle_duration_sheet.dart';
+import 'package:geoedu/screen/live_stream/livestream_screen/widget/pk_battle_result_dialog.dart';
 
 import '../../../common/extensions/string_extension.dart';
 import '../../../model/livestream/entry_effects_model.dart';
@@ -181,6 +184,7 @@ class LivestreamScreenController extends BaseController {
 
   Rx<AppUser?> selectedGiftUser = Rx(null);
   Rx<VideoPlayerController?> videoPlayerController = Rx(null);
+  RxBool hasDismissedJoinCallBanner = false.obs;
 
   // Inline battle gift bar (EloTV-style tap-to-send row, replaces the old
   // full-screen gift sheet during a PK battle).
@@ -188,6 +192,12 @@ class LivestreamScreenController extends BaseController {
   Rx<BattleView> selectedBattleSide = BattleView.red.obs;
   RxInt diamondBalance = 0.obs;
   bool _diamondBalanceFetched = false;
+
+  int get maxCallSeats =>
+      (liveData.value.maxParticipants != null && liveData.value.maxParticipants! > 0)
+          ? liveData.value.maxParticipants!
+          : 7;
+  static const int defaultMaxCallSeats = 7;
 
   // Tap either side of the PK battle split screen to give it more space;
   // tap the same side again (or the other side) to change/clear the focus.
@@ -199,6 +209,42 @@ class LivestreamScreenController extends BaseController {
   Rx<AppUser?> pkOpponentUser = Rx<AppUser?>(null);
   bool isPkInviteDialogOpen = false;
   void Function(int hostId, String hostName)? onCallParticipantPkInviteReceived;
+
+  // PK Battle Duration & State
+  RxInt selectedBattleDuration = 2.obs;
+  bool _isRoundFinalizing = false;
+  bool isPkResultPopupShowing = false;
+
+  // Viewer-Side Host Selection & Live Switching
+  Rx<int?> selectedBattleHostId = Rx<int?>(null);
+  RxBool isSwitchingHost = false.obs;
+  Rx<AppUser?> switchingTargetUser = Rx<AppUser?>(null);
+
+  AppUser? get effectiveSelectedBattleHost {
+    final targetId = selectedBattleHostId.value ?? liveData.value.hostId;
+    if (targetId == null) return null;
+    return firestoreController.users.firstWhereOrNull((u) => u.userId == targetId) ??
+        liveUsersStates.firstWhereOrNull((u) => u.userId == targetId)?.getUser(firestoreController.users) ??
+        (targetId == liveData.value.hostId ? liveData.value.hostUser : null);
+  }
+
+  Future<void> switchBattleHost(int targetHostId) async {
+    if (selectedBattleHostId.value == targetHostId) return;
+    HapticManager.shared.medium();
+    final targetUser = firestoreController.users.firstWhereOrNull((u) => u.userId == targetHostId) ??
+        liveUsersStates.firstWhereOrNull((u) => u.userId == targetHostId)?.getUser(firestoreController.users);
+    switchingTargetUser.value = targetUser;
+    isSwitchingHost.value = true;
+    await Future.delayed(const Duration(milliseconds: 750));
+    selectedBattleHostId.value = targetHostId;
+    selectedGiftUser.value = targetUser;
+    if (targetHostId == liveData.value.hostId) {
+      selectedBattleSide.value = BattleView.red;
+    } else {
+      selectedBattleSide.value = BattleView.blue;
+    }
+    isSwitchingHost.value = false;
+  }
 
   void toggleBattleFocus(int index) {
     expandedBattleUserIndex.value =
@@ -765,9 +811,15 @@ class LivestreamScreenController extends BaseController {
     if (isGiftAnimating.value || activeGifts.isNotEmpty) {
       return;
     }
+    if (liveData.value.type == LivestreamType.battle &&
+        liveData.value.battleType == BattleType.end) {
+      showSnackBar('This PK round has ended');
+      return;
+    }
+    final effectiveTarget = effectiveSelectedBattleHost ?? targetUser;
     final giftId = gift.id?.toInt();
     final coinPrice = gift.coinPrice?.toInt() ?? 0;
-    final receiverId = targetUser.userId;
+    final receiverId = effectiveTarget.userId;
     if (isHost || receiverId == myUserId) {
       showSnackBar('You cannot send gifts to yourself');
       return;
@@ -822,7 +874,7 @@ class LivestreamScreenController extends BaseController {
             : 'assets/images/fairy-sparkle.mp3');
     GiftAudioPlayer.play(sound);
     sendGift(
-        targetUser,
+        effectiveTarget,
         gift.displayName,
         gift.effectiveAssetUrl.addBaseURL(),
         sound,
@@ -1463,8 +1515,7 @@ class LivestreamScreenController extends BaseController {
     }
   }
 
-  Future<void> stopPreview({int? viewI
-  d}) async {
+  Future<void> stopPreview({int? viewId}) async {
     int id = viewId ?? -1;
     ZegoExpressEngine.instance.stopPreview();
     if (id != -1) {
@@ -1530,6 +1581,11 @@ class LivestreamScreenController extends BaseController {
   }) {
     final userId = user?.userId;
     if (userId == null) return;
+
+    if (!isRefused && coHostList.length >= maxCallSeats) {
+      showSnackBar('Join Call seats are full ($maxCallSeats seats max)');
+      return;
+    }
 
     // Update user state based on refusal
     updateUserStateToFirestore(userId,
@@ -1646,16 +1702,38 @@ class LivestreamScreenController extends BaseController {
           return;
         }
 
+        if (stream.battleDuration > 0) {
+          selectedBattleDuration.value = stream.battleDuration;
+        }
+
         if (stream.battleType == BattleType.initiate) {
           timer?.cancel();
           remainingBattleSeconds.value =
-              Duration(minutes: stream.battleDuration).inSeconds;
+              Duration(minutes: stream.battleDuration > 0 ? stream.battleDuration : 2).inSeconds;
           countdownPlayer.pause();
+          isPkResultPopupShowing = false;
         }
 
         if (stream.battleType == BattleType.waiting) {
           totalBattleSecond =
-              Duration(minutes: stream.battleDuration).inSeconds;
+              Duration(minutes: stream.battleDuration > 0 ? stream.battleDuration : 2).inSeconds;
+          isPkResultPopupShowing = false;
+        }
+
+        if (stream.battleType == BattleType.running) {
+          totalBattleSecond =
+              Duration(minutes: stream.battleDuration > 0 ? stream.battleDuration : 2).inSeconds;
+          isPkResultPopupShowing = false;
+        }
+
+        if (stream.battleType == BattleType.end && stream.lastRoundResult != null) {
+          timer?.cancel();
+          countdownPlayer.pause();
+          checkAndShowPkResultDialog(stream.lastRoundResult!);
+        }
+
+        if (selectedBattleHostId.value == null && stream.hostId != null) {
+          selectedBattleHostId.value = stream.hostId;
         }
 
         // Update LiveData and detect co-host departures
@@ -1783,6 +1861,7 @@ class LivestreamScreenController extends BaseController {
                 if (state.userId == liveData.value.hostId && state.user != null) {
                   liveData.value.hostUser = state.user;
                 }
+                liveUsersStates.refresh();
                 // Loggers.info('🔁 User modified: ${state.userId}');
                 break;
 
@@ -1827,8 +1906,8 @@ class LivestreamScreenController extends BaseController {
           if (liveData.value.hostId == myUserId &&
               (liveData.value.isAutoMode ?? false) &&
               requestList.isNotEmpty &&
-              coHostList.length < AppRes.maxVideoCoHosts) {
-            final freeSeats = AppRes.maxVideoCoHosts - coHostList.length;
+              coHostList.length < maxCallSeats) {
+            final freeSeats = maxCallSeats - coHostList.length;
             for (final state in requestList.take(freeSeats)) {
               handleRequestResponse(
                 user: state.getUser(firestoreController.users),
@@ -1949,8 +2028,8 @@ class LivestreamScreenController extends BaseController {
     liveStreamDocRef.update({FirebaseConst.isAutoMode: value}).catchError((e) {
       Loggers.error('Failed to update is_auto_mode on Firestore: $e');
     });
-    if (value && requestList.isNotEmpty && coHostList.length < AppRes.maxVideoCoHosts) {
-      final freeSeats = AppRes.maxVideoCoHosts - coHostList.length;
+    if (value && requestList.isNotEmpty && coHostList.length < maxCallSeats) {
+      final freeSeats = maxCallSeats - coHostList.length;
       for (final state in requestList.take(freeSeats)) {
         handleRequestResponse(
           user: state.getUser(firestoreController.users),
@@ -1966,6 +2045,9 @@ class LivestreamScreenController extends BaseController {
   }
 
   void toggleMic(LivestreamUserState? state) async {
+    state ??= liveUsersStates
+        .firstWhereOrNull((element) => element.userId == myUserId);
+
     if (state?.audioStatus == VideoAudioStatus.offByHost) {
       return showSnackBar(LKey.theHostHasTurnedOffYourAudio);
     }
@@ -1976,17 +2058,30 @@ class LivestreamScreenController extends BaseController {
 
     if (audioCurrentlyOn) {
       isAudioOn.value = false;
+      if (state != null) {
+        state.audioStatus = VideoAudioStatus.offByMe;
+        liveUsersStates.refresh();
+      }
       updateUserStateToFirestore(myUserId,
           audioStatus: VideoAudioStatus.offByMe);
-      ZegoExpressEngine.instance.muteMicrophone(true);
+      await ZegoExpressEngine.instance.muteMicrophone(true);
+      await ZegoExpressEngine.instance.mutePublishStreamAudio(true);
     } else {
       isAudioOn.value = true;
+      if (state != null) {
+        state.audioStatus = VideoAudioStatus.on;
+        liveUsersStates.refresh();
+      }
       updateUserStateToFirestore(myUserId, audioStatus: VideoAudioStatus.on);
-      ZegoExpressEngine.instance.muteMicrophone(false);
+      await ZegoExpressEngine.instance.muteMicrophone(false);
+      await ZegoExpressEngine.instance.mutePublishStreamAudio(false);
     }
   }
 
   void toggleVideo(LivestreamUserState? state) async {
+    state ??= liveUsersStates
+        .firstWhereOrNull((element) => element.userId == myUserId);
+
     if (state?.videoStatus == VideoAudioStatus.offByHost) {
       return showSnackBar(LKey.theHostHasTurnedOffYourVideo.tr);
     }
@@ -1996,13 +2091,23 @@ class LivestreamScreenController extends BaseController {
     Loggers.error(videoCurrentlyOn);
     if (videoCurrentlyOn) {
       isVideoOn.value = false;
+      if (state != null) {
+        state.videoStatus = VideoAudioStatus.offByMe;
+        liveUsersStates.refresh();
+      }
       updateUserStateToFirestore(myUserId,
           videoStatus: VideoAudioStatus.offByMe);
       await ZegoExpressEngine.instance.enableCamera(false);
+      await ZegoExpressEngine.instance.mutePublishStreamVideo(true);
     } else {
       isVideoOn.value = true;
+      if (state != null) {
+        state.videoStatus = VideoAudioStatus.on;
+        liveUsersStates.refresh();
+      }
       updateUserStateToFirestore(myUserId, videoStatus: VideoAudioStatus.on);
       await ZegoExpressEngine.instance.enableCamera(true);
+      await ZegoExpressEngine.instance.mutePublishStreamVideo(false);
     }
   }
 
@@ -2218,10 +2323,12 @@ class LivestreamScreenController extends BaseController {
       return showSnackBar(LKey.battleEndedGiftNotSent.tr);
     }
 
-    final effectiveTargetId = liveData.value.hostId ?? effectiveHostUser?.userId;
+    final effectiveTargetId = selectedBattleHostId.value ?? liveData.value.hostId ?? effectiveHostUser?.userId;
     final effectiveStreamUsers = targetUsers.isNotEmpty
         ? targetUsers
-        : (effectiveHostUser != null ? [effectiveHostUser!] : <AppUser>[]);
+        : (effectiveSelectedBattleHost != null
+            ? [effectiveSelectedBattleHost!]
+            : (effectiveHostUser != null ? [effectiveHostUser!] : <AppUser>[]));
 
     GiftManager.openGiftSheet(
         userId: effectiveTargetId,
@@ -2234,13 +2341,14 @@ class LivestreamScreenController extends BaseController {
           AppUser? user = giftManager.streamUser;
 
           int coinPrice = gift.coinPrice?.toInt() ?? 0;
+          final targetUserId = user?.userId ?? effectiveTargetId;
 
           _sendCommentToFirestore(
               type: LivestreamCommentType.gift,
               giftId: gift.id,
-              receiverId: user?.userId ?? effectiveTargetId);
+              receiverId: targetUserId);
           updateUserStateToFirestore(
-            user?.userId,
+            targetUserId,
             battleCoin: type == GiftType.battle ? coinPrice : null,
             currentBattleCoin: type == GiftType.battle ? coinPrice : null,
             liveCoin: type == GiftType.livestream ? coinPrice : null,
@@ -2317,7 +2425,7 @@ class LivestreamScreenController extends BaseController {
                         username: currentUser.username ?? 'You',
                         fullname: currentUser.fullname ?? 'You',
                         profile: currentUser.profilePhoto,
-                        level: currentUser.level,
+                        level: SessionManager.instance.myUserLevel.value,
                         isVerify: currentUser.isVerify,
                       )
                     : null))
@@ -2348,14 +2456,19 @@ class LivestreamScreenController extends BaseController {
         giftId: giftId,
         receiverId: receiverId,
       );
-      if (!saved && type == LivestreamCommentType.gift) {
+      if (saved) {
+        SessionManager.instance.refreshUser();
+      } else if (type == LivestreamCommentType.gift) {
         await Future.delayed(const Duration(milliseconds: 800));
-        await _saveCommentToApi(
+        bool retrySaved = await _saveCommentToApi(
           commentType: type,
           comment: comment,
           giftId: giftId,
           receiverId: receiverId,
         );
+        if (retrySaved) {
+          SessionManager.instance.refreshUser();
+        }
       }
     } catch (e) {
       Loggers.error('Message Error : $e');
@@ -2402,6 +2515,10 @@ class LivestreamScreenController extends BaseController {
   }
 
   void onVideoRequestSend(Livestream liveData) {
+    if (coHostList.length >= maxCallSeats) {
+      showSnackBar('Join Call seats are full ($maxCallSeats seats max)');
+      return;
+    }
     LivestreamUserState? state = liveUsersStates
         .firstWhereOrNull((element) => element.userId == myUserId);
     switch (state?.type) {
@@ -2452,11 +2569,6 @@ class LivestreamScreenController extends BaseController {
 
     DocumentReference reference =
         liveStreamUserStatesRef.doc(userId.toString());
-    bool isExist = (await reference.get()).exists;
-    if (!isExist) {
-      Loggers.error('updateUserStateToFirestore Not Found $userId');
-      return;
-    }
 
     try {
       final updateData = <String, dynamic>{
@@ -2484,7 +2596,7 @@ class LivestreamScreenController extends BaseController {
             battleCoin?.toDouble() ?? liveCoin?.toDouble());
         SessionManager.instance.setUser(myUser.value);
       }
-      await liveStreamUserStatesRef.doc(userId.toString()).update(updateData);
+      await reference.set(updateData, SetOptions(merge: true));
       Loggers.success('User state updated for userId: $userId');
     } catch (e, stack) {
       Loggers.error('Failed to update user state: $e\n$stack');
@@ -2596,6 +2708,7 @@ class LivestreamScreenController extends BaseController {
         // Host must NEVER end their own live broadcast from closeCoHostStream
         return;
       }
+      hasDismissedJoinCallBanner.value = false;
       StreamView? view = streamViews
           .firstWhereOrNull((element) => element.streamId == '$streamId');
       if (view != null) {
@@ -2699,11 +2812,12 @@ class LivestreamScreenController extends BaseController {
   }
 
   void updateStateAction(
-      LivestreamUserState? oldState, LivestreamUserState newState) {
+      LivestreamUserState? oldState, LivestreamUserState newState) async {
     if (newState.userId == myUserId) {
       Loggers.info('Updating state for userId: ${newState.toJson()}');
       if (newState.type == LivestreamUserType.coHost &&
           oldState?.type != LivestreamUserType.coHost) {
+        hasDismissedJoinCallBanner.value = false;
         publishCoHostStream(myUserId);
       }
 
@@ -2730,12 +2844,14 @@ class LivestreamScreenController extends BaseController {
       if (newState.audioStatus == VideoAudioStatus.offByHost &&
           oldState?.audioStatus != VideoAudioStatus.offByHost) {
         isAudioOn.value = false;
-        ZegoExpressEngine.instance.muteMicrophone(true);
+        await ZegoExpressEngine.instance.muteMicrophone(true);
+        await ZegoExpressEngine.instance.mutePublishStreamAudio(true);
         showSnackBar(LKey.theHostHasTurnedOffYourAudio.tr);
       } else if (newState.audioStatus == VideoAudioStatus.on &&
           oldState?.audioStatus == VideoAudioStatus.offByHost) {
         isAudioOn.value = true;
-        ZegoExpressEngine.instance.muteMicrophone(false);
+        await ZegoExpressEngine.instance.muteMicrophone(false);
+        await ZegoExpressEngine.instance.mutePublishStreamAudio(false);
         showSnackBar('Host unmuted your microphone');
       }
 
@@ -2743,12 +2859,14 @@ class LivestreamScreenController extends BaseController {
       if (newState.videoStatus == VideoAudioStatus.offByHost &&
           oldState?.videoStatus != VideoAudioStatus.offByHost) {
         isVideoOn.value = false;
-        ZegoExpressEngine.instance.enableCamera(false);
+        await ZegoExpressEngine.instance.enableCamera(false);
+        await ZegoExpressEngine.instance.mutePublishStreamVideo(true);
         showSnackBar(LKey.theHostHasTurnedOffYourVideo.tr);
       } else if (newState.videoStatus == VideoAudioStatus.on &&
           oldState?.videoStatus == VideoAudioStatus.offByHost) {
         isVideoOn.value = true;
-        ZegoExpressEngine.instance.enableCamera(true);
+        await ZegoExpressEngine.instance.enableCamera(true);
+        await ZegoExpressEngine.instance.mutePublishStreamVideo(false);
         showSnackBar('Host enabled your camera');
       }
     }
@@ -2993,6 +3111,10 @@ class LivestreamScreenController extends BaseController {
             ? liveData.value.description!
             : 'Party Room');
 
+    final int durationSeconds = max(
+        1,
+        ((DateTime.now().millisecondsSinceEpoch - joinTimeMs) / 1000).ceil());
+
     // 1. Clean up Firestore documents immediately so stream disappears from all screens
     await deleteStreamOnFirebase();
 
@@ -3001,8 +3123,42 @@ class LivestreamScreenController extends BaseController {
           .removeStreamLocally(liveData.value.roomID, myUserId);
     }
 
+    // 1b. Save completed live session locally so it immediately appears in My Lives & Insights
+    try {
+      final completedSession = LiveHistory(
+        id: apiLiveStreamId ?? DateTime.now().millisecondsSinceEpoch,
+        userId: myUserId,
+        title: streamTitle,
+        thumbnail: liveData.value.thumbnailUrl ?? myUser.value?.profilePhoto,
+        viewerCount: viewersCount,
+        duration: durationSeconds,
+        totalGifts: giftsCount,
+        totalComments: commentsCount,
+        followersGained: followersCount,
+        starsEarned: starsEarned,
+        categoryName: liveData.value.categoryName ?? 'Live Stream',
+        startedAt: startTime.toIso8601String(),
+        endedAt: DateTime.now().toIso8601String(),
+        status: 0,
+        createdAt: startTime.toIso8601String(),
+        hostUsername: myUser.value?.username,
+        hostFullname: myUser.value?.fullname,
+        hostProfilePhoto: myUser.value?.profilePhoto,
+      );
+      LiveHistoryStorage.saveLiveSession(completedSession);
+    } catch (e) {
+      Loggers.error('LiveHistoryStorage save error: $e');
+    }
+
     // 2. Call backend end-stream API
-    _endLiveStreamApi();
+    _endLiveStreamApi(
+      duration: durationSeconds,
+      viewerCount: viewersCount,
+      followersGained: followersCount,
+      starsEarned: starsEarned,
+      totalComments: commentsCount,
+      totalGifts: giftsCount,
+    );
 
     // 3. Stop local recording and upload
     await _stopLocalRecordingAndUpload();
@@ -3041,10 +3197,25 @@ class LivestreamScreenController extends BaseController {
     );
   }
 
-  Future<void> _endLiveStreamApi() async {
+  Future<void> _endLiveStreamApi({
+    int? duration,
+    int? viewerCount,
+    int? followersGained,
+    int? starsEarned,
+    int? totalComments,
+    int? totalGifts,
+  }) async {
     if (apiLiveStreamId == null) return;
     try {
-      await GiftWalletService.instance.endLiveStream(liveStreamId: apiLiveStreamId!);
+      await GiftWalletService.instance.endLiveStream(
+        liveStreamId: apiLiveStreamId!,
+        duration: duration,
+        viewerCount: viewerCount,
+        followersGained: followersGained,
+        starsEarned: starsEarned,
+        totalComments: totalComments,
+        totalGifts: totalGifts,
+      );
       Loggers.success('endLiveStream API called successfully');
     } catch (e) {
       Loggers.error('endLiveStream API error: $e');
@@ -3089,7 +3260,7 @@ class LivestreamScreenController extends BaseController {
   }
 
   /// Host invites an active call participant (co-host) to PK Battle
-  Future<void> sendPkInviteToCoHost(int userId) async {
+  Future<void> sendPkInviteToCoHost(int userId, {int? duration}) async {
     if (!isHost) return;
     final isCoHost = coHostList.any(
         (u) => u.userId == userId && u.type == LivestreamUserType.coHost);
@@ -3104,8 +3275,11 @@ class LivestreamScreenController extends BaseController {
       showSnackBar('PK Battle already started');
       return;
     }
+    final effectiveDuration = duration ?? selectedBattleDuration.value;
+    selectedBattleDuration.value = effectiveDuration;
     await liveStreamDocRef.update({
       'pk_invited_user_ids': FieldValue.arrayUnion([userId]),
+      'battle_duration': effectiveDuration,
     });
   }
 
@@ -3156,9 +3330,9 @@ class LivestreamScreenController extends BaseController {
           throw 'PK Battle already started.';
         }
 
-        final duration =
-            SessionManager.instance.getSettings()?.battleDurationMinutes ??
-                AppRes.battleDurationInMinutes;
+        final duration = (data['battle_duration'] is num && (data['battle_duration'] as num) > 0)
+            ? (data['battle_duration'] as num).toInt()
+            : selectedBattleDuration.value;
         final now = DateTime.now().millisecondsSinceEpoch;
 
         // Atomically lock opponent slot and invalidate all other pending invitations!
@@ -3193,31 +3367,59 @@ class LivestreamScreenController extends BaseController {
 
   void startBattle() {
     expandedBattleUserIndex.value = null;
-    final duration = SessionManager.instance.getSettings()?.battleDurationMinutes ??
-        AppRes.battleDurationInMinutes;
+    startBattleWithDuration(selectedBattleDuration.value);
+  }
+
+  void startBattleWithDuration(int durationMinutes) {
+    expandedBattleUserIndex.value = null;
+    selectedBattleDuration.value = durationMinutes;
     updateLiveStreamData(
       battleType: BattleType.waiting,
-      battleDuration: duration,
+      battleDuration: durationMinutes,
       battleCreatedAt: DateTime.now().millisecondsSinceEpoch,
     );
   }
 
+  Future<void> startAnotherRound(int durationMinutes) async {
+    if (!isHost) return;
+    selectedBattleDuration.value = durationMinutes;
+    _isRoundFinalizing = false;
+    isPkResultPopupShowing = false;
+
+    // Reset current round coins for both participants
+    updateUserStateToFirestore(myUserId, currentBattleCoin: 0);
+    final opponentId = pkOpponentId.value ?? coHostList.firstOrNull?.userId;
+    if (opponentId != null) {
+      updateUserStateToFirestore(opponentId, currentBattleCoin: 0);
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await liveStreamDocRef.update({
+      FirebaseConst.battleType: BattleType.waiting.value,
+      FirebaseConst.battleDuration: durationMinutes,
+      FirebaseConst.battleCreatedAt: now,
+      FirebaseConst.battleRound: FieldValue.increment(1),
+    });
+  }
+
   void battleRunning() {
     Livestream stream = liveData.value;
-    // Battle Start Timer Logic
+    final durationMinutes = stream.battleDuration > 0 ? stream.battleDuration : 2;
+    totalBattleSecond = Duration(minutes: durationMinutes).inSeconds;
 
     final startTime =
         DateTime.fromMillisecondsSinceEpoch(stream.battleCreatedAt ?? 0);
     final endTime = startTime
         .add(Duration(seconds: totalBattleSecond + AppRes.battleStartInSecond));
 
-    Loggers.success('Battle Timer Started');
+    Loggers.success('Battle Timer Started (Duration: $durationMinutes min)');
+    _isRoundFinalizing = false;
 
     _timerStart(() {
       final remaining = endTime.difference(DateTime.now()).inSeconds;
       remainingBattleSeconds.value = remaining.clamp(0, totalBattleSecond);
 
-      if (remainingBattleSeconds.value <= 10) {
+      if (remainingBattleSeconds.value <= 10 && remainingBattleSeconds.value > 0) {
         if (!countdownPlayer.playing) {
           countdownPlayer
               .seek(Duration(seconds: 10 - remainingBattleSeconds.value));
@@ -3229,37 +3431,140 @@ class LivestreamScreenController extends BaseController {
           '[BATTLE RUNNING] Battle end in ${remainingBattleSeconds.value} sec.');
 
       if (remainingBattleSeconds.value <= 0) {
-        winAudioPlayer.seek(const Duration(seconds: 0));
-        winAudioPlayer.play();
-        timer?.cancel();
-        _saveBattleResult();
-        updateLiveStreamData(battleType: BattleType.end);
+        if (!_isRoundFinalizing) {
+          _isRoundFinalizing = true;
+          timer?.cancel();
+          winAudioPlayer.seek(const Duration(seconds: 0));
+          winAudioPlayer.play();
+          if (isHost) {
+            _finalizeBattleRound();
+          }
+        }
       }
     });
   }
 
-  /// Only the host writes the row — both sides run this timer, and the
-  /// backend resolves the winner from the coin totals.
-  Future<void> _saveBattleResult() async {
+  /// Finalizes the battle round, calculates winner/loser/tie, gathers top supporters,
+  /// updates Firestore lastRoundResult, and saves battle history on backend.
+  Future<void> _finalizeBattleRound() async {
     if (!isHost) return;
     final hostState =
         liveUsersStates.firstWhereOrNull((e) => e.userId == myUserId);
-    final coHostState = coHostList.firstOrNull;
-    final opponentId = coHostState?.userId;
-    if (hostState == null || opponentId == null) return;
+    final opponentId = pkOpponentId.value ?? coHostList.firstOrNull?.userId;
+    final opponentState =
+        liveUsersStates.firstWhereOrNull((e) => e.userId == opponentId);
+
+    final int hostCoins = hostState?.currentBattleCoin ?? 0;
+    final int opponentCoins = opponentState?.currentBattleCoin ?? 0;
+
+    final bool isTie = hostCoins == opponentCoins;
+    final bool hostWins = hostCoins > opponentCoins;
+
+    final hostAppUser = hostState?.getUser(firestoreController.users) ??
+        liveData.value.hostUser ??
+        firestoreController.users.firstWhereOrNull((u) => u.userId == myUserId);
+    final opponentAppUser = opponentState?.getUser(firestoreController.users) ??
+        pkOpponentUser.value ??
+        (opponentId != null
+            ? firestoreController.users.firstWhereOrNull((u) => u.userId == opponentId)
+            : null);
+
+    final winnerUser = isTie ? null : (hostWins ? hostAppUser : opponentAppUser);
+    final loserUser = isTie ? null : (hostWins ? opponentAppUser : hostAppUser);
+
+    final winnerCoins = isTie ? hostCoins : (hostWins ? hostCoins : opponentCoins);
+    final loserCoins = isTie ? opponentCoins : (hostWins ? opponentCoins : hostCoins);
+
+    // Top supporters for winner (or host if tie)
+    final winnerId = winnerUser?.userId ?? myUserId;
+    List<Map<String, dynamic>> topSupporters = [];
+    final Map<int, int> supporterCoins = {};
+    for (final c in comments) {
+      if (c.commentType == LivestreamCommentType.gift &&
+          c.receiverId == winnerId &&
+          c.senderId != null) {
+        supporterCoins[c.senderId!] =
+            (supporterCoins[c.senderId!] ?? 0) + (c.gift?.coinPrice?.toInt() ?? 1);
+      }
+    }
+    final sortedEntries = supporterCoins.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    for (final entry in sortedEntries.take(3)) {
+      final u = firestoreController.users
+          .firstWhereOrNull((user) => user.userId == entry.key);
+      topSupporters.add({
+        'id': entry.key,
+        'name': entry.key == myUserId
+            ? 'You'
+            : (u?.fullname ?? u?.username ?? 'Supporter'),
+        'profile': u?.profile,
+        'diamonds': entry.value,
+      });
+    }
+
+    final roundResult = {
+      'is_tie': isTie,
+      'final_score': isTie ? hostCoins : winnerCoins,
+      'winner_id': winnerUser?.userId,
+      'winner_name': winnerUser?.fullname ?? winnerUser?.username ?? 'Host',
+      'winner_profile': winnerUser?.profile,
+      'winner_score': winnerCoins,
+      'loser_id': loserUser?.userId,
+      'loser_name': loserUser?.fullname ?? loserUser?.username ?? 'Opponent',
+      'loser_profile': loserUser?.profile,
+      'loser_score': loserCoins,
+      'user1_profile': hostAppUser?.profile,
+      'user1_name': hostAppUser?.fullname ?? hostAppUser?.username ?? 'Host',
+      'user2_profile': opponentAppUser?.profile,
+      'user2_name': opponentAppUser?.fullname ?? opponentAppUser?.username ?? 'Opponent',
+      'round': liveData.value.battleRound ?? 1,
+      'top_supporters': topSupporters,
+    };
 
     try {
-      await GiftWalletService.instance.saveBattleResult(
-        mode: 'video',
-        user1Id: myUserId,
-        user2Id: opponentId,
-        user1Coins: hostState.currentBattleCoin,
-        user2Coins: coHostState!.currentBattleCoin,
-        durationMinutes: liveData.value.battleDuration,
-      );
+      await liveStreamDocRef.update({
+        FirebaseConst.battleType: BattleType.end.value,
+        FirebaseConst.lastRoundResult: roundResult,
+      });
+
+      if (opponentId != null) {
+        await GiftWalletService.instance.saveBattleResult(
+          mode: 'video',
+          user1Id: myUserId,
+          user2Id: opponentId,
+          user1Coins: hostCoins,
+          user2Coins: opponentCoins,
+          durationMinutes: liveData.value.battleDuration,
+        );
+      }
     } catch (e) {
-      Loggers.error('saveBattleResult error: $e');
+      Loggers.error('finalizeBattleRound error: $e');
     }
+  }
+
+  void checkAndShowPkResultDialog(Map<String, dynamic> result) {
+    if (isPkResultPopupShowing || Get.context == null) return;
+    isPkResultPopupShowing = true;
+    PkBattleResultDialog.show(
+      context: Get.context!,
+      result: result,
+      isHost: isHost,
+      onStartAnotherRound: () {
+        isPkResultPopupShowing = false;
+        if (Get.context != null) {
+          PkBattleDurationSheet.show(
+            context: Get.context!,
+            initialDuration: selectedBattleDuration.value,
+            onStart: (duration) {
+              startAnotherRound(duration);
+            },
+          );
+        }
+      },
+      onClose: () {
+        isPkResultPopupShowing = false;
+      },
+    );
   }
 
   void startMinViewerTimeoutCheck() {

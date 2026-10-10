@@ -80,7 +80,12 @@ class AudioRoomController extends Controller
 
         $validator = Validator::make($request->all(), [
             'audio_room_id' => 'required|exists:tbl_audio_room_history,id',
+            'duration' => 'nullable|integer|min:0',
             'peak_listener_count' => 'nullable|integer|min:0',
+            'followers_gained' => 'nullable|integer|min:0',
+            'stars_earned' => 'nullable|integer|min:0',
+            'total_comments' => 'nullable|integer|min:0',
+            'total_gifts' => 'nullable|integer|min:0',
         ]);
         if ($validator->fails()) {
             return response()->json(['status' => false, 'message' => $validator->errors()->first()]);
@@ -96,11 +101,26 @@ class AudioRoomController extends Controller
 
         $endedAt = Carbon::now();
         $startedAt = Carbon::parse($room->started_at);
+        $duration = $request->filled('duration') && intval($request->duration) > 0
+            ? intval($request->duration)
+            : max(0, $startedAt->diffInSeconds($endedAt));
 
         $room->ended_at = $endedAt;
-        $room->duration = max(0, $startedAt->diffInSeconds($endedAt));
+        $room->duration = $duration;
         if ($request->filled('peak_listener_count')) {
             $room->peak_listener_count = intval($request->peak_listener_count);
+        }
+        if ($request->filled('followers_gained')) {
+            $room->followers_gained = intval($request->followers_gained);
+        }
+        if ($request->filled('stars_earned')) {
+            $room->stars_earned = intval($request->stars_earned);
+        }
+        if ($request->filled('total_comments')) {
+            $room->total_comments = intval($request->total_comments);
+        }
+        if ($request->filled('total_gifts')) {
+            $room->total_gifts = intval($request->total_gifts);
         }
         $room->status = 0;
         $room->save();
@@ -109,6 +129,10 @@ class AudioRoomController extends Controller
             'id' => intval($room->id),
             'duration' => intval($room->duration),
             'peak_listener_count' => intval($room->peak_listener_count),
+            'followers_gained' => intval($room->followers_gained),
+            'stars_earned' => intval($room->stars_earned),
+            'total_comments' => intval($room->total_comments),
+            'total_gifts' => intval($room->total_gifts),
             'started_at' => $startedAt->format('Y-m-d H:i:s'),
             'ended_at' => Carbon::parse($room->ended_at)->format('Y-m-d H:i:s'),
         ]);

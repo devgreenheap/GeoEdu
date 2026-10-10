@@ -95,11 +95,7 @@ class _StarConversionHistoryScreenState extends State<StarConversionHistoryScree
               ),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: ColorRes.gold, size: 22),
-            onPressed: _fetchHistory,
-            tooltip: 'Refresh',
-          ),
+          const SizedBox(width: 40),
         ],
       ),
     );
@@ -162,6 +158,7 @@ class _StarConversionHistoryScreenState extends State<StarConversionHistoryScree
 
     if (list.isEmpty) {
       return ListView(
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
         children: [
           SizedBox(height: MediaQuery.of(context).size.height * 0.25),
           Center(
@@ -186,6 +183,7 @@ class _StarConversionHistoryScreenState extends State<StarConversionHistoryScree
     }
 
     return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       itemCount: list.length,
       itemBuilder: (context, index) {
